@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+data/
+.env
+*.db
+*.db-journal
+public/uploads/*
+!public/uploads/.gitkeep
+build/
+dist/
+*.spec

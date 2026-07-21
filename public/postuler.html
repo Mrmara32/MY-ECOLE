@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Postuler comme enseignant</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--c-primary:#1E3A8A;--c-primary-d:#1E40AF;--c-ok:#059669;--g0:#F9FAFB;--g2:#E5E7EB;--g5:#6B7280;--g9:#111827;--r:8px}
+  *{box-sizing:border-box}
+  body{font-family:'Inter',sans-serif;background:linear-gradient(135deg,var(--c-primary) 0%,#312E81 100%);min-height:100vh;margin:0;padding:40px 16px}
+  .card{max-width:560px;margin:0 auto;background:#fff;border-radius:14px;padding:32px;box-shadow:0 10px 30px rgba(0,0,0,.2)}
+  h1{font-size:20px;color:var(--g9);margin:0 0 6px}
+  .sub{color:var(--g5);font-size:13px;margin-bottom:24px}
+  .fg{display:flex;flex-direction:column;gap:5px;margin-bottom:16px}
+  label{font-size:12px;font-weight:500;color:#374151}
+  input,select,textarea{padding:10px 12px;border:1px solid var(--g2);border-radius:var(--r);font-family:inherit;font-size:14px;width:100%}
+  textarea{resize:vertical;min-height:70px}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .checkgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;background:var(--g0);padding:12px;border-radius:var(--r)}
+  .checkgrid label{display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;color:#374151}
+  button{width:100%;padding:12px;background:var(--c-primary);color:#fff;border:none;border-radius:var(--r);font-size:15px;font-weight:600;cursor:pointer;margin-top:8px}
+  button:hover{background:var(--c-primary-d)}
+  #msg-ok{display:none;text-align:center;padding:30px 10px}
+  #msg-ok .icon{font-size:48px;margin-bottom:10px}
+  #msg-ok h2{color:var(--c-ok);font-size:18px}
+  #msg-err{display:none;background:#FEF2F2;color:#DC2626;padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:14px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div id="form-wrap">
+    <h1>🎓 Candidature Enseignant</h1>
+    <p class="sub">Postulez en ligne en indiquant les matières que vous souhaitez enseigner et vos disponibilités. Votre candidature sera examinée par la direction.</p>
+    <div id="msg-err"></div>
+    <form id="f-cand">
+      <div class="row2">
+        <div class="fg"><label>Prénom*</label><input name="prenom" required></div>
+        <div class="fg"><label>Nom*</label><input name="nom" required></div>
+      </div>
+      <div class="row2">
+        <div class="fg"><label>Téléphone*</label><input name="telephone" required placeholder="+224 6XX XXX XXX"></div>
+        <div class="fg"><label>Email</label><input type="email" name="email"></div>
+      </div>
+      <div class="fg">
+        <label>Cycle(s) souhaité(s)* <span style="font-weight:400;color:#6B7280;font-size:11px">(un enseignant peut postuler pour plusieurs niveaux)</span></label>
+        <div class="checkgrid" style="grid-template-columns:repeat(2,1fr)">
+          <label><input type="checkbox" name="cycle_check" value="maternelle"> Maternelle</label>
+          <label><input type="checkbox" name="cycle_check" value="primaire"> Primaire</label>
+          <label><input type="checkbox" name="cycle_check" value="college"> Collège</label>
+          <label><input type="checkbox" name="cycle_check" value="lycee"> Lycée</label>
+        </div>
+      </div>
+      <div class="fg">
+        <label>Matières que vous enseignez* (cochez celles qui s'appliquent)</label>
+        <div class="checkgrid" id="matieres-grid"></div>
+      </div>
+      <div class="fg">
+        <label>Disponibilités / horaires souhaités*</label>
+        <textarea name="disponibilites" required placeholder="Ex : Lundi, Mardi, Jeudi de 8h à 12h"></textarea>
+      </div>
+      <div class="fg">
+        <label>Message (expérience, motivation…)</label>
+        <textarea name="message" placeholder="Quelques mots sur votre expérience…"></textarea>
+      </div>
+      <button type="submit">Envoyer ma candidature</button>
+    </form>
+  </div>
+  <div id="msg-ok">
+    <div class="icon">✅</div>
+    <h2>Candidature envoyée avec succès !</h2>
+    <p style="color:#6B7280;font-size:13px">La direction examinera votre candidature et vous contactera. Merci de votre intérêt.</p>
+  </div>
+</div>
+
+<script>
+const MATIERES = ['Mathématiques','Français','Anglais','Histoire-Géographie','SVT','Physique-Chimie','EPS','Arts Plastiques','Musique','Éducation Civique','Philosophie','Espagnol','Informatique','Arabe'];
+document.getElementById('matieres-grid').innerHTML = MATIERES.map(m =>
+  `<label><input type="checkbox" name="matiere" value="${m}"> ${m}</label>`
+).join('');
+
+document.getElementById('f-cand').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errBox = document.getElementById('msg-err');
+  errBox.style.display = 'none';
+  const fd = new FormData(e.target);
+  const matieres = Array.from(document.querySelectorAll('input[name=matiere]:checked')).map(el => el.value);
+  const cyclesChoisis = Array.from(document.querySelectorAll('input[name=cycle_check]:checked')).map(el => el.value);
+  if (matieres.length === 0) {
+    errBox.textContent = 'Veuillez cocher au moins une matière.';
+    errBox.style.display = 'block';
+    return;
+  }
+  if (cyclesChoisis.length === 0) {
+    errBox.textContent = 'Veuillez cocher au moins un cycle.';
+    errBox.style.display = 'block';
+    return;
+  }
+  const body = {
+    prenom: fd.get('prenom'), nom: fd.get('nom'), telephone: fd.get('telephone'),
+    email: fd.get('email'), cycle: cyclesChoisis.join(', '), disponibilites: fd.get('disponibilites'),
+    message: fd.get('message'), matieres,
+  };
+  try {
+    const res = await fetch('/api/candidatures', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Erreur'); }
+    document.getElementById('form-wrap').style.display = 'none';
+    document.getElementById('msg-ok').style.display = 'block';
+  } catch (err) {
+    errBox.textContent = err.message;
+    errBox.style.display = 'block';
+  }
+});
+</script>
+</body>
+</html>

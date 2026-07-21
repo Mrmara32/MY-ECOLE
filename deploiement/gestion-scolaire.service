@@ -1,0 +1,31 @@
+[Unit]
+Description=Gestion Scolaire - Application Flask (Groupe Scolaire Elhadji Mountaga Djely)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/gestion-scolaire
+Environment="PATH=/opt/gestion-scolaire/venv/bin"
+
+# IMPORTANT : toujours --workers 1 (un seul processus). Cette application utilise
+# une base SQLite avec migration automatique au démarrage ; plusieurs processus
+# démarrant en même temps provoqueraient des erreurs "database is locked".
+# La concurrence est assurée par --threads (plusieurs threads dans ce processus
+# unique), ce qui est suffisant et fiable pour l'usage d'un établissement scolaire.
+ExecStart=/opt/gestion-scolaire/venv/bin/gunicorn \
+    --workers 1 \
+    --threads 4 \
+    --worker-class gthread \
+    --timeout 120 \
+    --bind 127.0.0.1:8000 \
+    app:app
+
+Restart=always
+RestartSec=5
+StandardOutput=append:/opt/gestion-scolaire/logs/gunicorn.log
+StandardError=append:/opt/gestion-scolaire/logs/gunicorn.log
+
+[Install]
+WantedBy=multi-user.target

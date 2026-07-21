@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestion Scolaire</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ===================== LOGIN ===================== -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo-wrap">
+      <img id="login-logo" src="" alt="" style="display:none;width:72px;height:72px;object-fit:contain;border-radius:8px">
+      <div id="login-logo-default" class="login-logo-icon">🎓</div>
+    </div>
+    <h1 id="login-ecole-nom" class="login-title">Groupe Scolaire</h1>
+    <p class="login-sub">Connexion à votre espace de gestion</p>
+    <div style="display:flex;justify-content:center;margin-bottom:16px" id="login-lang-wrap"></div>
+    <form id="login-form">
+      <div class="fg">
+        <label>Identifiant</label>
+        <input type="text" id="l-user" placeholder="admin" autocomplete="username" required>
+      </div>
+      <div class="fg">
+        <label>Mot de passe</label>
+        <div class="input-eye">
+          <input type="password" id="l-pass" placeholder="••••••••" autocomplete="current-password" required>
+          <button type="button" class="eye-btn" onclick="togglePass()">👁</button>
+        </div>
+      </div>
+      <div id="login-err" class="alert alert-danger" style="display:none"></div>
+      <button type="submit" class="btn btn-primary w-full" id="login-btn">Se connecter</button>
+    </form>
+  </div>
+  <div style="text-align:center;margin-top:18px;font-size:11px;color:#9CA3AF">
+    Application développée par <strong>Actif System Groupe</strong> — Tél : 661-97-43-43
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div id="app" style="display:none">
+  <div id="sidebar-overlay" onclick="toggleSidebar(false)"></div>
+  <aside id="sidebar">
+    <div class="sb-brand">
+      <img id="sb-logo" src="" alt="" style="display:none;width:36px;height:36px;object-fit:contain;border-radius:6px">
+      <div id="sb-logo-icon" style="font-size:24px">🎓</div>
+      <div class="sb-name-wrap">
+        <div id="sb-ecole-nom" class="sb-name">Gestion Scolaire</div>
+        <div class="sb-year" id="sb-annee">—</div>
+      </div>
+    </div>
+    <nav id="nav"></nav>
+    <div class="sb-user">
+      <div id="sb-avatar" class="avatar">?</div>
+      <div class="sb-user-info">
+        <div id="sb-name" class="sb-uname">—</div>
+        <div id="sb-role" class="sb-urole">—</div>
+      </div>
+      <button class="icon-btn" onclick="logout()" title="Déconnexion">⎋</button>
+    </div>
+    <div style="text-align:center;font-size:9.5px;color:#9CA3AF;padding:8px 10px 12px">
+      Développé par <strong>Actif System Groupe</strong><br>Tél : 661-97-43-43
+    </div>
+  </aside>
+  <div class="main-wrap">
+    <header class="topbar">
+      <div class="flex items-center gap-2">
+        <button class="icon-btn mobile-menu-btn" onclick="toggleSidebar()" title="Menu" aria-label="Menu">☰</button>
+        <div>
+          <h1 id="pg-title">Tableau de bord</h1>
+          <div id="pg-sub" class="pg-sub"></div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div id="topbar-lang-wrap"></div>
+        <button class="btn btn-outline btn-sm" onclick="showPwdModal()" id="pwd-btn">🔒 Mot de passe</button>
+        <button class="btn btn-outline btn-sm" onclick="logout()" id="logout-btn">⎋ Déconnexion</button>
+      </div>
+    </header>
+    <div id="content" class="content"></div>
+  </div>
+</div>
+
+<!-- Les fenêtres modales sont créées dynamiquement par openModal() dans ui.js,
+     ce qui permet d'en avoir plusieurs ouvertes simultanément. -->
+<div id="modal-tray"></div>
+
+<!-- Toasts -->
+<div id="toasts"></div>
+
+<script src="js/i18n.js"></script>
+<script src="js/api.js"></script>
+<script src="js/vendor/qrcode.min.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/pages/dashboard.js"></script>
+<script src="js/pages/users.js"></script>
+<script src="js/pages/settings.js"></script>
+<script src="js/pages/personnel.js"></script>
+<script src="js/pages/eleves.js"></script>
+<script src="js/pages/notes.js"></script>
+<script src="js/pages/devoirs.js"></script>
+<script src="js/pages/emploi.js"></script>
+<script src="js/pages/seances.js"></script>
+<script src="js/pages/absences.js"></script>
+<script src="js/pages/paiements.js"></script>
+<script src="js/pages/cantine.js"></script>
+<script src="js/pages/comptabilite.js"></script>
+<script src="js/pages/revision.js"></script>
+<script src="js/pages/paie.js"></script>
+<script src="js/pages/candidatures.js"></script>
+<script src="js/pages/reinscriptions.js"></script>
+<script src="js/pages/communication.js"></script>
+<script src="js/pages/classes.js"></script>
+<script src="js/pages/salles.js"></script>
+<script src="js/pages/journal.js"></script>
+<script src="js/pages/actualites.js"></script>
+<script src="js/pages/eleveDuMois.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
