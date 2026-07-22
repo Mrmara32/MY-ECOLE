@@ -113,6 +113,25 @@ def delete_article(a_id):
     return jsonify({'success': True})
 
 
+@bp.route('/upload-image-contenu', methods=['POST'])
+@require_auth
+@require_role(*PUBLISH_ROLES)
+def upload_image_contenu():
+    """Upload générique d'une image à insérer au milieu du texte d'un article,
+    utilisable même avant que l'article ne soit enregistré (pas d'id requis)."""
+    file = request.files.get('image')
+    if not file or file.filename == '':
+        return jsonify({'error': 'Aucun fichier reçu'}), 400
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_PHOTO:
+        return jsonify({'error': 'Format non supporté (jpg, png, gif, webp)'}), 400
+
+    fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
+    upload_dir = current_app.config['UPLOAD_DIR']
+    file.save(os.path.join(upload_dir, fname))
+    return jsonify({'url': '/uploads/' + fname})
+
+
 @bp.route('/<a_id>/media', methods=['POST'])
 @require_auth
 @require_role(*PUBLISH_ROLES)

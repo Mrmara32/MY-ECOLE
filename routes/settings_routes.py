@@ -41,7 +41,7 @@ def update_settings():
     body = request.get_json(silent=True) or {}
     allowed = ['ecole_nom', 'ecole_adresse', 'ecole_telephone', 'ecole_email', 'annee_scolaire',
                'reseau_facebook', 'reseau_instagram', 'reseau_youtube', 'reseau_tiktok', 'reseau_whatsapp',
-               'creneaux_horaires']
+               'creneaux_horaires', 'mot_fondateur', 'video_presentation_youtube']
     for k in allowed:
         if k in body:
             db.execute("INSERT OR REPLACE INTO settings (cle, valeur) VALUES (?,?)", (k, body[k]))
@@ -115,3 +115,69 @@ def upload_signature_directeur():
     db.execute("INSERT OR REPLACE INTO settings (cle, valeur) VALUES (?,?)", ('signature_directeur', url))
     db.commit()
     return jsonify({'signature_url': url})
+
+
+@bp.route('/fond', methods=['POST'])
+@require_auth
+@require_role('admin', 'directeur', 'secretaire', 'charge_communication')
+def upload_fond():
+    """Image de fond du site public (vitrine) — modifiable à tout moment depuis les Paramètres."""
+    file = request.files.get('fond')
+    if not file or file.filename == '':
+        return jsonify({'error': 'Aucun fichier reçu'}), 400
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXT:
+        return jsonify({'error': 'Format non supporté'}), 400
+
+    import time, random
+    fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
+    upload_dir = current_app.config['UPLOAD_DIR']
+    file.save(os.path.join(upload_dir, fname))
+
+    url = '/uploads/' + fname
+    db.execute("INSERT OR REPLACE INTO settings (cle, valeur) VALUES (?,?)", ('ecole_fond_url', url))
+    db.commit()
+    return jsonify({'fond_url': url})
+
+
+@bp.route('/carousel', methods=['POST'])
+@require_auth
+@require_role('admin', 'directeur', 'secretaire', 'charge_communication')
+def ajouter_image_carousel():
+    """Ajoute une image au carrousel de la page d'accueil du site public (jusqu'à 8 images)."""
+    file = request.files.get('image')
+    if not file or file.filename == '':
+        return jsonify({'error': 'Aucun fichier reçu'}), 400
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXT:
+        return jsonify({'error': 'Format non supporté'}), 400
+
+    import time, random, json
+    fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
+    upload_dir = current_app.config['UPLOAD_DIR']
+    file.save(os.path.join(upload_dir, fname))
+    url = '/uploads/' + fname
+
+    row = db.execute("SELECT valeur FROM settings WHERE cle='carousel_images'").fetchone()
+    images = json.loads(row['valeur']) if row and row['valeur'] else []
+    images.append(url)
+    images = images[-8:]  # 8 images maximum, les plus récentes conservées
+    db.execute("INSERT OR REPLACE INTO settings (cle, valeur) VALUES ('carousel_images', ?)", (json.dumps(images),))
+    db.commit()
+    return jsonify({'images': images})
+
+
+@bp.route('/carousel', methods=['DELETE'])
+@require_auth
+@require_role('admin', 'directeur', 'secretaire', 'charge_communication')
+def retirer_image_carousel():
+    """Retire une image du carrousel (par son URL)."""
+    import json
+    body = request.get_json(silent=True) or {}
+    url_a_retirer = body.get('url')
+    row = db.execute("SELECT valeur FROM settings WHERE cle='carousel_images'").fetchone()
+    images = json.loads(row['valeur']) if row and row['valeur'] else []
+    images = [i for i in images if i != url_a_retirer]
+    db.execute("INSERT OR REPLACE INTO settings (cle, valeur) VALUES ('carousel_images', ?)", (json.dumps(images),))
+    db.commit()
+    return jsonify({'images': images})

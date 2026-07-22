@@ -3,6 +3,8 @@ async function pageSettings() {
   $('#content').innerHTML = loadingHtml;
   try {
     const s = await apiGetSettings();
+    let carouselImages = [];
+    try { carouselImages = JSON.parse(s.carousel_images || '[]'); } catch(_) { carouselImages = []; }
     $('#content').innerHTML = `
     <div class="card">
       <div class="card-header"><span class="card-title">🏫 Paramètres de l'établissement</span></div>
@@ -49,6 +51,66 @@ async function pageSettings() {
               </div>
             </div>
           </div>
+
+          <!-- Site public (vitrine) -->
+          <div class="form-section">
+            <div class="form-section-title">🌐 Site public — Apparence</div>
+            <div class="text-muted mb-3" style="font-size:12px">Ces réglages s'appliquent immédiatement sur le site public (/vitrine), modifiables à tout moment.</div>
+
+            <div class="fg mb-3">
+              <label>Fond du site (image d'arrière-plan de la page d'accueil)</label>
+              <div class="flex items-center gap-3">
+                ${s.ecole_fond_url ? `<img src="${esc(s.ecole_fond_url)}" style="width:140px;height:80px;object-fit:cover;border:1px solid #E5E7EB;border-radius:8px">` : '<div class="photo-placeholder" style="width:140px;height:80px">🖼️</div>'}
+                <label class="btn btn-outline btn-sm" style="cursor:pointer">
+                  🖼️ Changer le fond
+                  <input type="file" id="fond-file" accept="image/*" style="display:none">
+                </label>
+              </div>
+            </div>
+
+            <div class="fg">
+              <label>Carrousel d'images (page d'accueil — 8 maximum)</label>
+              <div class="flex flex-wrap gap-2 mb-2" id="carousel-list">
+                ${(carouselImages||[]).map(url => `
+                  <div style="position:relative">
+                    <img src="${esc(url)}" style="width:90px;height:65px;object-fit:cover;border-radius:6px;border:1px solid #E5E7EB">
+                    <button type="button" class="btn btn-danger btn-xs" style="position:absolute;top:-6px;right:-6px;border-radius:50%;padding:2px 6px" onclick="retirerImageCarousel('${esc(url)}')">✕</button>
+                  </div>`).join('') || '<span class="text-muted" style="font-size:12px">Aucune image ajoutée</span>'}
+              </div>
+              <label class="btn btn-outline btn-sm" style="cursor:pointer">
+                + Ajouter une image au carrousel
+                <input type="file" id="carousel-file" accept="image/*" style="display:none">
+              </label>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-title">🎬 Vidéo de présentation (YouTube)</div>
+            <div class="fg"><label>Lien YouTube</label>
+              <input name="video_presentation_youtube" value="${esc(s.video_presentation_youtube||'')}" placeholder="https://www.youtube.com/watch?v=...">
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-title">✍️ Mot du Fondateur</div>
+            <div class="fg"><label>Texte affiché sur le site public</label>
+              <textarea name="mot_fondateur" rows="5" placeholder="Chers parents, chers élèves...">${esc(s.mot_fondateur||'')}</textarea>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-title">📱 Réseaux sociaux</div>
+            <div class="form-2">
+              <div class="fg"><label>📘 Facebook</label><input name="reseau_facebook" value="${esc(s.reseau_facebook||'')}" placeholder="https://facebook.com/..."></div>
+              <div class="fg"><label>📷 Instagram</label><input name="reseau_instagram" value="${esc(s.reseau_instagram||'')}" placeholder="https://instagram.com/..."></div>
+            </div>
+            <div class="form-2">
+              <div class="fg"><label>▶️ YouTube</label><input name="reseau_youtube" value="${esc(s.reseau_youtube||'')}" placeholder="https://youtube.com/@..."></div>
+              <div class="fg"><label>🎵 TikTok</label><input name="reseau_tiktok" value="${esc(s.reseau_tiktok||'')}" placeholder="https://tiktok.com/@..."></div>
+            </div>
+            <div class="fg"><label>💬 WhatsApp</label><input name="reseau_whatsapp" value="${esc(s.reseau_whatsapp||'')}" placeholder="https://wa.me/224..."></div>
+          </div>
+
           <div class="form-section">
             <div class="form-section-title">Informations générales</div>
             <div class="form-2">
@@ -138,6 +200,30 @@ async function pageSettings() {
       } catch(err) { toast(err.message, 'error'); }
     });
 
+    $('#fond-file').addEventListener('change', async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const fd = new FormData();
+      fd.append('fond', file);
+      try {
+        await apiUpload('/settings/fond', fd);
+        toast('Fond du site mis à jour', 'success');
+        pageSettings();
+      } catch(err) { toast(err.message, 'error'); }
+    });
+
+    $('#carousel-file').addEventListener('change', async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const fd = new FormData();
+      fd.append('image', file);
+      try {
+        await apiUpload('/settings/carousel', fd);
+        toast('Image ajoutée au carrousel', 'success');
+        pageSettings();
+      } catch(err) { toast(err.message, 'error'); }
+    });
+
     $('#f-settings').onsubmit = async e => {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(e.target));
@@ -180,3 +266,13 @@ function applyBranding(s) {
   }
 }
 window.applyBranding = applyBranding;
+
+async function retirerImageCarousel(url) {
+  if (!confirm('Retirer cette image du carrousel ?')) return;
+  try {
+    await apiFetch('/settings/carousel', { method: 'DELETE', body: { url } });
+    toast('Image retirée', 'success');
+    pageSettings();
+  } catch(err) { toast(err.message, 'error'); }
+}
+window.retirerImageCarousel = retirerImageCarousel;

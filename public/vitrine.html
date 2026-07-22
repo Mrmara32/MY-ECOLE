@@ -176,6 +176,55 @@
     .foot-grid{grid-template-columns:1fr}
   }
   @media (prefers-reduced-motion: reduce){ *{transition:none!important;scroll-behavior:auto!important} }
+
+  /* ── Fond personnalisable du site (modifiable depuis Paramètres) ── */
+  .hero.has-fond{position:relative}
+  .hero.has-fond .fond-img{position:absolute;inset:0;background-size:cover;background-position:center;z-index:0}
+  .hero.has-fond .fond-overlay{position:absolute;inset:0;background:linear-gradient(180deg,rgba(14,26,22,.78),rgba(14,26,22,.88));z-index:0}
+  .hero.has-fond .wrap{position:relative;z-index:1}
+
+  /* ── Carrousel d'images (page vivante) ── */
+  .carousel-section{position:relative;overflow:hidden}
+  .carousel-track{display:flex;transition:transform .7s cubic-bezier(.65,0,.35,1)}
+  .carousel-track img{width:100%;flex:0 0 100%;height:420px;object-fit:cover}
+  .carousel-dots{display:flex;justify-content:center;gap:8px;margin-top:16px}
+  .carousel-dots button{width:10px;height:10px;border-radius:50%;border:none;background:var(--line);cursor:pointer;padding:0}
+  .carousel-dots button.active{background:var(--accent);width:26px;border-radius:6px}
+  .carousel-arrow{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;
+    background:rgba(255,255,255,.9);border:none;font-size:18px;cursor:pointer;box-shadow:var(--shadow);z-index:2}
+  .carousel-arrow.prev{left:16px} .carousel-arrow.next{right:16px}
+
+  /* ── Vidéo de présentation ── */
+  .video-wrap{position:relative;padding-bottom:56.25%;height:0;border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow)}
+  .video-wrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+
+  /* ── Mot du Fondateur ── */
+  .fondateur-card{background:var(--primary-dark);color:#fff;border-radius:var(--r-lg);padding:52px;position:relative}
+  .fondateur-card .quote-mark{font-family:'Fredoka',sans-serif;font-size:80px;color:var(--gold);line-height:.5;opacity:.7}
+  .fondateur-card p{font-size:17px;line-height:1.8;color:#E7EDE9;white-space:pre-line}
+  .fondateur-card .signature{margin-top:20px;font-weight:700;color:var(--gold)}
+
+  /* ── Article : rendu enrichi + fenêtre de lecture ── */
+  .news-card{cursor:pointer}
+  .article-body img{max-width:100%;border-radius:14px;margin:18px 0;box-shadow:var(--shadow)}
+  .article-body .video-wrap{margin:18px 0}
+  .article-body p{margin:0 0 14px;color:var(--ink-soft);line-height:1.75}
+  #article-modal{display:none;position:fixed;inset:0;background:rgba(15,26,22,.7);z-index:2000;
+    align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto}
+  #article-modal.show{display:flex}
+  #article-modal .box{background:#fff;border-radius:var(--r-lg);max-width:720px;width:100%;padding:40px;position:relative;margin-bottom:40px}
+  #article-modal .close-btn{position:absolute;top:18px;right:18px;width:38px;height:38px;border-radius:50%;
+    background:var(--bg-tint);border:none;font-size:18px;cursor:pointer}
+
+  /* ── Lien connexion personnel ── */
+  .staff-link{font-size:12.5px;color:rgba(255,255,255,.6);display:inline-flex;align-items:center;gap:5px}
+  .staff-link:hover{color:#fff}
+
+  @media (max-width:600px){
+    .carousel-track img{height:260px}
+    .fondateur-card{padding:30px 22px}
+    #article-modal .box{padding:26px 20px}
+  }
 </style>
 </head>
 <body>
@@ -216,6 +265,8 @@
 </header>
 
 <section class="hero" id="accueil">
+  <div class="fond-img" id="hero-fond-img" style="display:none"></div>
+  <div class="fond-overlay" id="hero-fond-overlay" style="display:none"></div>
   <div class="hero-decor" aria-hidden="true">
     <svg viewBox="0 0 1200 600" preserveAspectRatio="none"><path d="M-50,420 C 250,300 450,520 750,380 S 1250,260 1300,340" stroke="rgba(255,255,255,.18)" stroke-width="2" fill="none"/></svg>
   </div>
@@ -243,6 +294,13 @@
       </div>
     </div>
   </div>
+</section>
+
+<section class="carousel-section" id="carousel-section" style="display:none">
+  <div class="carousel-track" id="carousel-track"></div>
+  <button class="carousel-arrow prev" onclick="carouselAller(-1)">‹</button>
+  <button class="carousel-arrow next" onclick="carouselAller(1)">›</button>
+  <div class="wrap"><div class="carousel-dots" id="carousel-dots"></div></div>
 </section>
 
 <section class="section" id="preinscription-audience">
@@ -287,6 +345,28 @@
         </div>
       </div>
     </div>
+  </div>
+</section>
+
+<section class="section" id="fondateur" style="display:none">
+  <div class="wrap">
+    <div class="grid" style="grid-template-columns:1fr;max-width:820px;margin:0 auto">
+      <div class="fondateur-card">
+        <div class="quote-mark">"</div>
+        <p id="fondateur-texte"></p>
+        <div class="signature">— Le Fondateur</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="video-section" style="background:var(--bg-soft);display:none">
+  <div class="wrap">
+    <div class="center" style="max-width:560px;margin:0 auto 40px">
+      <div class="eyebrow">En images</div>
+      <h2>Découvrez notre école en vidéo</h2>
+    </div>
+    <div class="video-wrap" id="video-wrap"></div>
   </div>
 </section>
 
@@ -381,10 +461,27 @@
     </div>
     <div class="foot-bottom">
       <div>© <span id="year"></span> Groupe Scolaire Elhadji Mountaga Djély — Tous droits réservés.</div>
-      <div class="social-row" id="foot-social"></div>
+      <div style="display:flex;align-items:center;gap:16px">
+        <div class="social-row" id="foot-social"></div>
+        <a href="/" class="staff-link">🔒 Espace personnel</a>
+      </div>
     </div>
   </div>
 </footer>
+
+<!-- Fenêtre de lecture d'un article -->
+<div id="article-modal" onclick="if(event.target===this) fermerArticle()">
+  <div class="box">
+    <button class="close-btn" onclick="fermerArticle()">✕</button>
+    <div class="eyebrow" id="article-modal-date"></div>
+    <h2 id="article-modal-titre" style="margin:8px 0 18px"></h2>
+    <div class="article-body" id="article-modal-corps"></div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fermerArticle(); });
+</script>
 
 <script>
 document.getElementById('year').textContent = new Date().getFullYear();
@@ -425,33 +522,141 @@ async function chargerInfosEcole() {
         footSocial.innerHTML += `<a href="${s[key]}" target="_blank" rel="noopener">${icon}</a>`;
       }
     });
+
+    // Fond personnalisable du hero (modifiable à tout moment depuis Paramètres)
+    if (s.ecole_fond_url) {
+      document.querySelector('.hero').classList.add('has-fond');
+      const fondImg = document.getElementById('hero-fond-img');
+      fondImg.style.backgroundImage = `url('${s.ecole_fond_url}')`;
+      fondImg.style.display = 'block';
+      document.getElementById('hero-fond-overlay').style.display = 'block';
+    }
+
+    // Carrousel d'images (page vivante)
+    let carouselImages = [];
+    try { carouselImages = JSON.parse(s.carousel_images || '[]'); } catch(_) {}
+    if (carouselImages.length) initCarousel(carouselImages);
+
+    // Mot du Fondateur
+    if (s.mot_fondateur && s.mot_fondateur.trim()) {
+      document.getElementById('fondateur-texte').textContent = s.mot_fondateur;
+      document.getElementById('fondateur').style.display = '';
+    }
+
+    // Vidéo de présentation
+    if (s.video_presentation_youtube) {
+      const id = extraireIdYoutube(s.video_presentation_youtube);
+      if (id) {
+        document.getElementById('video-wrap').innerHTML = `<iframe src="https://www.youtube.com/embed/${id}" allowfullscreen></iframe>`;
+        document.getElementById('video-section').style.display = '';
+      }
+    }
   } catch(e) { console.warn('Infos école indisponibles', e); }
 }
 
+function extraireIdYoutube(url) {
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+/* ── Carrousel d'images ── */
+let _carouselIndex = 0, _carouselTimer = null;
+function initCarousel(images) {
+  const track = document.getElementById('carousel-track');
+  const dots = document.getElementById('carousel-dots');
+  track.innerHTML = images.map(url => `<img src="${url}" alt="Photo de l'école">`).join('');
+  dots.innerHTML = images.map((_, i) => `<button onclick="carouselAllerA(${i})"></button>`).join('');
+  document.getElementById('carousel-section').style.display = 'block';
+  carouselMettreAJour();
+  _carouselTimer = setInterval(() => carouselAller(1), 5000);
+}
+function carouselMettreAJour() {
+  const track = document.getElementById('carousel-track');
+  const nb = track.children.length;
+  if (!nb) return;
+  track.style.transform = `translateX(-${_carouselIndex * 100}%)`;
+  document.querySelectorAll('#carousel-dots button').forEach((d, i) => d.classList.toggle('active', i === _carouselIndex));
+}
+function carouselAller(delta) {
+  const nb = document.getElementById('carousel-track').children.length;
+  if (!nb) return;
+  _carouselIndex = (_carouselIndex + delta + nb) % nb;
+  carouselMettreAJour();
+  clearInterval(_carouselTimer);
+  _carouselTimer = setInterval(() => carouselAller(1), 5000);
+}
+function carouselAllerA(i) { _carouselIndex = i; carouselMettreAJour(); }
+window.carouselAller = carouselAller;
+window.carouselAllerA = carouselAllerA;
+
+let _articlesCache = [];
 async function chargerActualites() {
   const container = document.getElementById('news-container');
   try {
     const res = await fetch('/api/articles');
     if (!res.ok) throw new Error('erreur');
     const articles = await res.json();
+    _articlesCache = articles;
     if (!articles.length) {
       container.innerHTML = '<div class="news-empty">Aucune actualité publiée pour le moment.</div>';
       return;
     }
-    container.innerHTML = articles.slice(0, 6).map(a => `
-      <div class="news-card">
-        <div class="thumb">📰</div>
+    container.innerHTML = articles.slice(0, 6).map(a => {
+      const premiereImage = extraireVignette(a.contenu);
+      const extrait = extraireExtrait(a.contenu, 100);
+      return `
+      <div class="news-card" onclick="ouvrirArticle('${a.id}')">
+        ${premiereImage ? `<img src="${premiereImage}" style="width:100%;height:150px;object-fit:cover;border-radius:12px 12px 0 0">` : `<div class="thumb">${a.type==='evenement'?'📅':'📰'}</div>`}
         <div class="body">
           <div class="date">${new Date(a.date_publication || a.created_at).toLocaleDateString('fr-FR', {day:'numeric',month:'long',year:'numeric'})}</div>
           <h4>${escHtml(a.titre)}</h4>
-          <p>${escHtml((a.contenu||'').substring(0,90))}${(a.contenu||'').length>90?'…':''}</p>
+          <p>${escHtml(extrait)}</p>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   } catch(e) {
     container.innerHTML = '<div class="news-empty">Actualités à venir.</div>';
   }
 }
 function escHtml(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+
+/* Le contenu d'un article peut contenir des repères [image:URL] et [video:ID_YOUTUBE]
+   (insérés depuis l'espace de gestion) au milieu du texte libre. */
+function extraireVignette(contenu) {
+  const m = (contenu||'').match(/\[image:([^\]]+)\]/);
+  return m ? m[1] : null;
+}
+function extraireExtrait(contenu, longueur) {
+  const texte = (contenu||'').replace(/\[image:[^\]]+\]/g, '').replace(/\[video:[^\]]+\]/g, '').replace(/\n+/g, ' ').trim();
+  return texte.length > longueur ? texte.substring(0, longueur) + '…' : texte;
+}
+function rendreContenuArticle(contenu) {
+  return (contenu || '').split('\n').map(ligne => {
+    const imgMatch = ligne.match(/^\[image:([^\]]+)\]$/);
+    const vidMatch = ligne.match(/^\[video:([a-zA-Z0-9_-]{11})\]$/);
+    if (imgMatch) return `<img src="${escAttr(imgMatch[1])}" alt="">`;
+    if (vidMatch) return `<div class="video-wrap"><iframe src="https://www.youtube.com/embed/${vidMatch[1]}" allowfullscreen></iframe></div>`;
+    if (!ligne.trim()) return '';
+    return `<p>${escHtml(ligne)}</p>`;
+  }).join('');
+}
+function escAttr(s){ return (s||'').replace(/"/g,'&quot;'); }
+
+function ouvrirArticle(id) {
+  const a = _articlesCache.find(x => x.id === id);
+  if (!a) return;
+  document.getElementById('article-modal-date').textContent = new Date(a.date_publication || a.created_at).toLocaleDateString('fr-FR', {day:'numeric',month:'long',year:'numeric'});
+  document.getElementById('article-modal-titre').textContent = a.titre;
+  document.getElementById('article-modal-corps').innerHTML = rendreContenuArticle(a.contenu);
+  document.getElementById('article-modal').classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+function fermerArticle() {
+  document.getElementById('article-modal').classList.remove('show');
+  document.body.style.overflow = '';
+}
+window.ouvrirArticle = ouvrirArticle;
+window.fermerArticle = fermerArticle;
 
 chargerInfosEcole();
 chargerActualites();

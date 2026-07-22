@@ -78,7 +78,16 @@ async function modalArticle(id = null) {
         </select></div>
       </div>
       <div class="fg"><label>Titre*</label><input name="titre" value="${esc(data.titre||'')}" required></div>
-      <div class="fg"><label>Contenu</label><textarea name="contenu" rows="5">${esc(data.contenu||'')}</textarea></div>
+      <div class="fg">
+        <label>Contenu</label>
+        <div class="flex gap-2 mb-2">
+          <button type="button" class="btn btn-outline btn-xs" onclick="insererImageDansTexte()">🖼️ Insérer une image ici</button>
+          <button type="button" class="btn btn-outline btn-xs" onclick="insererVideoYoutube()">▶️ Insérer une vidéo YouTube ici</button>
+          <input type="file" id="inline-image-file" accept="image/*" style="display:none">
+        </div>
+        <textarea name="contenu" id="article-contenu" rows="8" placeholder="Rédigez votre article ici. Placez le curseur où vous voulez, puis cliquez sur les boutons ci-dessus pour y insérer une image ou une vidéo.">${esc(data.contenu||'')}</textarea>
+        <div class="text-muted mt-1" style="font-size:11px">Astuce : cliquez dans le texte à l'endroit voulu avant d'insérer une image ou une vidéo.</div>
+      </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline" onclick="closeModal()">Annuler</button>
         <button type="submit" class="btn btn-primary">${id?'Enregistrer':'Publier'}</button>
@@ -162,3 +171,40 @@ window.modalArticle = modalArticle;
 window.delArticle = delArticle;
 window.delMedia = delMedia;
 window.modalReseauxSociaux = modalReseauxSociaux;
+
+/* Insertion d'une image ou d'une vidéo YouTube au milieu du texte d'un article
+   (point du cahier des charges : contenu enrichi, pas seulement une galerie jointe). */
+function insererALaPosition(texteAInserer) {
+  const ta = $('#article-contenu');
+  const debut = ta.selectionStart, fin = ta.selectionEnd;
+  ta.value = ta.value.slice(0, debut) + texteAInserer + ta.value.slice(fin);
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = debut + texteAInserer.length;
+}
+
+function insererImageDansTexte() {
+  $('#inline-image-file').onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('image', file);
+    try {
+      const r = await apiUpload('/articles/upload-image-contenu', fd);
+      insererALaPosition(`\n[image:${r.url}]\n`);
+      toast('Image insérée', 'success');
+    } catch(err) { toast(err.message, 'error'); }
+    e.target.value = '';
+  };
+  $('#inline-image-file').click();
+}
+window.insererImageDansTexte = insererImageDansTexte;
+
+function insererVideoYoutube() {
+  const url = prompt('Collez le lien de la vidéo YouTube (ex : https://www.youtube.com/watch?v=XXXXXXXXXXX) :');
+  if (!url) return;
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+  if (!match) { toast('Lien YouTube non reconnu', 'error'); return; }
+  insererALaPosition(`\n[video:${match[1]}]\n`);
+  toast('Vidéo insérée', 'success');
+}
+window.insererVideoYoutube = insererVideoYoutube;
