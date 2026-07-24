@@ -41,7 +41,8 @@ def update_settings():
     body = request.get_json(silent=True) or {}
     allowed = ['ecole_nom', 'ecole_adresse', 'ecole_telephone', 'ecole_email', 'annee_scolaire',
                'reseau_facebook', 'reseau_instagram', 'reseau_youtube', 'reseau_tiktok', 'reseau_whatsapp',
-               'creneaux_horaires', 'mot_fondateur', 'video_presentation_youtube']
+               'creneaux_horaires', 'mot_fondateur', 'video_presentation_youtube', 'services_vie_scolaire',
+               'etablissement_titre', 'etablissement_texte', 'cycles_detail', 'carte_latitude', 'carte_longitude']
     for k in allowed:
         if k in body:
             db.execute("INSERT OR REPLACE INTO settings (cle, valeur) VALUES (?,?)", (k, body[k]))
@@ -138,6 +139,16 @@ def upload_fond():
     db.execute("INSERT OR REPLACE INTO settings (cle, valeur) VALUES (?,?)", ('ecole_fond_url', url))
     db.commit()
     return jsonify({'fond_url': url})
+
+
+@bp.route('/fond', methods=['DELETE'])
+@require_auth
+@require_role('admin', 'directeur', 'secretaire', 'charge_communication')
+def retirer_fond():
+    """Retire le fond personnalisé, pour revenir à l'apparence par défaut du site."""
+    db.execute("DELETE FROM settings WHERE cle='ecole_fond_url'")
+    db.commit()
+    return jsonify({'ok': True})
 
 
 @bp.route('/carousel', methods=['POST'])
