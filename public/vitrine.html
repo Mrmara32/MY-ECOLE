@@ -260,6 +260,18 @@
   .contact-map{border-radius:var(--r-lg);overflow:hidden;min-height:280px;position:relative;padding:0}
   .contact-map iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
   .contact-map .pin{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+  /* ── Décors discrets pour une lecture plus vivante en descendant la page ── */
+  .section{position:relative;overflow:hidden}
+  .section-blob{position:absolute;border-radius:50%;filter:blur(2px);pointer-events:none;opacity:.5;z-index:0}
+  .section > .wrap, .section > .grid{position:relative;z-index:1}
+  #etablissement .section-blob{width:340px;height:340px;background:radial-gradient(circle,var(--pale-yellow) 0%,transparent 70%);top:-120px;right:-100px}
+  #cycles .section-blob{width:300px;height:300px;background:radial-gradient(circle,var(--sky-pale) 0%,transparent 70%);bottom:-140px;left:-90px}
+  #services .section-blob{width:280px;height:280px;background:radial-gradient(circle,var(--pale-yellow) 0%,transparent 70%);top:-100px;left:-80px}
+  #contact .section-blob{width:320px;height:320px;background:radial-gradient(circle,var(--sky-pale) 0%,transparent 70%);bottom:-120px;right:-100px}
+
+  .reveal{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .7s ease}
+  .reveal.in{opacity:1;transform:translateY(0)}
+  @media (prefers-reduced-motion: reduce){ .reveal{opacity:1;transform:none;transition:none} }
 </style>
 </head>
 <body>
@@ -358,6 +370,7 @@
 </section>
 
 <section class="section" id="etablissement" style="background:var(--bg-soft)">
+  <div class="section-blob"></div>
   <div class="wrap">
     <div class="grid about-grid">
       <div class="about-visual">
@@ -407,6 +420,7 @@ Notre équipe pédagogique conjugue exigence académique et attention portée à
 </section>
 
 <section class="section parcours" id="cycles">
+  <div class="section-blob"></div>
   <div class="wrap">
     <div class="center parcours-head">
       <div class="eyebrow">Le parcours de l'élève</div>
@@ -425,6 +439,7 @@ Notre équipe pédagogique conjugue exigence académique et attention portée à
 </section>
 
 <section class="section" id="services">
+  <div class="section-blob"></div>
   <div class="wrap">
     <div class="center" style="max-width:560px;margin:0 auto 46px">
       <div class="eyebrow">Vie scolaire</div>
@@ -452,6 +467,7 @@ Notre équipe pédagogique conjugue exigence académique et attention portée à
 </section>
 
 <section class="section" id="contact">
+  <div class="section-blob"></div>
   <div class="wrap">
     <div class="grid contact-wrap">
       <div class="contact-info">
@@ -796,8 +812,27 @@ function fermerArticle() {
 window.ouvrirArticle = ouvrirArticle;
 window.fermerArticle = fermerArticle;
 
-chargerInfosEcole();
-chargerActualites();
+/* Si l'utilisateur a cliqué un lien de menu très vite après l'arrivée sur la page,
+   le contenu chargé après coup (carrousel, actualités, vidéo…) peut décaler la section
+   visée. Une fois tout ce contenu en place, on corrige la position si besoin. */
+Promise.allSettled([chargerInfosEcole(), chargerActualites()]).then(() => {
+  if (location.hash) {
+    const cible = document.querySelector(location.hash);
+    if (cible) setTimeout(() => cible.scrollIntoView({ behavior: 'auto', block: 'start' }), 50);
+  }
+
+  /* Légère apparition au défilement (titres de section + cartes), pour une lecture
+     plus vivante. Mis en place APRÈS le contenu dynamique (services personnalisés,
+     actualités…) pour ne manquer aucune carte, y compris celles ajoutées ensuite. */
+  document.querySelectorAll(
+    '.section .center, .about-grid, .path-step, .svc, .aud-card, .fondateur-card, .news-card'
+  ).forEach(el => el.classList.add('reveal'));
+
+  const _observateurApparition = new IntersectionObserver((entrees) => {
+    entrees.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); _observateurApparition.unobserve(e.target); } });
+  }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+  document.querySelectorAll('.reveal').forEach(el => _observateurApparition.observe(el));
+});
 </script>
 </body>
 </html>
