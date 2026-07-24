@@ -5,6 +5,16 @@ async function pageSettings() {
     const s = await apiGetSettings();
     let carouselImages = [];
     try { carouselImages = JSON.parse(s.carousel_images || '[]'); } catch(_) { carouselImages = []; }
+    let servicesVieScolaire = [];
+    try { servicesVieScolaire = JSON.parse(s.services_vie_scolaire || '[]'); } catch(_) { servicesVieScolaire = []; }
+    const CYCLES_DEFAUT = {
+      maternelle: { titre:'Maternelle', icone:'🧸', accroche:'Éveil, langage et premiers repères, dans un cadre rassurant.', presentation:'', objectif:'', pedagogie:'', activites:'', equipements:'' },
+      primaire:   { titre:'Primaire',   icone:'📘', accroche:'Lecture, écriture, calcul : les fondamentaux, bien ancrés.', presentation:'', objectif:'', pedagogie:'', activites:'', equipements:'' },
+      college:    { titre:'Collège',    icone:'🔬', accroche:"Ouverture disciplinaire et méthode de travail affirmée.", presentation:'', objectif:'', pedagogie:'', activites:'', equipements:'' },
+      lycee:      { titre:'Lycée',      icone:'🎓', accroche:"Préparation exigeante au baccalauréat et à l'après-bac.", presentation:'', objectif:'', pedagogie:'', activites:'', equipements:'' },
+    };
+    let cyclesDetail = CYCLES_DEFAUT;
+    try { cyclesDetail = { ...CYCLES_DEFAUT, ...JSON.parse(s.cycles_detail || '{}') }; } catch(_) {}
     $('#content').innerHTML = `
     <div class="card">
       <div class="card-header"><span class="card-title">🏫 Paramètres de l'établissement</span></div>
@@ -65,7 +75,9 @@ async function pageSettings() {
                   🖼️ Changer le fond
                   <input type="file" id="fond-file" accept="image/*" style="display:none">
                 </label>
+                ${s.ecole_fond_url ? `<button type="button" class="btn btn-outline btn-sm" onclick="retirerFond()">↺ Revenir au fond par défaut</button>` : ''}
               </div>
+              <div class="text-muted mt-1" style="font-size:11.5px">Sans image ici, le site affiche son apparence par défaut (fond blanc, touches bleu ciel et jaune pâle).</div>
             </div>
 
             <div class="fg">
@@ -109,6 +121,55 @@ async function pageSettings() {
               <div class="fg"><label>🎵 TikTok</label><input name="reseau_tiktok" value="${esc(s.reseau_tiktok||'')}" placeholder="https://tiktok.com/@..."></div>
             </div>
             <div class="fg"><label>💬 WhatsApp</label><input name="reseau_whatsapp" value="${esc(s.reseau_whatsapp||'')}" placeholder="https://wa.me/224..."></div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-title">🎓 Vie scolaire — « Au-delà des salles de classe »</div>
+            <div class="text-muted mb-3" style="font-size:12px">Ces cartes s'affichent sur le site public. Sans modification ici, les 4 exemples par défaut (Cantine, Cours de révision, Activités parascolaires, Transport) restent affichés.</div>
+            <div id="services-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+              ${(servicesVieScolaire||[]).map((sv, i) => `
+                <div class="flex items-center gap-3" style="border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px">
+                  <div style="font-size:22px">${esc(sv.icone||'⭐')}</div>
+                  <div style="flex:1">
+                    <div style="font-weight:600;font-size:13.5px">${esc(sv.titre||'')}</div>
+                    <div class="text-muted" style="font-size:12px">${esc(sv.description||'')}</div>
+                  </div>
+                  <button type="button" class="btn btn-outline btn-xs" onclick="modalServiceVieScolaire(${i})">✏️</button>
+                  <button type="button" class="btn btn-danger btn-xs" onclick="supprimerServiceVieScolaire(${i})">🗑</button>
+                </div>`).join('') || '<span class="text-muted" style="font-size:12px">Aucun service personnalisé — les 4 exemples par défaut sont affichés.</span>'}
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" onclick="modalServiceVieScolaire()">+ Ajouter un service</button>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-title">🏫 Section « Notre établissement »</div>
+            <div class="fg"><label>Titre affiché</label><input name="etablissement_titre" value="${esc(s.etablissement_titre||'Un repère éducatif à Sonfonia')}"></div>
+            <div class="fg"><label>Texte de présentation</label><textarea name="etablissement_texte" rows="4" placeholder="Implanté à Yattaya...">${esc(s.etablissement_texte||'')}</textarea></div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-title">🎓 Nos cycles — contenu détaillé (affiché au clic sur chaque cycle)</div>
+            <div class="text-muted mb-3" style="font-size:12px">Pour chaque cycle : une accroche courte (carte) et un détail complet (Objectif, Pédagogie, Activités, Équipements) affiché dans une fenêtre au clic. Vous pouvez en ajouter ou en retirer librement.</div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+              ${Object.entries(cyclesDetail).filter(([_, c]) => !c._supprime).map(([cle, c]) => `
+                <div class="flex items-center gap-3" style="border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px">
+                  <div style="font-size:22px">${esc(c.icone||'🎓')}</div>
+                  <div style="flex:1"><div style="font-weight:600;font-size:13.5px">${esc(c.titre||cle)}</div>
+                    <div class="text-muted" style="font-size:12px">${esc(c.accroche||'')}</div></div>
+                  <button type="button" class="btn btn-outline btn-xs" onclick="modalCycleDetail('${esc(cle)}')">✏️ Modifier</button>
+                  <button type="button" class="btn btn-danger btn-xs" onclick="supprimerCycle('${esc(cle)}')">🗑</button>
+                </div>`).join('')}
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" onclick="modalCycleDetail()">+ Ajouter un cycle</button>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-title">📍 Localisation (carte « Venez nous rencontrer »)</div>
+            <div class="text-muted mb-3" style="font-size:12px">Astuce : ouvrez Google Maps, faites un clic droit sur l'emplacement exact de l'école, cliquez sur les coordonnées affichées pour les copier.</div>
+            <div class="form-2">
+              <div class="fg"><label>Latitude</label><input name="carte_latitude" value="${esc(s.carte_latitude||'')}" placeholder="9.6412"></div>
+              <div class="fg"><label>Longitude</label><input name="carte_longitude" value="${esc(s.carte_longitude||'')}" placeholder="-13.6250"></div>
+            </div>
           </div>
 
           <div class="form-section">
@@ -266,6 +327,134 @@ function applyBranding(s) {
   }
 }
 window.applyBranding = applyBranding;
+
+async function _getServicesVieScolaire() {
+  const s = await apiGetSettings();
+  try { return JSON.parse(s.services_vie_scolaire || '[]'); } catch(_) { return []; }
+}
+async function _saveServicesVieScolaire(liste) {
+  await apiSaveSettings({ services_vie_scolaire: JSON.stringify(liste) });
+}
+
+async function modalServiceVieScolaire(index) {
+  const liste = await _getServicesVieScolaire();
+  const existant = (index !== undefined) ? liste[index] : { icone: '', titre: '', description: '' };
+  openModal(index !== undefined ? 'Modifier ce service' : 'Ajouter un service', `
+    <form id="f-service-vs" style="display:flex;flex-direction:column;gap:14px">
+      <div class="fg"><label>Icône (un émoji, ex : 🍽️ ⚽ 🚌 🎨)</label><input name="icone" value="${esc(existant.icone||'')}" placeholder="⭐" required></div>
+      <div class="fg"><label>Titre*</label><input name="titre" value="${esc(existant.titre||'')}" required></div>
+      <div class="fg"><label>Description*</label><textarea name="description" rows="3" required>${esc(existant.description||'')}</textarea></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal()">Annuler</button>
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+      </div>
+    </form>`, { narrow: true });
+
+  $('#f-service-vs').onsubmit = async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target));
+    const listeMaj = await _getServicesVieScolaire();
+    if (index !== undefined) listeMaj[index] = fd; else listeMaj.push(fd);
+    try {
+      await _saveServicesVieScolaire(listeMaj);
+      toast('Service enregistré', 'success');
+      closeModal();
+      pageSettings();
+    } catch(err) { toast(err.message, 'error'); }
+  };
+}
+window.modalServiceVieScolaire = modalServiceVieScolaire;
+
+async function supprimerServiceVieScolaire(index) {
+  if (!confirm('Supprimer ce service ?')) return;
+  try {
+    const liste = await _getServicesVieScolaire();
+    liste.splice(index, 1);
+    await _saveServicesVieScolaire(liste);
+    toast('Service supprimé', 'success');
+    pageSettings();
+  } catch(err) { toast(err.message, 'error'); }
+}
+window.supprimerServiceVieScolaire = supprimerServiceVieScolaire;
+
+async function modalCycleDetail(cle) {
+  const s = await apiGetSettings();
+  let cycles = {};
+  try { cycles = JSON.parse(s.cycles_detail || '{}'); } catch(_) { cycles = {}; }
+  const defauts = {
+    maternelle:{titre:'Maternelle',icone:'🧸',accroche:'Éveil, langage et premiers repères, dans un cadre rassurant.'},
+    primaire:{titre:'Primaire',icone:'📘',accroche:'Lecture, écriture, calcul : les fondamentaux, bien ancrés.'},
+    college:{titre:'Collège',icone:'🔬',accroche:"Ouverture disciplinaire et méthode de travail affirmée."},
+    lycee:{titre:'Lycée',icone:'🎓',accroche:"Préparation exigeante au baccalauréat et à l'après-bac."},
+  };
+  const estNouveau = cle === undefined;
+  const c = estNouveau ? { titre:'', icone:'🎓', accroche:'' } : { ...(defauts[cle]||{titre:cle,icone:'🎓',accroche:''}), ...(cycles[cle]||{}) };
+
+  openModal(estNouveau ? 'Ajouter un cycle' : `Modifier — ${c.titre}`, `
+    <form id="f-cycle-detail" style="display:flex;flex-direction:column;gap:14px">
+      <div class="form-2">
+        <div class="fg"><label>Icône</label><input name="icone" value="${esc(c.icone||'')}"></div>
+        <div class="fg"><label>Titre*</label><input name="titre" value="${esc(c.titre||'')}" required></div>
+      </div>
+      <div class="fg"><label>Accroche courte (affichée sur la carte)*</label><input name="accroche" value="${esc(c.accroche||'')}" required></div>
+      <div class="fg"><label>Présentation</label><textarea name="presentation" rows="3" placeholder="Paragraphe d'introduction affiché en haut de la fenêtre de détail">${esc(c.presentation||'')}</textarea></div>
+      <div class="fg"><label>🎯 Objectif</label><textarea name="objectif" rows="3">${esc(c.objectif||'')}</textarea></div>
+      <div class="fg"><label>📚 Pédagogie</label><textarea name="pedagogie" rows="3">${esc(c.pedagogie||'')}</textarea></div>
+      <div class="fg"><label>🎨 Activités</label><textarea name="activites" rows="3">${esc(c.activites||'')}</textarea></div>
+      <div class="fg"><label>🏫 Équipements</label><textarea name="equipements" rows="3">${esc(c.equipements||'')}</textarea></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal()">Annuler</button>
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+      </div>
+    </form>`);
+
+  $('#f-cycle-detail').onsubmit = async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target));
+    let cleFinale = cle;
+    if (estNouveau) {
+      let base = fd.titre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'cycle';
+      cleFinale = base;
+      let i = 2;
+      while (cycles[cleFinale]) { cleFinale = `${base}-${i}`; i++; }
+    }
+    cycles[cleFinale] = fd;
+    try {
+      await apiSaveSettings({ cycles_detail: JSON.stringify(cycles) });
+      toast(estNouveau ? 'Cycle ajouté' : 'Cycle mis à jour', 'success');
+      closeModal();
+      pageSettings();
+    } catch(err) { toast(err.message, 'error'); }
+  };
+}
+window.modalCycleDetail = modalCycleDetail;
+
+async function supprimerCycle(cle) {
+  if (!confirm('Supprimer ce cycle ? Il ne sera plus affiché sur le site.')) return;
+  try {
+    const s = await apiGetSettings();
+    let cycles = {};
+    try { cycles = JSON.parse(s.cycles_detail || '{}'); } catch(_) { cycles = {}; }
+    // On mémorise explicitement une suppression, y compris pour un cycle par défaut
+    // (maternelle/primaire/collège/lycée), qui sinon réapparaîtrait automatiquement.
+    cycles[cle] = { ...(cycles[cle]||{}), _supprime: true };
+    await apiSaveSettings({ cycles_detail: JSON.stringify(cycles) });
+    toast('Cycle supprimé', 'success');
+    pageSettings();
+  } catch(err) { toast(err.message, 'error'); }
+}
+window.supprimerCycle = supprimerCycle;
+
+async function retirerFond() {
+  if (!confirm("Revenir à l'apparence par défaut du site (fond blanc, bleu ciel, jaune pâle) ?")) return;
+  try {
+    await apiFetch('/settings/fond', { method: 'DELETE' });
+    toast('Fond par défaut restauré', 'success');
+    pageSettings();
+  } catch(err) { toast(err.message, 'error'); }
+}
+window.retirerFond = retirerFond;
 
 async function retirerImageCarousel(url) {
   if (!confirm('Retirer cette image du carrousel ?')) return;
