@@ -13,6 +13,8 @@
     --primary:#164B41; --primary-light:#1F6E5E; --primary-dark:#0E332C;
     --accent:#F0703F; --accent-dark:#D8582A;
     --gold:#F2B134;
+    --sky:#5296C5; --sky-dark:#2E6E93; --sky-pale:#E7F2F9;
+    --pale-yellow:#FAF39F; --pale-yellow-dark:#E8D65C;
     --bg:#FFFFFF; --bg-soft:#F4F7F5; --bg-tint:#EAF1EE;
     --line:#E1E8E4;
     --r-sm:10px; --r-md:16px; --r-lg:28px;
@@ -31,8 +33,8 @@
   .btn:hover{transform:translateY(-2px)}
   .btn-accent{background:var(--accent);color:#fff;box-shadow:0 12px 24px -10px rgba(240,112,63,.55)}
   .btn-accent:hover{background:var(--accent-dark)}
-  .btn-outline-light{background:transparent;color:#fff;border-color:rgba(255,255,255,.55)}
-  .btn-outline-light:hover{background:rgba(255,255,255,.12)}
+  .btn-outline-light{background:transparent;color:var(--primary-dark);border-color:var(--line)}
+  .btn-outline-light:hover{background:var(--bg-tint)}
   .btn-primary-ghost{background:var(--bg-tint);color:var(--primary-dark);border-color:transparent}
   .btn-primary-ghost:hover{background:#dfeae4}
   .section{padding:88px 0}
@@ -64,18 +66,21 @@
   .burger{display:none;background:none;border:none;font-size:26px;cursor:pointer;color:var(--primary-dark)}
 
   /* ── Hero ── */
-  .hero{position:relative;background:radial-gradient(1200px 600px at 80% -10%, #1c6a58 0%, var(--primary) 55%, var(--primary-dark) 100%);
-    color:#fff;overflow:hidden}
+  .hero{position:relative;background:
+      radial-gradient(900px 500px at 88% -8%, var(--sky-pale) 0%, transparent 60%),
+      radial-gradient(700px 420px at 8% 105%, var(--pale-yellow) 0%, transparent 65%),
+      #FFFFFF;
+    overflow:hidden}
   .hero .wrap{padding:96px 24px 70px;position:relative;z-index:2}
   .hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:50px;align-items:center}
-  .hero h1{color:#fff;font-size:44px;margin:14px 0 18px}
-  .hero h1 em{font-style:normal;color:var(--gold)}
-  .hero p.lead{color:#dceee7;font-size:16.5px;max-width:480px;margin:0 0 30px}
+  .hero h1{color:var(--primary-dark);font-size:44px;margin:14px 0 18px}
+  .hero h1 em{font-style:normal;color:var(--sky-dark)}
+  .hero p.lead{color:var(--ink-soft);font-size:16.5px;max-width:480px;margin:0 0 30px}
   .hero .ctas{display:flex;gap:14px;flex-wrap:wrap}
   .hero .stats{display:flex;gap:34px;margin-top:46px;flex-wrap:wrap}
-  .hero .stat b{display:block;font-family:'Fredoka',sans-serif;font-size:26px;color:var(--gold)}
-  .hero .stat span{font-size:12.5px;color:#c7e3da}
-  .hero-decor{position:absolute;inset:0;pointer-events:none;opacity:.5}
+  .hero .stat b{display:block;font-family:'Fredoka',sans-serif;font-size:26px;color:var(--sky-dark)}
+  .hero .stat span{font-size:12.5px;color:var(--ink-soft)}
+  .hero-decor{position:absolute;inset:0;pointer-events:none;opacity:.6}
   .hero-decor svg{width:100%;height:100%}
 
   /* hero visual: stacked cycle chips */
@@ -102,7 +107,7 @@
   .about-visual .ring{width:100%;aspect-ratio:1/1;border-radius:50%;border:14px solid #fff;background:linear-gradient(145deg,var(--primary-light),var(--primary));
     display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Fredoka',sans-serif;text-align:center;padding:30px}
   .about h2{font-size:32px;margin:8px 0 16px}
-  .about p{color:var(--ink-soft);font-size:15px;margin:0 0 14px}
+  .about p{color:var(--ink-soft);font-size:15px;margin:0 0 14px;white-space:pre-line}
   .about-figs{display:flex;gap:28px;margin-top:22px;flex-wrap:wrap}
   .about-figs div b{display:block;font-family:'Fredoka',sans-serif;font-size:24px;color:var(--accent-dark)}
   .about-figs div span{font-size:12px;color:var(--ink-soft)}
@@ -182,6 +187,14 @@
   .hero.has-fond .fond-img{position:absolute;inset:0;background-size:cover;background-position:center;z-index:0}
   .hero.has-fond .fond-overlay{position:absolute;inset:0;background:linear-gradient(180deg,rgba(14,26,22,.78),rgba(14,26,22,.88));z-index:0}
   .hero.has-fond .wrap{position:relative;z-index:1}
+  .hero.has-fond h1{color:#fff}
+  .hero.has-fond h1 em{color:var(--gold)}
+  .hero.has-fond p.lead{color:#dceee7}
+  .hero.has-fond .stat b{color:var(--gold)}
+  .hero.has-fond .stat span{color:#c7e3da}
+  .hero.has-fond .eyebrow{color:var(--gold)!important}
+  .hero.has-fond .btn-outline-light{color:#fff;border-color:rgba(255,255,255,.55)}
+  .hero.has-fond .btn-outline-light:hover{background:rgba(255,255,255,.12)}
 
   /* ── Carrousel d'images (page vivante) ── */
   .carousel-section{position:relative;overflow:hidden}
@@ -225,6 +238,27 @@
     .fondateur-card{padding:30px 22px}
     #article-modal .box{padding:26px 20px}
   }
+  /* ── Fenêtre de détail d'un cycle (Objectif / Pédagogie / Activités / Équipements) ── */
+  .path-step{cursor:pointer}
+  #cycle-modal{display:none;position:fixed;inset:0;background:rgba(15,26,22,.7);z-index:2000;
+    align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto}
+  #cycle-modal.show{display:flex}
+  #cycle-modal .box{background:#fff;border-radius:var(--r-lg);max-width:760px;width:100%;padding:40px;position:relative;margin-bottom:40px}
+  #cycle-modal .close-btn{position:absolute;top:18px;right:18px;width:38px;height:38px;border-radius:50%;
+    background:var(--bg-tint);border:none;font-size:18px;cursor:pointer}
+  .cycle-nav{display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+  .cycle-nav button{border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:7px 16px;
+    font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;color:var(--ink-soft)}
+  .cycle-nav button.active{background:var(--primary);border-color:var(--primary);color:#fff}
+  .cycle-detail-blocks{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:24px}
+  .cycle-detail-block h5{display:flex;align-items:center;gap:8px;font-size:14.5px;color:var(--primary-dark);margin-bottom:6px}
+  .cycle-detail-block p{font-size:13.5px;color:var(--ink-soft);line-height:1.7;margin:0}
+  @media(max-width:600px){ .cycle-detail-blocks{grid-template-columns:1fr} #cycle-modal .box{padding:26px 20px} }
+
+  /* ── Carte de localisation ── */
+  .contact-map{border-radius:var(--r-lg);overflow:hidden;min-height:280px;position:relative;padding:0}
+  .contact-map iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+  .contact-map .pin{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
 </style>
 </head>
 <body>
@@ -268,12 +302,12 @@
   <div class="fond-img" id="hero-fond-img" style="display:none"></div>
   <div class="fond-overlay" id="hero-fond-overlay" style="display:none"></div>
   <div class="hero-decor" aria-hidden="true">
-    <svg viewBox="0 0 1200 600" preserveAspectRatio="none"><path d="M-50,420 C 250,300 450,520 750,380 S 1250,260 1300,340" stroke="rgba(255,255,255,.18)" stroke-width="2" fill="none"/></svg>
+    <svg viewBox="0 0 1200 600" preserveAspectRatio="none"><path d="M-50,420 C 250,300 450,520 750,380 S 1250,260 1300,340" stroke="rgba(82,150,197,.22)" stroke-width="2" fill="none"/></svg>
   </div>
   <div class="wrap">
     <div class="hero-grid">
       <div>
-        <div class="eyebrow" style="color:var(--gold)">Yattaya · Commune de Sonfonia · Conakry</div>
+        <div class="eyebrow" style="color:var(--sky-dark)">Yattaya · Commune de Sonfonia · Conakry</div>
         <h1>L'école qui grandit <em>avec</em> votre enfant.</h1>
         <p class="lead">De la maternelle au baccalauréat, le Groupe Scolaire Elhadji Mountaga Djély accompagne chaque élève, année après année, avec exigence et bienveillance.</p>
         <div class="ctas">
@@ -335,9 +369,10 @@
       </div>
       <div class="about">
         <div class="eyebrow">Notre établissement</div>
-        <h2>Un repère éducatif à Sonfonia</h2>
-        <p>Implanté à Yattaya, dans la Commune de Sonfonia, le Groupe Scolaire Elhadji Mountaga Djély accueille les élèves de la petite section maternelle jusqu'à la terminale. Nous croyons qu'une bonne école se juge à la continuité de son suivi : les mêmes valeurs, la même rigueur, du premier jour de maternelle jusqu'au baccalauréat.</p>
-        <p>Notre équipe pédagogique conjugue exigence académique et attention portée à chaque enfant, dans un cadre structuré et sécurisant, en phase avec les programmes du Ministère de l'Éducation Nationale.</p>
+        <h2 id="etab-titre">Un repère éducatif à Sonfonia</h2>
+        <p id="etab-texte">Implanté à Yattaya, dans la Commune de Sonfonia, le Groupe Scolaire Elhadji Mountaga Djély accueille les élèves de la petite section maternelle jusqu'à la terminale. Nous croyons qu'une bonne école se juge à la continuité de son suivi : les mêmes valeurs, la même rigueur, du premier jour de maternelle jusqu'au baccalauréat.
+
+Notre équipe pédagogique conjugue exigence académique et attention portée à chaque enfant, dans un cadre structuré et sécurisant, en phase avec les programmes du Ministère de l'Éducation Nationale.</p>
         <div class="about-figs">
           <div><b>4</b><span>cycles d'enseignement</span></div>
           <div><b>Sonfonia</b><span>ancrage de proximité</span></div>
@@ -378,11 +413,11 @@
       <p style="color:var(--ink-soft);font-size:15px">Chaque cycle prépare le suivant. Voici le chemin que parcourt chaque élève au sein de notre établissement.</p>
     </div>
     <div class="path-wrap">
-      <div class="path-row">
-        <div class="path-step"><div class="num">ÉTAPE 01</div><div class="ic">🧸</div><h4>Maternelle</h4><p>Éveil, langage et premiers repères, dans un cadre rassurant.</p></div>
-        <div class="path-step"><div class="num">ÉTAPE 02</div><div class="ic">📘</div><h4>Primaire</h4><p>Lecture, écriture, calcul : les fondamentaux, bien ancrés.</p></div>
-        <div class="path-step"><div class="num">ÉTAPE 03</div><div class="ic">🔬</div><h4>Collège</h4><p>Ouverture disciplinaire et méthode de travail affirmée.</p></div>
-        <div class="path-step"><div class="num">ÉTAPE 04</div><div class="ic">🎓</div><h4>Lycée</h4><p>Préparation exigeante au baccalauréat et à l'après-bac.</p></div>
+      <div class="path-row" id="cycles-row">
+        <div class="path-step" onclick="ouvrirCycle('maternelle')"><div class="num">ÉTAPE 01</div><div class="ic">🧸</div><h4>Maternelle</h4><p>Éveil, langage et premiers repères, dans un cadre rassurant.</p></div>
+        <div class="path-step" onclick="ouvrirCycle('primaire')"><div class="num">ÉTAPE 02</div><div class="ic">📘</div><h4>Primaire</h4><p>Lecture, écriture, calcul : les fondamentaux, bien ancrés.</p></div>
+        <div class="path-step" onclick="ouvrirCycle('college')"><div class="num">ÉTAPE 03</div><div class="ic">🔬</div><h4>Collège</h4><p>Ouverture disciplinaire et méthode de travail affirmée.</p></div>
+        <div class="path-step" onclick="ouvrirCycle('lycee')"><div class="num">ÉTAPE 04</div><div class="ic">🎓</div><h4>Lycée</h4><p>Préparation exigeante au baccalauréat et à l'après-bac.</p></div>
       </div>
     </div>
   </div>
@@ -394,7 +429,7 @@
       <div class="eyebrow">Vie scolaire</div>
       <h2>Au-delà des salles de classe</h2>
     </div>
-    <div class="grid cards4">
+    <div class="grid cards4" id="services-grid">
       <div class="svc"><div class="ic">🍽️</div><h4>Cantine scolaire</h4><p>Des repas suivis et équilibrés, préparés sur place chaque jour.</p></div>
       <div class="svc"><div class="ic">📖</div><h4>Cours de révision</h4><p>Des séances de renforcement par niveau, animées par plusieurs enseignants.</p></div>
       <div class="svc"><div class="ic">⚽</div><h4>Activités parascolaires</h4><p>Sport, arts et clubs pour épanouir chaque élève au-delà des cours.</p></div>
@@ -427,7 +462,7 @@
         <div class="cline"><div class="ic">Email</div><div id="c-mail">—</div></div>
         <a class="btn btn-accent" href="#preinscription" style="margin-top:10px">Pré-inscrire mon enfant</a>
       </div>
-      <div class="contact-map"><div class="pin">📍🇬🇳</div></div>
+      <div class="contact-map" id="contact-map"><div class="pin">📍🇬🇳</div></div>
     </div>
   </div>
 </section>
@@ -476,6 +511,18 @@
     <div class="eyebrow" id="article-modal-date"></div>
     <h2 id="article-modal-titre" style="margin:8px 0 18px"></h2>
     <div class="article-body" id="article-modal-corps"></div>
+  </div>
+</div>
+
+<!-- Fenêtre de détail d'un cycle (Objectif / Pédagogie / Activités / Équipements) -->
+<div id="cycle-modal" onclick="if(event.target===this) fermerCycle()">
+  <div class="box">
+    <button class="close-btn" onclick="fermerCycle()">✕</button>
+    <div class="cycle-nav" id="cycle-nav"></div>
+    <div class="eyebrow" id="cycle-modal-eyebrow">Le parcours de l'élève</div>
+    <h2 id="cycle-modal-titre" style="margin:8px 0 16px"></h2>
+    <p id="cycle-modal-presentation" style="color:var(--ink-soft);font-size:14.5px;line-height:1.7"></p>
+    <div class="cycle-detail-blocks" id="cycle-modal-blocks"></div>
   </div>
 </div>
 
@@ -551,8 +598,98 @@ async function chargerInfosEcole() {
         document.getElementById('video-section').style.display = '';
       }
     }
+
+    // Services « Au-delà des salles de classe » (remplace les 4 exemples par défaut si configurés)
+    try {
+      const services = JSON.parse(s.services_vie_scolaire || '[]');
+      if (services.length) {
+        document.getElementById('services-grid').innerHTML = services.map(sv => `
+          <div class="svc"><div class="ic">${escHtml(sv.icone||'⭐')}</div><h4>${escHtml(sv.titre||'')}</h4><p>${escHtml(sv.description||'')}</p></div>
+        `).join('');
+      }
+    } catch(_) {}
+
+    // Section « Notre établissement »
+    if (s.etablissement_titre) document.getElementById('etab-titre').textContent = s.etablissement_titre;
+    if (s.etablissement_texte) document.getElementById('etab-texte').textContent = s.etablissement_texte;
+
+    // Détail des cycles (Objectif / Pédagogie / Activités / Équipements)
+    try {
+      window._cyclesData = { ...CYCLES_DEFAUT_PUBLIC, ...JSON.parse(s.cycles_detail || '{}') };
+      Object.entries(window._cyclesData).forEach(([cle, c]) => {
+        const carte = document.querySelector(`.path-step[onclick*="'${cle}'"]`);
+        if (carte && (c.icone || c.titre || c.accroche)) {
+          if (c.icone) carte.querySelector('.ic').textContent = c.icone;
+          if (c.titre) carte.querySelector('h4').textContent = c.titre;
+          if (c.accroche) carte.querySelector('p').textContent = c.accroche;
+        }
+      });
+    } catch(_) {}
+
+    // Carte de localisation (« Venez nous rencontrer »)
+    if (s.carte_latitude && s.carte_longitude) {
+      const lat = parseFloat(s.carte_latitude), lon = parseFloat(s.carte_longitude);
+      if (!isNaN(lat) && !isNaN(lon)) {
+        const delta = 0.006;
+        const bbox = `${lon-delta},${lat-delta},${lon+delta},${lat+delta}`;
+        document.getElementById('contact-map').innerHTML =
+          `<iframe src="https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&marker=${lat},${lon}" loading="lazy"></iframe>`;
+      }
+    }
   } catch(e) { console.warn('Infos école indisponibles', e); }
 }
+
+const CYCLES_DEFAUT_PUBLIC = {
+  maternelle: { titre:'Maternelle', icone:'🧸', accroche:'Éveil, langage et premiers repères, dans un cadre rassurant.',
+    presentation:"L'inscription en maternelle est essentielle dans le parcours scolaire d'un enfant : c'est ici qu'il fait ses premiers pas vers l'autonomie, le langage et la découverte du monde.",
+    objectif:"Développer l'envie d'apprendre, assurer la maîtrise progressive du langage et préparer chaque enfant aux apprentissages fondamentaux, dans un cadre sécurisant.",
+    pedagogie:"Une pédagogie par le jeu et les projets, un encadrement attentif par nos éducatrices, et une initiation progressive à la lecture et à l'écriture.",
+    activites:"Éveil musical, arts plastiques, expression corporelle et ateliers de motricité pour un développement harmonieux.",
+    equipements:"Salles adaptées aux tout-petits, aire de jeux sécurisée, matériel pédagogique et surveillance constante." },
+  primaire: { titre:'Primaire', icone:'📘', accroche:'Lecture, écriture, calcul : les fondamentaux, bien ancrés.',
+    presentation:"Le primaire installe durablement les savoirs fondamentaux — lire, écrire, compter — sur lesquels reposera toute la suite de la scolarité.",
+    objectif:"Consolider la maîtrise de la langue française, les mathématiques et la méthode de travail, en vue d'une transition réussie vers le collège.",
+    pedagogie:"Un suivi individualisé, des évaluations régulières et un accompagnement renforcé pour les élèves en difficulté.",
+    activites:"Clubs de lecture, initiation aux sciences, activités sportives et culturelles régulières.",
+    equipements:"Salles de classe équipées, bibliothèque, espace informatique d'initiation." },
+  college: { titre:'Collège', icone:'🔬', accroche:"Ouverture disciplinaire et méthode de travail affirmée.",
+    presentation:"Le collège élargit les horizons de l'élève à travers de nouvelles disciplines, tout en construisant son autonomie et sa rigueur de travail.",
+    objectif:"Approfondir les savoirs disciplinaires et préparer les élèves au Brevet d'Études du Premier Cycle (BEPC) dans les meilleures conditions.",
+    pedagogie:"Un enseignement par matière avec des professeurs spécialisés, un suivi des résultats et des séances de renforcement ciblées.",
+    activites:"Cours de révision, clubs scientifiques et activités parascolaires variées.",
+    equipements:"Laboratoire, salles spécialisées et matériel pédagogique adapté au secondaire." },
+  lycee: { titre:'Lycée', icone:'🎓', accroche:"Préparation exigeante au baccalauréat et à l'après-bac.",
+    presentation:"Le lycée accompagne chaque élève vers la réussite au baccalauréat et l'construction de son projet d'orientation post-bac.",
+    objectif:"Garantir un excellent taux de réussite au baccalauréat et une préparation solide à l'enseignement supérieur.",
+    pedagogie:"Un encadrement exigeant, des devoirs surveillés réguliers et un suivi individualisé de chaque filière.",
+    activites:"Cours de révision intensifs, orientation post-bac et activités de leadership.",
+    equipements:"Salles spécialisées par filière, bibliothèque et espaces de travail dédiés." },
+};
+
+function ouvrirCycle(cle) {
+  const cycles = window._cyclesData || CYCLES_DEFAUT_PUBLIC;
+  const c = { ...CYCLES_DEFAUT_PUBLIC[cle], ...(cycles[cle]||{}) };
+  document.getElementById('cycle-modal-titre').textContent = (c.icone?c.icone+' ':'') + (c.titre||cle);
+  document.getElementById('cycle-modal-presentation').textContent = c.presentation || '';
+  const blocs = [
+    ['🎯','Objectif', c.objectif], ['📚','Pédagogie', c.pedagogie],
+    ['🎨','Activités', c.activites], ['🏫','Équipements', c.equipements],
+  ].filter(b => b[2]);
+  document.getElementById('cycle-modal-blocks').innerHTML = blocs.map(([ic,titre,texte]) => `
+    <div class="cycle-detail-block"><h5>${ic} ${titre}</h5><p>${escHtml(texte)}</p></div>
+  `).join('') || '<p style="color:var(--ink-soft)">Détails à venir.</p>';
+
+  const ordre = ['maternelle','primaire','college','lycee'];
+  document.getElementById('cycle-nav').innerHTML = ordre.map(k => {
+    const cc = { ...CYCLES_DEFAUT_PUBLIC[k], ...(cycles[k]||{}) };
+    return `<button class="${k===cle?'active':''}" onclick="ouvrirCycle('${k}')">${escHtml(cc.icone||'')} ${escHtml(cc.titre||k)}</button>`;
+  }).join('');
+
+  document.getElementById('cycle-modal').classList.add('show');
+}
+function fermerCycle() { document.getElementById('cycle-modal').classList.remove('show'); }
+window.ouvrirCycle = ouvrirCycle;
+window.fermerCycle = fermerCycle;
 
 function extraireIdYoutube(url) {
   const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
