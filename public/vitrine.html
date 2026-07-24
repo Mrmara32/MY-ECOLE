@@ -630,17 +630,17 @@ async function chargerInfosEcole() {
     if (s.etablissement_titre) document.getElementById('etab-titre').textContent = s.etablissement_titre;
     if (s.etablissement_texte) document.getElementById('etab-texte').textContent = s.etablissement_texte;
 
-    // Détail des cycles (Objectif / Pédagogie / Activités / Équipements)
+    // Détail des cycles (Objectif / Pédagogie / Activités / Équipements) — rendu
+    // entièrement dynamique : prend en compte les cycles ajoutés ou supprimés.
     try {
-      window._cyclesData = { ...CYCLES_DEFAUT_PUBLIC, ...JSON.parse(s.cycles_detail || '{}') };
-      Object.entries(window._cyclesData).forEach(([cle, c]) => {
-        const carte = document.querySelector(`.path-step[onclick*="'${cle}'"]`);
-        if (carte && (c.icone || c.titre || c.accroche)) {
-          if (c.icone) carte.querySelector('.ic').textContent = c.icone;
-          if (c.titre) carte.querySelector('h4').textContent = c.titre;
-          if (c.accroche) carte.querySelector('p').textContent = c.accroche;
-        }
-      });
+      const merged = { ...CYCLES_DEFAUT_PUBLIC, ...JSON.parse(s.cycles_detail || '{}') };
+      window._cyclesData = Object.fromEntries(Object.entries(merged).filter(([_, c]) => !c._supprime));
+      const row = document.getElementById('cycles-row');
+      if (row) {
+        row.innerHTML = Object.entries(window._cyclesData).map(([cle, c], i) => `
+          <div class="path-step" onclick="ouvrirCycle('${cle}')"><div class="num">ÉTAPE ${String(i+1).padStart(2,'0')}</div><div class="ic">${escHtml(c.icone||'🎓')}</div><h4>${escHtml(c.titre||cle)}</h4><p>${escHtml(c.accroche||'')}</p></div>
+        `).join('');
+      }
     } catch(_) {}
 
     // Carte de localisation (« Venez nous rencontrer »)
@@ -696,7 +696,7 @@ function ouvrirCycle(cle) {
     <div class="cycle-detail-block"><h5>${ic} ${titre}</h5><p>${escHtml(texte)}</p></div>
   `).join('') || '<p style="color:var(--ink-soft)">Détails à venir.</p>';
 
-  const ordre = ['maternelle','primaire','college','lycee'];
+  const ordre = Object.keys(cycles);
   document.getElementById('cycle-nav').innerHTML = ordre.map(k => {
     const cc = { ...CYCLES_DEFAUT_PUBLIC[k], ...(cycles[k]||{}) };
     return `<button class="${k===cle?'active':''}" onclick="ouvrirCycle('${k}')">${escHtml(cc.icone||'')} ${escHtml(cc.titre||k)}</button>`;
