@@ -1,0 +1,204 @@
+import os
+from flask import Blueprint, request, jsonify, current_app, g
+from werkzeug.utils import secure_filename
+
+from database import db, get_settings, log_action
+from auth import require_auth, require_role, ecole_id_optionnelle
+
+bp = Blueprint('settings_routes', __name__, url_prefix='/api/settings')
+
+ALLOWED_EXT = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
+
+
+@bp.route('', methods=['GET'])
+def get_settings_route():
+    """Route accessible avec ou sans connexion. Priorité : (1) utilisateur connecté -> ses
+    propres paramètres, (2) code établissement en paramètre (page de connexion, avant identification)
+    -> les paramètres de cette école, (3) à défaut, école n°1 (rétro-compatibilité mono-école)."""
+    ecole_id = ecole_id_optionnelle()
+    if ecole_id is None:
+        code_ecole = request.args.get('ecole')
+        ecole_id = 1
+        if code_ecole:
+            e = db.execute("SELECT id FROM ecoles WHERE code=?", (code_ecole,)).fetchone()
+            if e:
+                ecole_id = e['id']
+    return jsonify(get_settings(ecole_id))
+
+
+@bp.route('/seuils-approbation', methods=['PUT'])
+@require_auth
+@require_role('admin')
+def update_seuils():
+    """Seuls l'administrateur (fondateur) peut modifier les seuils d'approbation comptable (points 4/5)."""
+    body = request.get_json(silent=True) or {}
+    seuil_directeur = body.get('seuil_approbation_directeur')
+    seuil_admin = body.get('seuil_approbation_admin')
+    if seuil_directeur is not None:
+        db.execute("INSERT OR REPLACE INTO settings (ecole_id,cle,valeur) VALUES (?,?,?)", (g.user['ecole_id'], 'seuil_approbation_directeur', str(seuil_directeur)))
+    if seuil_admin is not None:
+        db.execute("INSERT OR REPLACE INTO settings (ecole_id,cle,valeur) VALUES (?,?,?)", (g.user['ecole_id'], 'seuil_approbation_admin', str(seuil_admin)))
+    db.commit()
+    log_action(g.user, 'modification', 'parametres_approbation', None,
+               {'seuil_approbation_directeur': seuil_directeur, 'seuil_approbation_admin': seuil_admin})
+    return jsonify(get_settings(g.user['ecole_id']))
+
+
+@bp.route('', methods=['PUT'])
+@require_auth
+@require_role('admin', 'directeur')
+def update_settings():
+    body = request.get_json(silent=True) or {}
+    allowed = ['ecole_nom', 'ecole_adresse', 'ecole_telephone', 'ecole_email', 'annee_scolaire',
+               'reseau_facebook', 'reseau_instagram', 'reseau_youtube', 'reseau_tiktok', 'reseau_whatsapp',
+               'creneaux_horaires', 'mot_fondateur', 'video_presentation_youtube', 'services_vie_scolaire',
+               'etablissement_titre', 'etablissement_texte', 'cycles_detail', 'carte_latitude', 'carte_longitude']
+    for k in allowed:
+        if k in body:
+            db.execute("INSERT OR REPLACE INTO settings (ecole_id, cle, valeur) VALUES (?,?,?)", (g.user['ecole_id'], k, body[k]))
+    db.commit()
+    return jsonify(get_settings(g.user['ecole_id']))
+
+
+@bp.route('/logo', methods=['POST'])
+@require_auth
+@require_role('admin', 'directeur')
+def upload_logo():
+    file = request.files.get('logo')
+    if not file or file.filename == '':
+        return jsonify({'error': 'Aucun fichier reçu'}), 400
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXT:
+        return jsonify({'error': 'Format non supporté'}), 400
+
+    import time, random
+    fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
+    upload_dir = current_app.config['UPLOAD_DIR']
+    file.save(os.path.join(upload_dir, fname))
+
+    logo_url = '/uploads/' + fname
+    db.execute("INSERT OR REPLACE INTO settings (ecole_id, cle, valeur) VALUES (?,?,?)", (g.user['ecole_id'], 'ecole_logo', logo_url))
+    db.commit()
+    return jsonify({'logo_url': logo_url})
+
+
+@bp.route('/cachet', methods=['POST'])
+@require_auth
+@require_role('admin', 'directeur')
+def upload_cachet():
+    """Cachet officiel de l'établissement — utilisé sur les cartes, badges et documents imprimés."""
+    file = request.files.get('cachet')
+    if not file or file.filename == '':
+        return jsonify({'error': 'Aucun fichier reçu'}), 400
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXT:
+        return jsonify({'error': 'Format non supporté'}), 400
+
+    import time, random
+    fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
+    upload_dir = current_app.config['UPLOAD_DIR']
+    file.save(os.path.join(upload_dir, fname))
+
+    url = '/uploads/' + fname
+    db.execute("INSERT OR REPLACE INTO settings (ecole_id, cle, valeur) VALUES (?,?,?)", (g.user['ecole_id'], 'ecole_cachet', url))
+    db.commit()
+    return jsonify({'cachet_url': url})
+
+
+@bp.route('/signature-directeur', methods=['POST'])
+@require_auth
+@require_role('admin', 'directeur')
+def upload_signature_directeur():
+    """Signature du directeur — utilisée sur les cartes, badges et documents imprimés."""
+    file = request.files.get('signature')
+    if not file or file.filename == '':
+        return jsonify({'error': 'Aucun fichier reçu'}), 400
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXT:
+        return jsonify({'error': 'Format non supporté'}), 400
+
+    import time, random
+    fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
+    upload_dir = current_app.config['UPLOAD_DIR']
+    file.save(os.path.join(upload_dir, fname))
+
+    url = '/uploads/' + fname
+    db.execute("INSERT OR REPLACE INTO settings (ecole_id, cle, valeur) VALUES (?,?,?)", (g.user['ecole_id'], 'signature_directeur', url))
+    db.commit()
+    return jsonify({'signature_url': url})
+
+
+@bp.route('/fond', methods=['POST'])
+@require_auth
+@require_role('admin', 'directeur', 'secretaire', 'charge_communication')
+def upload_fond():
+    """Image de fond du site public (vitrine) — modifiable à tout moment depuis les Paramètres."""
+    file = request.files.get('fond')
+    if not file or file.filename == '':
+        return jsonify({'error': 'Aucun fichier reçu'}), 400
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXT:
+        return jsonify({'error': 'Format non supporté'}), 400
+
+    import time, random
+    fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
+    upload_dir = current_app.config['UPLOAD_DIR']
+    file.save(os.path.join(upload_dir, fname))
+
+    url = '/uploads/' + fname
+    db.execute("INSERT OR REPLACE INTO settings (ecole_id, cle, valeur) VALUES (?,?,?)", (g.user['ecole_id'], 'ecole_fond_url', url))
+    db.commit()
+    return jsonify({'fond_url': url})
+
+
+@bp.route('/fond', methods=['DELETE'])
+@require_auth
+@require_role('admin', 'directeur', 'secretaire', 'charge_communication')
+def retirer_fond():
+    """Retire le fond personnalisé, pour revenir à l'apparence par défaut du site."""
+    db.execute("DELETE FROM settings WHERE ecole_id=? AND cle='ecole_fond_url'", (g.user['ecole_id'],))
+    db.commit()
+    return jsonify({'ok': True})
+
+
+@bp.route('/carousel', methods=['POST'])
+@require_auth
+@require_role('admin', 'directeur', 'secretaire', 'charge_communication')
+def ajouter_image_carousel():
+    """Ajoute une image au carrousel de la page d'accueil du site public (jusqu'à 8 images)."""
+    file = request.files.get('image')
+    if not file or file.filename == '':
+        return jsonify({'error': 'Aucun fichier reçu'}), 400
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXT:
+        return jsonify({'error': 'Format non supporté'}), 400
+
+    import time, random, json
+    fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
+    upload_dir = current_app.config['UPLOAD_DIR']
+    file.save(os.path.join(upload_dir, fname))
+    url = '/uploads/' + fname
+
+    row = db.execute("SELECT valeur FROM settings WHERE ecole_id=? AND cle='carousel_images'", (g.user['ecole_id'],)).fetchone()
+    images = json.loads(row['valeur']) if row and row['valeur'] else []
+    images.append(url)
+    images = images[-8:]  # 8 images maximum, les plus récentes conservées
+    db.execute("INSERT OR REPLACE INTO settings (ecole_id, cle, valeur) VALUES (?, 'carousel_images', ?)", (g.user['ecole_id'], json.dumps(images)))
+    db.commit()
+    return jsonify({'images': images})
+
+
+@bp.route('/carousel', methods=['DELETE'])
+@require_auth
+@require_role('admin', 'directeur', 'secretaire', 'charge_communication')
+def retirer_image_carousel():
+    """Retire une image du carrousel (par son URL)."""
+    import json
+    body = request.get_json(silent=True) or {}
+    url_a_retirer = body.get('url')
+    row = db.execute("SELECT valeur FROM settings WHERE ecole_id=? AND cle='carousel_images'", (g.user['ecole_id'],)).fetchone()
+    images = json.loads(row['valeur']) if row and row['valeur'] else []
+    images = [i for i in images if i != url_a_retirer]
+    db.execute("INSERT OR REPLACE INTO settings (ecole_id, cle, valeur) VALUES (?, 'carousel_images', ?)", (g.user['ecole_id'], json.dumps(images)))
+    db.commit()
+    return jsonify({'images': images})
