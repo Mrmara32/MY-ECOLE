@@ -304,6 +304,7 @@
       <a href="#contact">Contact</a>
     </nav>
     <div class="nav-ctas">
+      <a class="btn btn-primary-ghost" href="/espace-parents.html">Espace Parents</a>
       <a class="btn btn-primary-ghost" href="/postuler.html">Espace enseignants</a>
       <a class="btn btn-accent" href="#preinscription">Pré-inscription</a>
     </div>
@@ -515,6 +516,7 @@ Notre équipe pédagogique conjugue exigence académique et attention portée à
       <div>© <span id="year"></span> Groupe Scolaire Elhadji Mountaga Djély — Tous droits réservés.</div>
       <div style="display:flex;align-items:center;gap:16px">
         <div class="social-row" id="foot-social"></div>
+        <a href="/espace-parents.html" class="staff-link">👨‍👩‍👧 Espace Parents</a>
         <a href="/" class="staff-link">🔒 Espace personnel</a>
       </div>
     </div>
@@ -550,9 +552,28 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') fermerArticl
 <script>
 document.getElementById('year').textContent = new Date().getFullYear();
 
+// Code établissement détecté depuis l'URL (/ecole/CODE/...) — permet à ce même site
+// vitrine de servir plusieurs écoles clientes, chacune avec son propre contenu.
+function codeEcoleDepuisURL() {
+  const m = window.location.pathname.match(/^\/ecole\/([^/]+)/);
+  return m ? m[1] : null;
+}
+const CODE_ECOLE = codeEcoleDepuisURL();
+function avecCodeEcole(url) {
+  if (!CODE_ECOLE) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}ecole=${encodeURIComponent(CODE_ECOLE)}`;
+}
+// Les liens vers les autres pages publiques (préinscription, candidature) doivent
+// rester dans le contexte de la même école lors de la navigation.
+if (CODE_ECOLE) {
+  document.querySelectorAll('a[href="/postuler.html"]').forEach(a => a.href = `/ecole/${CODE_ECOLE}/postuler`);
+  document.querySelectorAll('a[href="/preinscription.html"]').forEach(a => a.href = `/ecole/${CODE_ECOLE}/preinscription`);
+}
+
 async function chargerInfosEcole() {
   try {
-    const res = await fetch('/api/settings');
+    const res = await fetch(avecCodeEcole('/api/settings'));
     if (!res.ok) return;
     const s = await res.json();
     if (s.ecole_nom) {
@@ -747,7 +768,7 @@ let _articlesCache = [];
 async function chargerActualites() {
   const container = document.getElementById('news-container');
   try {
-    const res = await fetch('/api/articles');
+    const res = await fetch(avecCodeEcole('/api/articles'));
     if (!res.ok) throw new Error('erreur');
     const articles = await res.json();
     _articlesCache = articles;

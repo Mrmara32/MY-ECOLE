@@ -78,6 +78,14 @@
 </div>
 
 <script>
+function codeEcoleDepuisURL() {
+  const m = window.location.pathname.match(/^\/ecole\/([^/]+)/);
+  return m ? m[1] : null;
+}
+const CODE_ECOLE = codeEcoleDepuisURL();
+if (CODE_ECOLE) {
+  document.querySelectorAll('a[href="/vitrine.html"]').forEach(a => a.href = `/ecole/${CODE_ECOLE}/vitrine`);
+}
 const MATIERES = ['Mathématiques','Français','Anglais','Histoire-Géographie','SVT','Physique-Chimie','EPS','Arts Plastiques','Musique','Éducation Civique','Philosophie','Espagnol','Informatique','Arabe'];
 document.getElementById('matieres-grid').innerHTML = MATIERES.map(m =>
   `<label><input type="checkbox" name="matiere" value="${m}"> ${m}</label>`
@@ -105,6 +113,7 @@ document.getElementById('f-cand').addEventListener('submit', async (e) => {
     email: fd.get('email'), cycle: cyclesChoisis.join(', '), disponibilites: fd.get('disponibilites'),
     message: fd.get('message'), matieres,
   };
+  if (CODE_ECOLE) body.code_ecole = CODE_ECOLE;
   try {
     const res = await fetch('/api/candidatures', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),

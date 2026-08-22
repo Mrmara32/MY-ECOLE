@@ -11,6 +11,28 @@
 </head>
 <body>
 
+<!-- ===================== LICENCE (installation autonome uniquement) ===================== -->
+<div id="licence-screen" style="display:none">
+  <div class="login-card" style="max-width:440px">
+    <div style="text-align:center;font-size:44px;margin-bottom:6px">🔒</div>
+    <h1 style="text-align:center;font-size:19px;margin-bottom:8px">Période d'essai terminée</h1>
+    <p style="text-align:center;font-size:13.5px;color:var(--ink-soft,#4B5B63);margin-bottom:22px">
+      Votre essai gratuit de 14 jours est arrivé à son terme. Saisissez votre clé de licence pour continuer à utiliser l'application.
+    </p>
+    <div id="licence-err" style="display:none;background:#FEF2F2;color:#DC2626;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:14px"></div>
+    <form id="licence-form">
+      <div class="fg" style="margin-bottom:14px">
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">Clé de licence</label>
+        <input id="licence-cle-input" required placeholder="EXEMPLE-PERPETUEL-A1B2C3D4" style="width:100%;padding:11px 12px;border:1px solid #E1E8E4;border-radius:10px;font-family:'JetBrains Mono',monospace;font-size:13px;text-transform:uppercase" autocomplete="off">
+      </div>
+      <button type="submit" id="licence-btn" style="width:100%">Activer ma licence</button>
+    </form>
+    <p style="font-size:12px;color:var(--ink-soft,#4B5B63);margin-top:18px;text-align:center">
+      Pas encore de clé ? Contactez l'éditeur pour vous procurer une licence.
+    </p>
+  </div>
+</div>
+
 <!-- ===================== LOGIN ===================== -->
 <div id="login-screen">
   <div class="login-card">
@@ -68,6 +90,7 @@
     </div>
   </aside>
   <div class="main-wrap">
+    <div id="essai-banniere" style="display:none"></div>
     <header class="topbar">
       <div class="flex items-center gap-2">
         <button class="icon-btn mobile-menu-btn" onclick="toggleSidebar()" title="Menu" aria-label="Menu">☰</button>
@@ -100,6 +123,7 @@
 <script src="js/pages/dashboard.js"></script>
 <script src="js/pages/users.js"></script>
 <script src="js/pages/settings.js"></script>
+<script src="js/pages/ecoles.js"></script>
 <script src="js/pages/personnel.js"></script>
 <script src="js/pages/eleves.js"></script>
 <script src="js/pages/notes.js"></script>

@@ -91,6 +91,14 @@
 </div>
 
 <script>
+function codeEcoleDepuisURL() {
+  const m = window.location.pathname.match(/^\/ecole\/([^/]+)/);
+  return m ? m[1] : null;
+}
+const CODE_ECOLE = codeEcoleDepuisURL();
+if (CODE_ECOLE) {
+  document.querySelectorAll('a[href="/vitrine.html"]').forEach(a => a.href = `/ecole/${CODE_ECOLE}/vitrine`);
+}
 document.getElementById('f-pre').addEventListener('submit', async (e) => {
   e.preventDefault();
   const errBox = document.getElementById('msg-err');
@@ -104,6 +112,8 @@ document.getElementById('f-pre').addEventListener('submit', async (e) => {
     errBox.style.display = 'block';
     return;
   }
+
+  if (CODE_ECOLE) body.code_ecole = CODE_ECOLE;
 
   try {
     const res = await fetch('/api/eleves/preinscription-publique', {

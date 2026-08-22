@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inscrire mon école — Gestion Scolaire</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#16232E; --ink-soft:#4B5B63;
+    --primary:#164B41; --primary-dark:#0E332C;
+    --accent:#F0703F; --accent-dark:#D8582A;
+    --bg-soft:#F4F7F5; --line:#E1E8E4; --ok:#15803D; --err:#DC2626;
+  }
+  *{box-sizing:border-box}
+  body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg-soft);margin:0;padding:40px 16px;color:var(--ink)}
+  h1,h2{font-family:'Fredoka',sans-serif;font-weight:600;color:var(--primary-dark)}
+  .top{max-width:560px;margin:0 auto 18px;display:flex;align-items:center;gap:10px}
+  .top a{color:var(--primary-dark);font-weight:700;font-size:13px;text-decoration:none}
+  .card{max-width:560px;margin:0 auto;background:#fff;border-radius:20px;padding:36px;box-shadow:0 20px 50px -25px rgba(22,35,46,.3);border:1px solid var(--line)}
+  h1{font-size:22px;margin:0 0 6px;text-align:center}
+  .sub{color:var(--ink-soft);font-size:13.5px;margin-bottom:26px;text-align:center}
+  .section-title{font-family:'Fredoka',sans-serif;font-size:14px;color:var(--primary-dark);margin:22px 0 12px;padding-top:14px;border-top:1px solid var(--line)}
+  .section-title:first-of-type{border-top:none;padding-top:0}
+  .fg{display:flex;flex-direction:column;gap:5px;margin-bottom:14px;position:relative}
+  label{font-size:12px;font-weight:600;color:#374151}
+  input{padding:11px 12px;border:1px solid var(--line);border-radius:10px;font-family:inherit;font-size:14px;width:100%;background:#fff}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  button{width:100%;padding:14px;background:var(--accent);color:#fff;border:none;border-radius:999px;font-size:15px;font-weight:700;cursor:pointer;margin-top:12px}
+  button:hover{background:var(--accent-dark)}
+  button:disabled{opacity:.6;cursor:default}
+  #msg-ok{display:none;text-align:center;padding:20px 10px}
+  #msg-ok .icon{font-size:48px;margin-bottom:12px}
+  #msg-ok h2{color:var(--primary);font-size:19px;margin-bottom:8px}
+  #msg-ok .code-etab{display:inline-block;background:var(--bg-soft);border-radius:999px;padding:10px 24px;font-weight:700;color:var(--primary-dark);margin:14px 0;font-size:16px;letter-spacing:.02em}
+  #msg-ok .avertissement{background:#FFFBEB;color:#92400E;padding:12px 14px;border-radius:10px;font-size:12.5px;margin:14px 0;text-align:left}
+  #msg-err{display:none;background:#FEF2F2;color:var(--err);padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:14px}
+  .disponibilite{font-size:11.5px;margin-top:3px}
+  .disponibilite.ok{color:var(--ok)} .disponibilite.non{color:var(--err)}
+  .note{font-size:12px;color:var(--ink-soft);margin-top:16px;line-height:1.5;text-align:center}
+  .btn-connexion{display:inline-block;margin-top:14px;background:var(--primary);color:#fff;padding:12px 24px;border-radius:999px;text-decoration:none;font-weight:700;font-size:14px}
+</style>
+</head>
+<body>
+<div class="top"><a href="/">← J'ai déjà un compte</a></div>
+<div class="card">
+  <div id="form-wrap">
+    <h1>🏫 Inscrire mon établissement</h1>
+    <p class="sub">Créez l'espace numérique de votre école — gratuit pendant 30 jours, sans engagement.</p>
+    <div id="msg-err"></div>
+    <form id="form-inscription">
+      <div class="section-title">Votre établissement</div>
+      <div class="fg">
+        <label>Nom de l'école*</label>
+        <input name="nom_ecole" id="nom_ecole" required placeholder="Groupe Scolaire Les Palmiers">
+        <div class="disponibilite" id="apercu-code"></div>
+      </div>
+      <div class="row2">
+        <div class="fg"><label>Email de contact</label><input type="email" name="email_contact" placeholder="contact@monecole.com"></div>
+        <div class="fg"><label>Téléphone</label><input name="telephone_contact" placeholder="622 00 00 00"></div>
+      </div>
+
+      <div class="section-title">Votre compte administrateur</div>
+      <div class="fg"><label>Votre nom complet*</label><input name="admin_full_name" required placeholder="Mamadou Diallo"></div>
+      <div class="row2">
+        <div class="fg"><label>Identifiant de connexion*</label><input name="admin_username" required placeholder="mdiallo" autocomplete="username"></div>
+        <div class="fg"><label>Mot de passe*</label><input type="password" name="admin_password" required minlength="6" placeholder="Min. 6 caractères" autocomplete="new-password"></div>
+      </div>
+
+      <button type="submit" id="btn-submit">Créer mon espace gratuitement</button>
+    </form>
+    <p class="note">En vous inscrivant, vous bénéficiez de 30 jours d'essai gratuit avec accès à toutes les fonctionnalités.</p>
+  </div>
+
+  <div id="msg-ok">
+    <div class="icon">🎉</div>
+    <h2>Votre école est prête !</h2>
+    <p style="font-size:13.5px;color:var(--ink-soft)">Votre code établissement (à conserver précieusement) :</p>
+    <div class="code-etab" id="code-affiche"></div>
+    <div class="avertissement">⚠️ Ce code vous sera demandé à <strong>chaque connexion</strong>, en plus de votre identifiant et mot de passe. Notez-le dès maintenant.</div>
+    <p style="font-size:13px;color:var(--ink-soft)" id="essai-jusquau"></p>
+    <a href="/" class="btn-connexion">Aller à la page de connexion →</a>
+  </div>
+</div>
+
+<script>
+const API = '/api';
+let timerCode = null;
+
+document.getElementById('nom_ecole').addEventListener('input', e => {
+  clearTimeout(timerCode);
+  const apercu = document.getElementById('apercu-code');
+  const nom = e.target.value.trim();
+  if (!nom) { apercu.textContent = ''; return; }
+  const slug = nom.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-+|-+$/g,'').toLowerCase() || 'ecole';
+  apercu.textContent = 'Votre code établissement sera proche de : ' + slug;
+  apercu.className = 'disponibilite';
+  timerCode = setTimeout(async () => {
+    try {
+      const r = await fetch(`${API}/ecoles/verifier-code?code=${encodeURIComponent(slug)}`);
+      const d = await r.json();
+      apercu.textContent = d.disponible
+        ? `✔ Le code « ${slug} » est disponible`
+        : `Ce code existe déjà — un suffixe sera ajouté automatiquement`;
+      apercu.className = 'disponibilite ' + (d.disponible ? 'ok' : 'non');
+    } catch(_) {}
+  }, 500);
+});
+
+document.getElementById('form-inscription').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('btn-submit');
+  const errBox = document.getElementById('msg-err');
+  errBox.style.display = 'none';
+  btn.disabled = true; btn.textContent = 'Création en cours…';
+
+  const fd = Object.fromEntries(new FormData(e.target));
+  try {
+    const r = await fetch(`${API}/ecoles/inscription`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fd),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Une erreur est survenue');
+
+    document.getElementById('form-wrap').style.display = 'none';
+    document.getElementById('msg-ok').style.display = 'block';
+    document.getElementById('code-affiche').textContent = d.code;
+    document.getElementById('essai-jusquau').textContent = `Votre période d'essai gratuite court jusqu'au ${new Date(d.essai_jusquau).toLocaleDateString('fr-FR')}.`;
+  } catch (err) {
+    errBox.textContent = err.message;
+    errBox.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Créer mon espace gratuitement';
+  }
+});
+</script>
+</body>
+</html>

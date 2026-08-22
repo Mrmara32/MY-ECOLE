@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Espace Parents — Groupe Scolaire Elhadji Mountaga Djély</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#16232E; --ink-soft:#4B5B63;
+    --primary:#164B41; --primary-dark:#0E332C; --primary-light:#1F6E5E;
+    --accent:#F0703F; --accent-dark:#D8582A;
+    --sky:#5296C5; --gold:#F2B134;
+    --bg-soft:#F4F7F5; --line:#E1E8E4; --danger:#DC2626; --ok:#15803D;
+  }
+  *{box-sizing:border-box}
+  body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg-soft);margin:0;padding:0;color:var(--ink);min-height:100vh}
+  h1,h2,h3{font-family:'Fredoka',sans-serif;font-weight:600;color:var(--primary-dark);margin:0}
+  a{color:var(--primary-dark)}
+  .top{max-width:900px;margin:0 auto;padding:18px 16px 0}
+  .top a{font-weight:700;font-size:13px;text-decoration:none}
+
+  /* ── Connexion ── */
+  #login-wrap{max-width:420px;margin:60px auto;padding:0 16px}
+  .card{background:#fff;border-radius:20px;padding:36px;box-shadow:0 20px 50px -25px rgba(22,35,46,.3);border:1px solid var(--line)}
+  .card h1{font-size:21px;text-align:center;margin-bottom:4px}
+  .sub{color:var(--ink-soft);font-size:13.5px;text-align:center;margin-bottom:24px}
+  .fg{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+  label{font-size:12px;font-weight:600;color:#374151}
+  input,select{padding:11px 12px;border:1px solid var(--line);border-radius:10px;font-family:inherit;font-size:14px;width:100%;background:#fff}
+  button{padding:13px 18px;background:var(--accent);color:#fff;border:none;border-radius:999px;font-size:14.5px;font-weight:700;cursor:pointer}
+  button:hover{background:var(--accent-dark)}
+  button:disabled{opacity:.6;cursor:default}
+  #login-err{display:none;background:#FEF2F2;color:var(--danger);padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:14px}
+
+  /* ── Tableau de bord ── */
+  #dash-wrap{display:none;max-width:900px;margin:0 auto;padding:20px 16px 60px}
+  .dash-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;flex-wrap:wrap;gap:10px}
+  .dash-header h1{font-size:22px}
+  #logout-btn{background:transparent;color:var(--ink-soft);border:1.5px solid var(--line);padding:9px 16px;font-size:13px}
+  #logout-btn:hover{background:#fff;color:var(--danger)}
+
+  .enfants-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px}
+  .enfant-tab{border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:9px 18px;font-weight:600;font-size:13.5px;cursor:pointer;color:var(--ink-soft)}
+  .enfant-tab.active{background:var(--primary);border-color:var(--primary);color:#fff}
+
+  .section-card{background:#fff;border-radius:16px;padding:22px;margin-bottom:18px;border:1px solid var(--line)}
+  .section-card h2{font-size:16px;display:flex;align-items:center;gap:8px;margin-bottom:14px}
+  .empty{color:var(--ink-soft);font-size:13.5px;font-style:italic}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th{text-align:left;color:var(--ink-soft);font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;padding:6px 8px;border-bottom:1.5px solid var(--line)}
+  td{padding:9px 8px;border-bottom:1px solid var(--line)}
+  .note-val{font-weight:700}
+  .note-bonne{color:var(--ok)} .note-moyenne{color:var(--gold)} .note-faible{color:var(--danger)}
+  .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700}
+  .badge-just{background:#DCFCE7;color:var(--ok)} .badge-injust{background:#FEF2F2;color:var(--danger)}
+  .moy-row{font-weight:700;background:var(--bg-soft)}
+
+  .devoir-item{padding:12px 0;border-bottom:1px solid var(--line)}
+  .devoir-item:last-child{border-bottom:none}
+  .devoir-item .titre{font-weight:700;font-size:14px}
+  .devoir-item .meta{color:var(--ink-soft);font-size:12px;margin-top:2px}
+
+  #btn-imprimer{background:var(--primary);margin-top:6px}
+  #btn-imprimer:hover{background:var(--primary-dark)}
+
+  @media(max-width:600px){ .card{padding:26px 20px} }
+  @media print{ #logout-btn,.enfants-tabs,#btn-imprimer,.top{display:none!important} }
+</style>
+</head>
+<body>
+
+<div class="top"><a href="/vitrine.html">← Retour au site de l'école</a></div>
+
+<div id="login-wrap">
+  <div class="card">
+    <h1>👨‍👩‍👧 Espace Parents</h1>
+    <p class="sub" id="nom-ecole-contexte" style="display:none;font-weight:700;color:var(--primary,#164B41);margin:-6px 0 10px"></p>
+    <p class="sub">Suivez la scolarité de votre enfant : notes, absences, devoirs et bulletin.</p>
+    <div id="login-err"></div>
+    <form id="login-form">
+      <div class="fg"><label>Identifiant</label><input id="l-user" required autocomplete="username"></div>
+      <div class="fg"><label>Mot de passe</label><input id="l-pass" type="password" required autocomplete="current-password"></div>
+      <button type="submit" id="login-btn" style="width:100%">Se connecter</button>
+    </form>
+    <p style="font-size:12px;color:var(--ink-soft);margin-top:18px;text-align:center">Vos identifiants vous ont été communiqués par l'établissement.</p>
+  </div>
+</div>
+
+<div id="dash-wrap">
+  <div class="dash-header">
+    <h1>Bonjour <span id="dash-nom-parent"></span> 👋</h1>
+    <button id="logout-btn">⎋ Déconnexion</button>
+  </div>
+  <div class="enfants-tabs" id="enfants-tabs"></div>
+  <div id="messages-zone"></div>
+  <div id="dash-contenu"></div>
+</div>
+
+<script>
+const API = '/api';
+let TOKEN = localStorage.getItem('ep_tok') || null;
+let ENFANTS = [];
+let ENFANT_ACTIF = null;
+
+// Code établissement détecté depuis l'URL (/ecole/CODE/espace-parents) — indispensable
+// pour savoir dans quelle école chercher l'identifiant du parent à la connexion.
+function codeEcoleDepuisURL() {
+  const m = window.location.pathname.match(/^\/ecole\/([^/]+)/);
+  return m ? m[1] : null;
+}
+const CODE_ECOLE = codeEcoleDepuisURL();
+if (CODE_ECOLE) {
+  document.querySelectorAll('a[href="/vitrine.html"]').forEach(a => a.href = `/ecole/${CODE_ECOLE}/vitrine`);
+  fetch(API + '/settings?ecole=' + encodeURIComponent(CODE_ECOLE))
+    .then(r => r.json())
+    .then(s => {
+      if (s.ecole_nom) {
+        const el = document.getElementById('nom-ecole-contexte');
+        el.textContent = s.ecole_nom;
+        el.style.display = 'block';
+      }
+    })
+    .catch(() => {});
+}
+
+async function apiFetch(path, opts = {}) {
+  const r = await fetch(API + path, {
+    method: opts.method || 'GET',
+    headers: { 'Content-Type': 'application/json', ...(TOKEN ? { 'Authorization': 'Bearer ' + TOKEN } : {}) },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || 'Erreur');
+  return d;
+}
+
+document.getElementById('login-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('login-btn');
+  const errBox = document.getElementById('login-err');
+  errBox.style.display = 'none';
+  btn.disabled = true; btn.textContent = 'Connexion…';
+  try {
+    const r = await fetch(API + '/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: document.getElementById('l-user').value.trim(),
+        password: document.getElementById('l-pass').value,
+        ...(CODE_ECOLE ? { code_ecole: CODE_ECOLE } : {}),
+      }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Identifiant ou mot de passe incorrect');
+    if (d.user.role !== 'parent') throw new Error("Cet espace est réservé aux comptes parents.");
+    TOKEN = d.token;
+    localStorage.setItem('ep_tok', TOKEN);
+    localStorage.setItem('ep_user', JSON.stringify(d.user));
+    await demarrerDashboard(d.user);
+  } catch (err) {
+    errBox.textContent = err.message;
+    errBox.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Se connecter';
+  }
+});
+
+document.getElementById('logout-btn').addEventListener('click', () => {
+  localStorage.removeItem('ep_tok'); localStorage.removeItem('ep_user');
+  location.reload();
+});
+
+async function demarrerDashboard(user) {
+  document.getElementById('login-wrap').style.display = 'none';
+  document.getElementById('dash-wrap').style.display = 'block';
+  const civ = user.civilite ? user.civilite + ' ' : '';
+  document.getElementById('dash-nom-parent').textContent = civ + (user.full_name || user.username);
+
+  try {
+    ENFANTS = await apiFetch('/parent/mes-enfants');
+  } catch (err) {
+    document.getElementById('dash-contenu').innerHTML = `<div class="section-card"><p class="empty">Impossible de charger vos informations : ${err.message}</p></div>`;
+    return;
+  }
+  afficherMessages();
+  if (!ENFANTS.length) {
+    document.getElementById('dash-contenu').insertAdjacentHTML('beforeend',
+      `<div class="section-card"><p class="empty">Aucun élève n'est encore lié à votre compte. Contactez l'établissement pour associer votre/vos enfant(s).</p></div>`);
+    return;
+  }
+  document.getElementById('enfants-tabs').innerHTML = ENFANTS.map((e, i) => `
+    <button class="enfant-tab ${i===0?'active':''}" data-id="${e.id}" onclick="choisirEnfant('${e.id}')">${e.prenom} ${e.nom}</button>
+  `).join('');
+  choisirEnfant(ENFANTS[0].id);
+}
+
+async function afficherMessages() {
+  try {
+    const messages = await apiFetch('/parent/messages');
+    const zone = document.getElementById('messages-zone');
+    if (!messages.length) return; // Pas de bandeau si aucun message
+    zone.innerHTML = `
+      <div class="section-card">
+        <h2>✉️ Messages de l'établissement</h2>
+        ${messages.map(m => `
+          <div class="devoir-item">
+            <div class="titre">${esc(m.sujet || 'Message')}</div>
+            <div class="meta">${m.expediteur_nom ? 'De ' + esc(m.expediteur_nom) + ' · ' : ''}${fmtDate(m.date_envoi)}</div>
+            <div style="font-size:13.5px;margin-top:6px">${esc(m.contenu)}</div>
+          </div>
+        `).join('')}
+      </div>`;
+  } catch (_) { /* silencieux : la messagerie ne doit pas bloquer le reste du tableau de bord */ }
+}
+
+async function choisirEnfant(eleveId) {
+  ENFANT_ACTIF = ENFANTS.find(e => e.id === eleveId);
+  document.querySelectorAll('.enfant-tab').forEach(b => b.classList.toggle('active', b.dataset.id === eleveId));
+  const zone = document.getElementById('dash-contenu');
+  zone.innerHTML = `<p class="empty">Chargement…</p>`;
+
+  const [notes, absences, devoirs] = await Promise.all([
+    apiFetch('/notes?eleve_id=' + eleveId).catch(() => []),
+    apiFetch('/absences?eleve_id=' + eleveId).catch(() => []),
+    apiFetch('/devoirs?classe=' + encodeURIComponent(ENFANT_ACTIF.classe || '')).catch(() => []),
+  ]);
+
+  // Regrouper les notes par matière pour calculer une moyenne simple
+  const parMatiere = {};
+  notes.forEach(n => {
+    if (!parMatiere[n.matiere]) parMatiere[n.matiere] = [];
+    parMatiere[n.matiere].push(n);
+  });
+  const classeNote = (note, max) => {
+    const pct = (note / (max || 20)) * 100;
+    return pct >= 60 ? 'note-bonne' : pct >= 40 ? 'note-moyenne' : 'note-faible';
+  };
+
+  const lignesNotes = Object.entries(parMatiere).map(([matiere, liste]) => {
+    const moyenne = liste.reduce((s, n) => s + (n.note / (n.note_max || 20)) * 20, 0) / liste.length;
+    const details = liste.map(n => `<span class="note-val ${classeNote(n.note, n.note_max)}">${n.note}/${n.note_max||20}</span>`).join(' · ');
+    return `<tr><td><strong>${esc(matiere)}</strong></td><td>${details}</td>
+      <td class="note-val ${classeNote(moyenne, 20)}">${moyenne.toFixed(1)}/20</td></tr>`;
+  }).join('');
+
+  const nbAbsInjust = absences.filter(a => !a.justifie).length;
+
+  zone.innerHTML = `
+    <div class="section-card">
+      <h2>📊 Notes — ${esc(ENFANT_ACTIF.classe || '')}</h2>
+      ${notes.length ? `
+        <table><thead><tr><th>Matière</th><th>Notes obtenues</th><th>Moyenne</th></tr></thead>
+        <tbody>${lignesNotes}</tbody></table>
+        <button id="btn-imprimer" onclick="window.print()">🖨️ Imprimer ce relevé</button>
+      ` : '<p class="empty">Aucune note enregistrée pour le moment.</p>'}
+    </div>
+
+    <div class="section-card">
+      <h2>📅 Absences ${nbAbsInjust ? `<span class="badge badge-injust">${nbAbsInjust} non justifiée${nbAbsInjust>1?'s':''}</span>` : ''}</h2>
+      ${absences.length ? `
+        <table><thead><tr><th>Date</th><th>Type</th><th>Motif</th><th>Statut</th></tr></thead>
+        <tbody>${absences.map(a => `
+          <tr><td>${fmtDate(a.date_abs)}</td><td>${a.type==='retard'?'Retard':'Absence'}</td>
+          <td>${esc(a.motif||'—')}</td>
+          <td><span class="badge ${a.justifie?'badge-just':'badge-injust'}">${a.justifie?'Justifiée':'Non justifiée'}</span></td></tr>
+        `).join('')}</tbody></table>
+      ` : '<p class="empty">Aucune absence enregistrée. 🎉</p>'}
+    </div>
+
+    <div class="section-card">
+      <h2>📝 Devoirs et exercices</h2>
+      ${devoirs.length ? devoirs.map(d => `
+        <div class="devoir-item">
+          <div class="titre">${esc(d.titre)}</div>
+          <div class="meta">${esc(d.matiere||'')} ${d.date_remise ? '· À rendre le ' + fmtDate(d.date_remise) : ''} · ${esc(d.statut||'')}</div>
+          ${d.description ? `<div style="font-size:13px;margin-top:6px;color:var(--ink-soft)">${esc(d.description)}</div>` : ''}
+        </div>
+      `).join('') : '<p class="empty">Aucun devoir en cours pour cette classe.</p>'}
+    </div>
+  `;
+}
+
+function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtDate(d) { if (!d) return '—'; const dt = new Date(d); return isNaN(dt) ? d : dt.toLocaleDateString('fr-FR'); }
+
+// Restaurer la session si un jeton valide existe déjà
+(async () => {
+  if (TOKEN) {
+    try {
+      const user = JSON.parse(localStorage.getItem('ep_user') || '{}');
+      await demarrerDashboard(user);
+    } catch (_) {
+      localStorage.removeItem('ep_tok'); localStorage.removeItem('ep_user');
+    }
+  }
+})();
+</script>
+</body>
+</html>
