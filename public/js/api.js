@@ -50,6 +50,15 @@ function apiSetToken(tok) { _token = tok; localStorage.setItem('gs_tok', tok); }
 
 /* ── Settings ── */
 const apiGetSettings  = ()  => apiFetch('/settings');
+
+/* ── Licence (installation autonome / version .exe uniquement) ── */
+const apiGetStatutLicence = () => apiFetch('/licence/statut');
+const apiActiverLicence   = (cle) => apiFetch('/licence/activer', { method:'POST', body:{cle} });
+
+/* ── Supervision des écoles clientes (super-administrateur) ── */
+const apiGetEcoles     = () => apiFetch('/ecoles');
+const apiGetEcole      = (id) => apiFetch(`/ecoles/${id}`);
+const apiUpdateEcole   = (id, d) => apiFetch(`/ecoles/${id}`, { method:'PUT', body:d });
 const apiSaveSettings = (b) => apiFetch('/settings', { method: 'PUT', body: b });
 
 /* ── Users ── */
@@ -116,6 +125,39 @@ const apiDeleteReinscription = (id)      => apiFetch(`/reinscriptions/${id}`, { 
 
 /* ── Transactions ── */
 const apiGetTransactions    = (q='')    => apiFetch('/transactions'+(q?'?'+q:''));
+
+const apiGetTransactionsRecurrentes = () => apiFetch('/transactions-recurrentes');
+const apiCreateTransactionRecurrente = (d) => apiFetch('/transactions-recurrentes', { method:'POST', body:d });
+const apiUpdateTransactionRecurrente = (id,d) => apiFetch(`/transactions-recurrentes/${id}`, { method:'PUT', body:d });
+const apiDeleteTransactionRecurrente = (id) => apiFetch(`/transactions-recurrentes/${id}`, { method:'DELETE' });
+
+const apiGetBudgets = (mois='') => apiFetch('/budgets'+(mois?'?mois='+mois:''));
+const apiSaveBudget = (d) => apiFetch('/budgets', { method:'POST', body:d });
+const apiDeleteBudget = (id) => apiFetch(`/budgets/${id}`, { method:'DELETE' });
+const apiComparaisonBudget = (mois) => apiFetch('/budgets/comparaison?mois='+mois);
+const apiAnalyseComptable = (mois) => apiFetch('/analyse-comptable?mois='+mois);
+
+function apiAnalyserRapprochement(fichier) {
+  const fd = new FormData();
+  fd.append('fichier', fichier);
+  return apiUpload('/rapprochement/analyser', fd);
+}
+const apiValiderRapprochement = (id) => apiFetch(`/rapprochement/valider/${id}`, { method:'PUT' });
+const apiAnnulerRapprochement = (id) => apiFetch(`/rapprochement/annuler/${id}`, { method:'PUT' });
+const apiEtatRapprochement = (q='') => apiFetch('/rapprochement/etat'+(q?'?'+q:''));
+function apiExportTransactionsExcel(q='') {
+  const url = API_BASE + '/transactions/export' + (q?'?'+q:'');
+  fetch(url, { headers: { 'Authorization': 'Bearer ' + _token } })
+    .then(r => { if (!r.ok) return r.json().then(d => { throw new Error(d.error||'Erreur'); }); return r.blob(); })
+    .then(blob => {
+      const a = document.createElement('a');
+      const objUrl = URL.createObjectURL(blob);
+      a.href = objUrl; a.download = 'Journal-Comptable.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(objUrl);
+    })
+    .catch(err => toast(err.message, 'error'));
+}
 const apiCreateTransaction  = (b)       => apiFetch('/transactions', { method: 'POST', body: b });
 const apiDeleteTransaction  = (id)      => apiFetch(`/transactions/${id}`, { method: 'DELETE' });
 

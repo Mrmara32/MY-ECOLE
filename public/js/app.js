@@ -10,7 +10,7 @@ const PAGES = {
   notes:           { icon:'📊', labelKey:'nav_notes',   fn: pageNotes,           roles:['admin','directeur','enseignant','secretaire'] },
   devoirs:         { icon:'📚', labelKey:'nav_devoirs',             fn: pageDevoirs,         roles:['admin','directeur','enseignant','secretaire'] },
   emploi:          { icon:'📅', labelKey:'nav_emploi',     fn: pageEmploi,          roles:['admin','directeur','enseignant','secretaire'] },
-  seances:         { icon:'📋', labelKey:'nav_seances',    fn: pageSeances,         roles:['admin','directeur','enseignant','secretaire'] },
+  seances:         { icon:'📋', labelKey:'nav_seances',    fn: pageSeances,         roles:['admin','directeur','directeur_etudes','enseignant','secretaire'] },
   absences:        { icon:'📋', labelKey:'nav_absences',            fn: pageAbsences,        roles:['admin','directeur','enseignant','secretaire'] },
   classes:         { icon:'🏫', labelKey:'nav_classes',              fn: pageClasses,        roles:['admin','directeur'] },
   salles:          { icon:'🚪', labelKey:'nav_salles',                fn: pageSalles,         roles:['admin','directeur','secretaire'] },
@@ -27,6 +27,7 @@ const PAGES = {
   users:           { icon:'👥', labelKey:'nav_users',         fn: pageUsers,           roles:['admin'] },
   journal:         { icon:'🗂️', labelKey:'nav_journal',     fn: pageJournal,         roles:['admin'] },
   settings:        { icon:'⚙️', labelKey:'nav_settings',          fn: pageSettings,        roles:['admin','directeur'] },
+  ecoles:          { icon:'🏢', labelKey:'nav_ecoles',             fn: pageEcoles,          superAdminOnly:true },
 };
 
 // Groupes de navigation
@@ -36,6 +37,7 @@ const NAV_GROUPS = [
   { labelKey: 'nav_section_finances', pages: ['paiements','cantine','comptabilite','revision','paie'] },
   { labelKey: 'nav_section_vie_ecole', pages: ['communication','actualites','personnel'] },
   { labelKey: 'nav_section_administration', pages: ['users','journal','settings'] },
+  { labelKey: 'nav_section_super_admin', pages: ['ecoles'] },
 ];
 
 /* ── État ── */
@@ -44,6 +46,9 @@ let currentPage = 'dashboard';
 
 /* ── Login ── */
 async function initLogin() {
+  $('#login-screen').style.display = '';
+  $('#licence-screen').style.display = 'none';
+  $('#app').style.display = 'none';
   $('#login-lang-wrap').innerHTML = langSwitcherHtml(false, 'lang-switcher-login');
   applyLoginTranslations();
   try {
@@ -72,7 +77,9 @@ async function initLogin() {
       apiSetToken(token);
       currentUser = user;
       localStorage.setItem('gs_user', JSON.stringify(user));
-      startApp();
+      await startApp();
+      const civ = user.civilite ? user.civilite + ' ' : '';
+      toast(`Bienvenue ${civ}${user.full_name || user.username} 👋`, 'success');
     } catch(err) {
       $('#login-err').textContent = err.message;
       $('#login-err').style.display = '';
@@ -113,6 +120,26 @@ async function startApp() {
   await refreshClasses();
   await refreshCreneaux();
 
+  // Bannière de période d'essai (installation autonome uniquement — sans effet
+  // sur la plateforme web, qui renvoie toujours 'illimitee').
+  try {
+    const statut = await apiGetStatutLicence();
+    const banniere = $('#essai-banniere');
+    if (statut.mode === 'essai') {
+      banniere.style.display = 'flex';
+      banniere.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:10px;background:#FFFBEB;color:#92400E;padding:9px 14px;font-size:13px;font-weight:600;border-bottom:1px solid #FDE68A';
+      banniere.innerHTML = `⏳ Essai gratuit — ${statut.jours_restants} jour${statut.jours_restants>1?'s':''} restant${statut.jours_restants>1?'s':''}`
+        + (currentUser.role === 'admin' ? ` <button id="btn-activer-licence" style="margin-left:6px;padding:4px 12px;font-size:12px;border-radius:999px;border:none;background:#92400E;color:#fff;cursor:pointer">Activer une licence</button>` : '');
+      const btnActiver = $('#btn-activer-licence');
+      if (btnActiver) btnActiver.addEventListener('click', () => {
+        $('#app').style.display = 'none';
+        afficherEcranLicenceBloquee();
+      });
+    } else {
+      banniere.style.display = 'none';
+    }
+  } catch (_) {}
+
   buildNav();
   navigate('dashboard');
 }
@@ -124,7 +151,8 @@ function buildNav() {
   NAV_GROUPS.forEach(group => {
     const visiblePages = group.pages.filter(k => {
       const pg = PAGES[k];
-      return pg && (pg.roles.includes(currentUser.role));
+      if (!pg) return false;
+      return pg.superAdminOnly ? !!currentUser.est_super_admin : pg.roles.includes(currentUser.role);
     });
     if (!visiblePages.length) return;
     if (group.labelKey) {
@@ -148,7 +176,8 @@ function buildNav() {
 function navigate(page) {
   if (!PAGES[page]) return;
   const pg = PAGES[page];
-  if (!pg.roles.includes(currentUser?.role)) { toast('Accès refusé','error'); return; }
+  const autorise = pg.superAdminOnly ? !!currentUser?.est_super_admin : pg.roles.includes(currentUser?.role);
+  if (!autorise) { toast('Accès refusé','error'); return; }
 
   currentPage = page;
   // Mettre à jour nav
@@ -217,6 +246,18 @@ document.addEventListener('keydown', e => {
 // lui-même au bout de 12h (voir auth.py), ce qui garantit une déconnexion naturelle
 // et une traçabilité réelle sans imposer une reconnexion à chaque simple rafraîchissement.
 async function init() {
+  // Vérification de licence (n'a d'effet que sur une installation autonome / .exe ;
+  // sans effet sur la plateforme web, qui renvoie toujours 'illimitee').
+  try {
+    const statut = await apiGetStatutLicence();
+    if (statut.bloque) {
+      afficherEcranLicenceBloquee();
+      return;
+    }
+  } catch (_) {
+    // En cas d'erreur reseau sur cette verification, on ne bloque jamais l'acces par prudence
+  }
+
   if (_token) {
     try {
       currentUser = await apiMe();
@@ -231,6 +272,34 @@ async function init() {
     }
   }
   initLogin();
+}
+
+function afficherEcranLicenceBloquee() {
+  $('#licence-screen').style.display = 'flex';
+  $('#login-screen').style.display = 'none';
+  $('#app').style.display = 'none';
+  const form = $('#licence-form');
+  if (form.dataset.bound) return;
+  form.dataset.bound = '1';
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = $('#licence-btn');
+    const errBox = $('#licence-err');
+    errBox.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'Activation…';
+    try {
+      await apiActiverLicence($('#licence-cle-input').value.trim());
+      toast('Licence activée avec succès !', 'success');
+      $('#licence-screen').style.display = 'none';
+      init();
+    } catch (err) {
+      errBox.textContent = err.message;
+      errBox.style.display = '';
+      btn.disabled = false;
+      btn.textContent = 'Activer ma licence';
+    }
+  });
 }
 
 init();

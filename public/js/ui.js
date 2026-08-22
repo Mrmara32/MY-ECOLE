@@ -377,7 +377,7 @@ async function refreshCreneaux() {
   } catch(e) { console.warn('Impossible de charger les créneaux horaires', e); }
 }
 const COULEURS_EDT = ['#2563EB','#059669','#D97706','#7C3AED','#DC2626','#0891B2','#0D9488','#B45309','#6366F1'];
-const ROLES = { admin:'Administrateur', directeur:'Directeur', comptable:'Comptable', enseignant:'Enseignant', secretaire:'Secrétaire', charge_communication:'Chargé de communication' };
+const ROLES = { admin:'Administrateur', directeur:'Directeur', directeur_etudes:'Directeur des Études', comptable:'Comptable', enseignant:'Enseignant', secretaire:'Secrétaire', charge_communication:'Chargé de communication' };
 
 /* ── Couleur EDT par matière ── */
 const _matColors = {};
