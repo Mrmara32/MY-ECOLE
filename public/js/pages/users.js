@@ -15,6 +15,7 @@ async function pageUsers() {
             <td class="text-muted" style="font-size:12px">${u.last_login?fmtDate(u.last_login):'Jamais'}</td>
             <td><div class="td-actions">
               <button class="btn btn-outline btn-xs" onclick="modalEditUser(${u.id})">✏️</button>
+              ${u.role==='parent'?`<button class="btn btn-outline btn-xs" onclick="modalEnfantsParent(${u.id}, '${escJs(u.full_name)}')" title="Gérer les enfants liés">👨‍👩‍👧</button>`:''}
               <button class="btn btn-outline btn-xs" onclick="modalResetPwd(${u.id}, '${escJs(u.username)}')">🔑</button>
               <button class="btn btn-danger btn-xs" onclick="deleteUser(${u.id})">🗑</button>
             </div></td>
@@ -61,11 +62,16 @@ async function modalAddUser() {
   openModal('Ajouter un utilisateur', `
     <form id="f-user" class="flex" style="flex-direction:column;gap:14px">
       <div class="form-2">
+        <div class="fg"><label>Civilité</label><select name="civilite">
+          <option value="">—</option><option value="M.">M.</option><option value="Mme">Mme</option>
+        </select></div>
         <div class="fg"><label>Nom complet*</label><input name="full_name" required placeholder="Marie Camara"></div>
-        <div class="fg"><label>Identifiant (login)*</label><input name="username" required placeholder="m.camara"></div>
       </div>
       <div class="form-2">
+        <div class="fg"><label>Identifiant (login)*</label><input name="username" required placeholder="m.camara"></div>
         <div class="fg"><label>Mot de passe*</label><input type="password" name="password" required minlength="6" placeholder="Min. 6 caractères"></div>
+      </div>
+      <div class="form-2">
         <div class="fg"><label>Rôle*</label><select name="role" required>
           ${optionsHtml(Object.entries(ROLES).map(([v,l])=>({value:v,label:l})))}
         </select></div>
@@ -97,7 +103,14 @@ async function modalEditUser(id) {
   openModal('Modifier l\'utilisateur', `
     <form id="f-edit-user" class="flex" style="flex-direction:column;gap:14px">
       <div class="form-2">
+        <div class="fg"><label>Civilité</label><select name="civilite">
+          <option value="" ${!u.civilite?'selected':''}>—</option>
+          <option value="M." ${u.civilite==='M.'?'selected':''}>M.</option>
+          <option value="Mme" ${u.civilite==='Mme'?'selected':''}>Mme</option>
+        </select></div>
         <div class="fg"><label>Nom complet*</label><input name="full_name" value="${esc(u.full_name)}" required></div>
+      </div>
+      <div class="form-2">
         <div class="fg"><label>Rôle*</label><select name="role" required>${optionsHtml(Object.entries(ROLES).map(([v,l])=>({value:v,label:l})), u.role, false)}</select></div>
       </div>
       <div class="form-2">
@@ -156,3 +169,62 @@ window.modalAddUser = modalAddUser;
 window.modalEditUser = modalEditUser;
 window.modalResetPwd = modalResetPwd;
 window.deleteUser = deleteUser;
+
+async function modalEnfantsParent(userId, nomParent) {
+  const enfants = await apiFetch(`/users/${userId}/enfants`);
+  openModal(`👨‍👩‍👧 Enfants liés — ${nomParent}`, `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div id="enfants-liste" style="display:flex;flex-direction:column;gap:8px">
+        ${enfants.length ? enfants.map(e => `
+          <div class="flex items-center gap-3" style="border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px">
+            <div style="flex:1"><strong>${esc(e.prenom)} ${esc(e.nom)}</strong>
+              <div class="text-muted" style="font-size:12px">${esc(e.matricule||'')} · ${esc(e.classe||'')}</div></div>
+            <button type="button" class="btn btn-danger btn-xs" onclick="retirerEnfantParent(${userId},'${escJs(e.id)}','${escJs(nomParent)}')">🗑</button>
+          </div>`).join('') : '<span class="text-muted" style="font-size:13px">Aucun enfant lié pour le moment.</span>'}
+      </div>
+      <div class="fg">
+        <label>Ajouter un enfant (nom, prénom ou matricule)</label>
+        <input id="recherche-eleve-parent" placeholder="Tapez pour rechercher…" autocomplete="off">
+        <div id="resultats-eleve-parent" style="margin-top:6px;display:flex;flex-direction:column;gap:4px"></div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline" onclick="closeModal()">Fermer</button></div>
+    </div>`);
+
+  let timer = null;
+  $('#recherche-eleve-parent').addEventListener('input', e => {
+    clearTimeout(timer);
+    const q = e.target.value.trim();
+    if (q.length < 2) { $('#resultats-eleve-parent').innerHTML = ''; return; }
+    timer = setTimeout(async () => {
+      const res = await apiGetEleves(`q=${encodeURIComponent(q)}`);
+      const dejaLies = new Set(enfants.map(x => x.id));
+      $('#resultats-eleve-parent').innerHTML = res.slice(0, 8).map(e => `
+        <div class="flex items-center gap-3" style="padding:6px 8px;border-radius:6px;background:var(--bg-tint)">
+          <div style="flex:1;font-size:13px">${esc(e.prenom)} ${esc(e.nom)} — <span class="text-muted">${esc(e.classe||'')}</span></div>
+          ${dejaLies.has(e.id)
+            ? `<span class="text-muted" style="font-size:11px">Déjà lié</span>`
+            : `<button type="button" class="btn btn-primary btn-xs" onclick="lierEnfantParent(${userId},'${escJs(e.id)}','${escJs(nomParent)}')">+ Lier</button>`}
+        </div>`).join('') || '<span class="text-muted" style="font-size:12px">Aucun résultat.</span>';
+    }, 300);
+  });
+}
+window.modalEnfantsParent = modalEnfantsParent;
+
+async function lierEnfantParent(userId, eleveId, nomParent) {
+  try {
+    await apiFetch(`/users/${userId}/enfants`, { method: 'POST', body: { eleve_id: eleveId } });
+    toast('Enfant lié avec succès', 'success');
+    modalEnfantsParent(userId, nomParent);
+  } catch(err) { toast(err.message, 'error'); }
+}
+window.lierEnfantParent = lierEnfantParent;
+
+async function retirerEnfantParent(userId, eleveId, nomParent) {
+  if (!confirm("Retirer ce lien ? Le parent perdra l'accès aux informations de cet élève.")) return;
+  try {
+    await apiFetch(`/users/${userId}/enfants/${eleveId}`, { method: 'DELETE' });
+    toast('Lien retiré', 'success');
+    modalEnfantsParent(userId, nomParent);
+  } catch(err) { toast(err.message, 'error'); }
+}
+window.retirerEnfantParent = retirerEnfantParent;

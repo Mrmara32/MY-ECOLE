@@ -60,8 +60,15 @@ async function pageComptabilite() {
         <span class="card-title">💳 Journal comptable</span>
         <div class="card-actions">
           <button class="btn btn-outline btn-sm" onclick="modalLivreJournal()">📖 Livre Journal</button>
+          <button class="btn btn-outline btn-sm" onclick="exporterJournalExcel()">📊 Export Excel</button>
+          <button class="btn btn-outline btn-sm" onclick="pageBudget()">🎯 Budget prévisionnel</button>
+          <button class="btn btn-outline btn-sm" onclick="pageAnalyseComptable()">📈 Tableau de bord</button>
+          <button class="btn btn-outline btn-sm" onclick="pageRapprochement()">🏦 Rapprochement bancaire</button>
+          <button class="btn btn-outline btn-sm" onclick="modalTransactionsRecurrentes()">🔁 Récurrentes</button>
+          ${['admin','comptable'].includes(currentUser.role)?`
           <button class="btn btn-ok btn-sm" onclick="modalTransaction('entree')">+ Recette</button>
           <button class="btn btn-danger btn-sm" onclick="modalTransaction('sortie')">− Dépense</button>
+          `:''}
         </div>
       </div>
       <div class="filters">
@@ -220,6 +227,92 @@ async function modalTransaction(typeDefaut = 'entree') {
 }
 
 /* ===================== LIVRE JOURNAL ===================== */
+async function modalTransactionsRecurrentes() {
+  const liste = await apiGetTransactionsRecurrentes();
+  openModal('🔁 Transactions récurrentes automatiques', `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="text-muted" style="font-size:12.5px">Ces opérations (loyer, salaires fixes...) sont générées automatiquement chaque mois, dès le jour configuré atteint — plus besoin de les ressaisir.</div>
+      <div id="rec-liste" style="display:flex;flex-direction:column;gap:8px">
+        ${liste.length ? liste.map(t => `
+          <div class="flex items-center gap-3" style="border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;${!t.actif?'opacity:.55':''}">
+            <div style="flex:1">
+              <strong>${esc(t.categorie)}</strong> — <span class="${t.type==='entree'?'text-ok':'text-err'}">${fmtMoney(t.montant)}</span>
+              <div class="text-muted" style="font-size:11.5px">${t.type==='entree'?'Recette':'Dépense'} · le ${t.jour_du_mois} de chaque mois ${!t.actif?'· <strong>Inactive</strong>':''}</div>
+            </div>
+            <button type="button" class="btn btn-outline btn-xs" onclick="toggleRecurrente('${escJs(t.id)}',${t.actif?'false':'true'})">${t.actif?'⏸ Suspendre':'▶ Réactiver'}</button>
+            <button type="button" class="btn btn-danger btn-xs" onclick="supprimerRecurrente('${escJs(t.id)}')">🗑</button>
+          </div>`).join('') : '<span class="text-muted" style="font-size:13px">Aucune transaction récurrente configurée.</span>'}
+      </div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="modalNouvelleRecurrente()">+ Ajouter une transaction récurrente</button>
+      <div class="modal-footer"><button type="button" class="btn btn-outline" onclick="closeModal()">Fermer</button></div>
+    </div>`);
+}
+window.modalTransactionsRecurrentes = modalTransactionsRecurrentes;
+
+function modalNouvelleRecurrente() {
+  openModal('+ Nouvelle transaction récurrente', `
+    <form id="f-rec" style="display:flex;flex-direction:column;gap:14px">
+      <div class="form-2">
+        <div class="fg"><label>Type*</label><select name="type" required>
+          <option value="sortie">Dépense</option><option value="entree">Recette</option>
+        </select></div>
+        <div class="fg"><label>Jour du mois*</label><input type="number" name="jour_du_mois" min="1" max="28" value="1" required></div>
+      </div>
+      <div class="fg"><label>Catégorie*</label><input name="categorie" required placeholder="Loyer, Salaires…"></div>
+      <div class="fg"><label>Description</label><input name="description" placeholder="Loyer mensuel du local…"></div>
+      <div class="form-2">
+        <div class="fg"><label>Montant (GNF)*</label><input type="number" name="montant" min="1" required></div>
+        <div class="fg"><label>Moyen de paiement</label><select name="moyen_paiement">${MOYENS_PAIEMENT.map(m=>`<option>${esc(m)}</option>`).join('')}</select></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="modalTransactionsRecurrentes()">Annuler</button>
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+      </div>
+    </form>`, { narrow: true });
+
+  $('#f-rec').onsubmit = async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target));
+    fd.montant = parseFloat(fd.montant);
+    fd.jour_du_mois = parseInt(fd.jour_du_mois);
+    try {
+      await apiCreateTransactionRecurrente(fd);
+      toast('Transaction récurrente créée', 'success');
+      modalTransactionsRecurrentes();
+    } catch(err) { toast(err.message, 'error'); }
+  };
+}
+window.modalNouvelleRecurrente = modalNouvelleRecurrente;
+
+async function toggleRecurrente(id, actif) {
+  try {
+    await apiUpdateTransactionRecurrente(id, { actif: actif === 'true' });
+    toast(actif==='true' ? 'Réactivée' : 'Suspendue', 'success');
+    modalTransactionsRecurrentes();
+  } catch(err) { toast(err.message, 'error'); }
+}
+window.toggleRecurrente = toggleRecurrente;
+
+async function supprimerRecurrente(id) {
+  if (!confirm('Supprimer définitivement cette transaction récurrente ?')) return;
+  try {
+    await apiDeleteTransactionRecurrente(id);
+    toast('Supprimée', 'success');
+    modalTransactionsRecurrentes();
+  } catch(err) { toast(err.message, 'error'); }
+}
+window.supprimerRecurrente = supprimerRecurrente;
+
+function exporterJournalExcel() {
+  const deb = $('#f-tdeb')?.value, fin = $('#f-tfin')?.value;
+  const params = new URLSearchParams();
+  if (deb) params.set('date_debut', deb);
+  if (fin) params.set('date_fin', fin);
+  apiExportTransactionsExcel(params.toString());
+  toast('Génération du fichier Excel…', 'success');
+}
+window.exporterJournalExcel = exporterJournalExcel;
+
 function modalLivreJournal() {
   const debutMois = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
   openModal('📖 Livre Journal comptable', `
@@ -380,3 +473,283 @@ window.delTransaction = delTransaction;
 window.voirApprobations = voirApprobations;
 window.approuverTransaction = approuverTransaction;
 window.rejeterTransactionPrompt = rejeterTransactionPrompt;
+
+/* ===================== BUDGET PRÉVISIONNEL ===================== */
+async function pageBudget(mois) {
+  mois = mois || new Date().toISOString().slice(0, 7);
+  $('#content').innerHTML = loadingHtml;
+  const data = await apiComparaisonBudget(mois);
+  const lignes = data.lignes;
+
+  const totalPrevu = lignes.reduce((s, l) => s + (l.type === 'sortie' ? l.montant_prevu : 0), 0);
+  const totalRealise = lignes.reduce((s, l) => s + (l.type === 'sortie' ? l.montant_realise : 0), 0);
+
+  $('#content').innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">🎯 Budget prévisionnel</span>
+        <div class="card-actions">
+          <input type="month" id="budget-mois" value="${mois}" onchange="pageBudget(this.value)">
+          <button class="btn btn-primary btn-sm" onclick="modalNouveauBudget('${mois}')">+ Définir un budget</button>
+          <button class="btn btn-outline btn-sm" onclick="pageComptabilite()">← Retour</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">
+          <div class="stat"><div class="stat-label">Budget dépenses prévu</div><div class="stat-val" style="font-size:16px">${fmtMoney(totalPrevu)}</div></div>
+          <div class="stat"><div class="stat-label">Dépenses réalisées</div><div class="stat-val ${totalRealise>totalPrevu?'text-err':'text-ok'}" style="font-size:16px">${fmtMoney(totalRealise)}</div></div>
+          <div class="stat"><div class="stat-label">Écart</div><div class="stat-val ${totalRealise>totalPrevu?'text-err':'text-ok'}" style="font-size:16px">${totalRealise>totalPrevu?'+':''}${fmtMoney(totalRealise-totalPrevu)}</div></div>
+        </div>
+        ${lignes.length ? `
+        <table class="table">
+          <thead><tr><th>Catégorie</th><th>Type</th><th>Prévu</th><th>Réalisé</th><th>Écart</th><th>Progression</th><th></th></tr></thead>
+          <tbody>
+            ${lignes.map(l => {
+              const pct = l.pourcentage;
+              const depasse = l.type === 'sortie' && pct !== null && pct > 100;
+              const barColor = depasse ? 'var(--c-err)' : (pct !== null && pct > 80 ? 'var(--c-warn)' : 'var(--c-ok)');
+              return `<tr>
+                <td><strong>${esc(l.categorie)}</strong></td>
+                <td>${l.type==='entree'?'Recette':'Dépense'}</td>
+                <td>${fmtMoney(l.montant_prevu)}</td>
+                <td>${fmtMoney(l.montant_realise)}</td>
+                <td class="${l.ecart>0 && l.type==='sortie'?'text-err':'text-ok'}">${l.ecart>0?'+':''}${fmtMoney(l.ecart)}</td>
+                <td style="min-width:120px">
+                  ${pct!==null ? `
+                    <div class="progress">
+                      <div class="progress-bar" style="width:${Math.min(pct,100)}%;background:${barColor}"></div>
+                    </div>
+                    <div class="text-muted" style="font-size:11px;margin-top:2px">${pct}%</div>
+                  ` : '<span class="text-muted" style="font-size:11px">Pas de budget</span>'}
+                </td>
+                <td><button class="btn btn-danger btn-xs" onclick="supprimerBudgetLigne('${escJs(l.categorie)}','${l.type}','${mois}')">🗑</button></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>` : emptyHtml('🎯', 'Aucun budget ni transaction pour ce mois. Définissez un premier budget pour commencer le suivi.')}
+      </div>
+    </div>`;
+}
+window.pageBudget = pageBudget;
+
+function modalNouveauBudget(mois) {
+  openModal('🎯 Définir un budget', `
+    <form id="f-budget" style="display:flex;flex-direction:column;gap:14px">
+      <div class="fg"><label>Mois*</label><input type="month" name="mois" value="${mois}" required></div>
+      <div class="form-2">
+        <div class="fg"><label>Type*</label><select name="type" required>
+          <option value="sortie">Dépense</option><option value="entree">Recette</option>
+        </select></div>
+        <div class="fg"><label>Catégorie*</label><input name="categorie" required placeholder="Fournitures scolaires…"></div>
+      </div>
+      <div class="fg"><label>Montant prévu (GNF)*</label><input type="number" name="montant_prevu" min="0" required></div>
+      <div class="text-muted" style="font-size:11.5px">Si un budget existe déjà pour cette catégorie et ce mois, il sera simplement mis à jour.</div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="pageBudget('${mois}')">Annuler</button>
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+      </div>
+    </form>`, { narrow: true });
+
+  $('#f-budget').onsubmit = async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target));
+    fd.montant_prevu = parseFloat(fd.montant_prevu);
+    try {
+      await apiSaveBudget(fd);
+      toast('Budget enregistré', 'success');
+      closeModal();
+      pageBudget(fd.mois);
+    } catch(err) { toast(err.message, 'error'); }
+  };
+}
+window.modalNouveauBudget = modalNouveauBudget;
+
+async function supprimerBudgetLigne(categorie, type, mois) {
+  if (!confirm(`Retirer le budget prévu pour « ${categorie} » ?`)) return;
+  const tous = await apiGetBudgets(mois);
+  const ligne = tous.find(b => b.categorie === categorie && b.type === type);
+  if (!ligne) { pageBudget(mois); return; }
+  try {
+    await apiDeleteBudget(ligne.id);
+    toast('Budget retiré', 'success');
+    pageBudget(mois);
+  } catch(err) { toast(err.message, 'error'); }
+}
+window.supprimerBudgetLigne = supprimerBudgetLigne;
+
+/* ===================== TABLEAU DE BORD COMPTABLE (GRAPHIQUES) ===================== */
+let _chartsComptables = [];
+async function pageAnalyseComptable(mois) {
+  mois = mois || new Date().toISOString().slice(0, 7);
+  $('#content').innerHTML = loadingHtml;
+  const data = await apiAnalyseComptable(mois);
+
+  _chartsComptables.forEach(c => c.destroy());
+  _chartsComptables = [];
+
+  $('#content').innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">📈 Tableau de bord comptable</span>
+        <div class="card-actions">
+          <input type="month" value="${mois}" onchange="pageAnalyseComptable(this.value)">
+          <button class="btn btn-outline btn-sm" onclick="pageComptabilite()">← Retour</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <h4 style="margin:0 0 10px">Évolution sur 12 mois</h4>
+        <div style="height:280px;margin-bottom:28px"><canvas id="ch-tendance"></canvas></div>
+        <div class="form-2">
+          <div>
+            <h4 style="margin:0 0 10px">Répartition des dépenses — ${mois}</h4>
+            <div style="height:260px">
+              ${data.repartition_depenses.length ? '<canvas id="ch-depenses"></canvas>' : emptyHtml('📉','Aucune dépense ce mois-ci')}
+            </div>
+          </div>
+          <div>
+            <h4 style="margin:0 0 10px">Répartition des recettes — ${mois}</h4>
+            <div style="height:260px">
+              ${data.repartition_recettes.length ? '<canvas id="ch-recettes"></canvas>' : emptyHtml('📈','Aucune recette ce mois-ci')}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  try {
+    if (typeof Chart === 'undefined') throw new Error('Chart.js indisponible');
+    const COULEURS = ['#F0703F','#164B41','#5296C5','#F2B134','#8B5CF6','#EC4899','#14B8A6','#F97316','#6366F1','#84CC16'];
+
+    _chartsComptables.push(new Chart($('#ch-tendance'), {
+      type: 'bar',
+      data: {
+        labels: data.tendance.map(t => t.mois),
+        datasets: [
+          { label: 'Recettes', data: data.tendance.map(t => t.recettes), backgroundColor: 'rgba(5,150,105,.75)' },
+          { label: 'Dépenses', data: data.tendance.map(t => t.depenses), backgroundColor: 'rgba(220,38,38,.75)' },
+        ]
+      },
+      options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'top'}}, scales:{y:{beginAtZero:true}} }
+    }));
+
+    if (data.repartition_depenses.length) {
+      _chartsComptables.push(new Chart($('#ch-depenses'), {
+        type: 'doughnut',
+        data: {
+          labels: data.repartition_depenses.map(d => d.categorie),
+          datasets: [{ data: data.repartition_depenses.map(d => d.total), backgroundColor: COULEURS }]
+        },
+        options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}}} }
+      }));
+    }
+    if (data.repartition_recettes.length) {
+      _chartsComptables.push(new Chart($('#ch-recettes'), {
+        type: 'doughnut',
+        data: {
+          labels: data.repartition_recettes.map(d => d.categorie),
+          datasets: [{ data: data.repartition_recettes.map(d => d.total), backgroundColor: COULEURS }]
+        },
+        options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}}} }
+      }));
+    }
+  } catch (e) { console.warn('Graphiques indisponibles :', e); }
+}
+window.pageAnalyseComptable = pageAnalyseComptable;
+
+/* ===================== RAPPROCHEMENT BANCAIRE ===================== */
+let _dernierAnalyseRapprochement = null;
+
+async function pageRapprochement() {
+  const deb = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+  const fin = today();
+  const etat = await apiEtatRapprochement(`date_debut=${deb}&date_fin=${fin}`);
+
+  $('#content').innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">🏦 Rapprochement bancaire</span>
+        <button class="btn btn-outline btn-sm" onclick="pageComptabilite()">← Retour</button>
+      </div>
+      <div class="card-body">
+        <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">
+          <div class="stat"><div class="stat-label">Opérations du mois</div><div class="stat-val" style="font-size:16px">${etat.total}</div></div>
+          <div class="stat"><div class="stat-label">Rapprochées</div><div class="stat-val text-ok" style="font-size:16px">${etat.rapprochees}</div></div>
+          <div class="stat"><div class="stat-label">Non rapprochées</div><div class="stat-val ${etat.non_rapprochees?'text-warn':''}" style="font-size:16px">${etat.non_rapprochees}</div></div>
+        </div>
+
+        <div class="form-section" style="border:1px dashed var(--c-line);border-radius:var(--r);padding:16px;margin-bottom:20px">
+          <div class="form-section-title">Importer un relevé bancaire</div>
+          <p class="text-muted" style="font-size:12px;margin:0 0 10px">Fichier CSV ou Excel avec 3 colonnes dans cet ordre : <strong>Date</strong>, <strong>Description</strong>, <strong>Montant</strong> (positif pour un crédit, négatif pour un débit).</p>
+          <input type="file" id="fichier-releve" accept=".csv,.xlsx,.xls">
+          <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="analyserReleve()">🔍 Analyser le relevé</button>
+        </div>
+
+        <div id="resultats-rapprochement"></div>
+
+        <h4 style="margin:20px 0 10px">Opérations non rapprochées (${etat.non_rapprochees})</h4>
+        <table class="table">
+          <thead><tr><th>Date</th><th>Type</th><th>Catégorie</th><th>Montant</th><th></th></tr></thead>
+          <tbody>
+            ${etat.transactions.filter(t=>!t.rapproche).map(t => `
+              <tr>
+                <td>${fmtDate(t.date_op)}</td>
+                <td><span class="badge ${t.type==='entree'?'bdg-ok':'bdg-err'}">${t.type==='entree'?'Recette':'Dépense'}</span></td>
+                <td>${esc(t.categorie||'—')}</td>
+                <td>${fmtMoney(t.montant)}</td>
+                <td><button class="btn btn-outline btn-xs" onclick="confirmerRapprochementManuel('${escJs(t.id)}')">✔ Rapprocher manuellement</button></td>
+              </tr>`).join('') || `<tr><td colspan="5">${emptyHtml('✅','Tout est déjà rapproché pour cette période')}</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+window.pageRapprochement = pageRapprochement;
+
+async function analyserReleve() {
+  const fichier = $('#fichier-releve').files[0];
+  if (!fichier) { toast('Choisissez un fichier', 'error'); return; }
+  try {
+    const d = await apiAnalyserRapprochement(fichier);
+    _dernierAnalyseRapprochement = d;
+    const zone = $('#resultats-rapprochement');
+    zone.innerHTML = `
+      <div class="alert alert-info">${d.nb_correspondances} correspondance(s) trouvée(s) sur ${d.nb_lignes_releve} ligne(s) du relevé.</div>
+      <table class="table">
+        <thead><tr><th>Ligne du relevé</th><th>Montant</th><th>Correspondance trouvée</th><th></th></tr></thead>
+        <tbody>
+          ${d.resultats.map((r, i) => `
+            <tr>
+              <td>${fmtDate(r.releve.date)} — ${esc(r.releve.description)}</td>
+              <td>${fmtMoney(r.releve.montant)}</td>
+              <td>${r.transaction_suggeree
+                ? `${fmtDate(r.transaction_suggeree.date_op)} · ${esc(r.transaction_suggeree.categorie||'')} · ${fmtMoney(r.transaction_suggeree.montant)}`
+                : '<span class="text-muted">Aucune correspondance dans le système</span>'}</td>
+              <td>${r.transaction_suggeree
+                ? `<button class="btn btn-ok btn-xs" onclick="confirmerRapprochementSuggere('${escJs(r.transaction_suggeree.id)}', this)">✔ Confirmer</button>`
+                : ''}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch(err) { toast(err.message, 'error'); }
+}
+window.analyserReleve = analyserReleve;
+
+async function confirmerRapprochementSuggere(transactionId, btn) {
+  try {
+    await apiValiderRapprochement(transactionId);
+    toast('Rapprochement confirmé', 'success');
+    btn.closest('tr').style.opacity = '.4';
+    btn.outerHTML = '✅ Rapproché';
+  } catch(err) { toast(err.message, 'error'); }
+}
+window.confirmerRapprochementSuggere = confirmerRapprochementSuggere;
+
+async function confirmerRapprochementManuel(transactionId) {
+  if (!confirm('Marquer cette opération comme rapprochée avec le relevé bancaire ?')) return;
+  try {
+    await apiValiderRapprochement(transactionId);
+    toast('Rapprochée', 'success');
+    pageRapprochement();
+  } catch(err) { toast(err.message, 'error'); }
+}
+window.confirmerRapprochementManuel = confirmerRapprochementManuel;

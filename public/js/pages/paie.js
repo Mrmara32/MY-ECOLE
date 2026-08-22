@@ -19,7 +19,7 @@ async function pagePaieList(mois = null) {
         <td class="mono text-right fw-600">${fmtMoney(p.salaire_base + (p.prime_revision||0))}</td>
         <td><span class="badge ${p.deja_paye?'bdg-ok':'bdg-warn'}">${p.deja_paye?'✔ Payé':'À payer'}</span></td>
         <td><div class="td-actions">
-          <button class="btn btn-outline btn-xs" onclick="modalAccorderAvance('${escJs(p.id)}','${escJs(p.prenom)} ${escJs(p.nom)}')">💵 Avance</button>
+          ${['admin','comptable'].includes(currentUser.role)?`<button class="btn btn-outline btn-xs" onclick="modalAccorderAvance('${escJs(p.id)}','${escJs(p.prenom)} ${escJs(p.nom)}')">💵 Avance</button>`:''}
           ${p.deja_paye
             ? `<button class="btn btn-outline btn-xs" onclick="imprimerBulletinSalaire('${escJs(p.bulletin_id)}')">🖨 Bulletin</button>`
             : `<button class="btn btn-ok btn-xs" onclick="modalPayerSalaire('${escJs(p.id)}','${escJs(p.prenom)} ${escJs(p.nom)}')">💰 Payer</button>`}

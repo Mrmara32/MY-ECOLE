@@ -11,7 +11,7 @@ async function pageSeances(mois = null) {
       apiGetSeancesCours('mois=' + mois), apiGetPersonnel().catch(() => [])
     ]);
     const estEnseignant = currentUser.role === 'enseignant';
-    const peutValider = ['admin', 'directeur'].includes(currentUser.role);
+    const peutValider = ['admin', 'directeur', 'directeur_etudes'].includes(currentUser.role);
     const enseignants = personnelList.filter(p => p.poste === 'Enseignant' || p.type_remuneration === 'horaire');
 
     const render = data => {

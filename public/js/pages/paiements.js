@@ -34,7 +34,7 @@ async function pagePaiements() {
           <td>${fmtDate(p.date_echeance)}</td>
           <td><span class="badge ${SCOLOR[p.statut]||'bdg-gray'}">${SLABEL[p.statut]||p.statut}</span></td>
           <td><div class="td-actions">
-            ${p.statut!=='paye'?`<button class="btn btn-ok btn-xs" onclick="modalVerser('${escJs(p.id)}','${escJs(p.prenom)} ${escJs(p.nom)}',${p.montant_du-p.montant_paye},'${escJs(p.libelle||'Scolarité')}')">💰 Payer</button>`:''}
+            ${p.statut!=='paye' && ['admin','comptable'].includes(currentUser.role)?`<button class="btn btn-ok btn-xs" onclick="modalVerser('${escJs(p.id)}','${escJs(p.prenom)} ${escJs(p.nom)}',${p.montant_du-p.montant_paye},'${escJs(p.libelle||'Scolarité')}')">💰 Payer</button>`:''}
             ${currentUser.role==='admin'?`<button class="btn btn-danger btn-xs" onclick="delPaiement('${escJs(p.id)}')">🗑</button>`:''}
           </div></td>
         </tr>`;

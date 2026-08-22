@@ -177,7 +177,7 @@ async function ouvrirCours(coursId) {
           ${p.nb_evaluations>0 ? `<span class="badge bdg-ok">✔ Évalué (${p.nb_evaluations})</span>` : '<span class="badge bdg-err">⚠ Non évalué</span>'}
         </td>
         <td><div class="td-actions">
-          ${!estEnseignant?`<button class="btn btn-ok btn-xs" onclick="modalPayerRevision('${escJs(p.id)}','${escJs(p.prenom)} ${escJs(p.nom)}',${reste})">💰 Payer</button>`:''}
+          ${!estEnseignant && ['admin','comptable'].includes(currentUser.role)?`<button class="btn btn-ok btn-xs" onclick="modalPayerRevision('${escJs(p.id)}','${escJs(p.prenom)} ${escJs(p.nom)}',${reste})">💰 Payer</button>`:''}
           <button class="btn btn-outline btn-xs" onclick="modalEvaluerRevision('${escJs(p.id)}','${escJs(p.prenom)} ${escJs(p.nom)}')">📝 Évaluer</button>
           ${!estEnseignant ? `<button class="btn btn-danger btn-xs" onclick="delRevisionParticipant('${escJs(p.id)}','${escJs(coursId)}')">🗑</button>` : ''}
         </div></td>
