@@ -12,8 +12,8 @@ GESTION_ROLES = ('admin', 'directeur', 'comptable', 'secretaire', 'enseignant')
 GESTION_SANS_ENSEIGNANT = ('admin', 'directeur', 'comptable', 'secretaire')
 
 
-def _cours_with_stats(cours_id):
-    row = db.execute("SELECT * FROM cours_revision WHERE id=?", (cours_id,)).fetchone()
+def _cours_with_stats(cours_id, ecole_id):
+    row = db.execute("SELECT * FROM cours_revision WHERE id=? AND ecole_id=?", (cours_id, ecole_id)).fetchone()
     if not row:
         return None
     c = row_to_dict(row)
@@ -39,8 +39,8 @@ def _cours_with_stats(cours_id):
 @require_auth
 def list_cours():
     statut = request.args.get('statut')
-    sql = "SELECT * FROM cours_revision WHERE 1=1"
-    params = []
+    sql = "SELECT * FROM cours_revision WHERE ecole_id=?"
+    params = [g.user['ecole_id']]
     if statut: sql += " AND statut=?"; params.append(statut)
     sql += " ORDER BY date_debut DESC"
     rows = db.execute(sql, params).fetchall()
@@ -67,7 +67,7 @@ def list_cours():
 @bp.route('/<c_id>', methods=['GET'])
 @require_auth
 def get_cours(c_id):
-    c = _cours_with_stats(c_id)
+    c = _cours_with_stats(c_id, g.user['ecole_id'])
     if not c:
         return jsonify({'error': 'Introuvable'}), 404
     if g.user['role'] == 'enseignant':
@@ -86,15 +86,15 @@ def create_cours():
         return jsonify({'error': 'Titre requis'}), 400
     cid = gen_id('rev')
     db.execute(
-        "INSERT INTO cours_revision (id,titre,matiere,niveau,description,date_debut,date_fin,prix,capacite_max,salle,duree_seance) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        (cid, titre, body.get('matiere'), body.get('niveau'), body.get('description'),
+        "INSERT INTO cours_revision (id,ecole_id,titre,matiere,niveau,description,date_debut,date_fin,prix,capacite_max,salle,duree_seance) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        (cid, g.user['ecole_id'], titre, body.get('matiere'), body.get('niveau'), body.get('description'),
          body.get('date_debut'), body.get('date_fin'), body.get('prix', 0), body.get('capacite_max'),
          body.get('salle'), body.get('duree_seance', 1)),
     )
     db.commit()
     log_action(g.user, 'creation', 'cours_revision', cid, {'titre': titre, 'prix': body.get('prix', 0)})
-    return jsonify(_cours_with_stats(cid)), 201
+    return jsonify(_cours_with_stats(cid, g.user['ecole_id'])), 201
 
 
 @bp.route('/<c_id>', methods=['PUT'])
@@ -102,7 +102,7 @@ def create_cours():
 @require_role(*GESTION_SANS_ENSEIGNANT)
 def update_cours(c_id):
     body = request.get_json(silent=True) or {}
-    if not db.execute("SELECT id FROM cours_revision WHERE id=?", (c_id,)).fetchone():
+    if not db.execute("SELECT id FROM cours_revision WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Introuvable'}), 404
     db.execute(
         """UPDATE cours_revision SET titre=COALESCE(?,titre), matiere=COALESCE(?,matiere),
@@ -110,24 +110,24 @@ def update_cours(c_id):
            date_debut=COALESCE(?,date_debut), date_fin=COALESCE(?,date_fin),
            prix=COALESCE(?,prix), capacite_max=COALESCE(?,capacite_max), statut=COALESCE(?,statut),
            salle=COALESCE(?,salle), duree_seance=COALESCE(?,duree_seance)
-           WHERE id=?""",
+           WHERE id=? AND ecole_id=?""",
         (body.get('titre'), body.get('matiere'), body.get('niveau'), body.get('description'),
          body.get('date_debut'), body.get('date_fin'), body.get('prix'), body.get('capacite_max'),
-         body.get('statut'), body.get('salle'), body.get('duree_seance'), c_id),
+         body.get('statut'), body.get('salle'), body.get('duree_seance'), c_id, g.user['ecole_id']),
     )
     db.commit()
     log_action(g.user, 'modification', 'cours_revision', c_id, {'motif': body.get('motif'), **body})
-    return jsonify(_cours_with_stats(c_id))
+    return jsonify(_cours_with_stats(c_id, g.user['ecole_id']))
 
 
 @bp.route('/<c_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin', 'directeur')
 def delete_cours(c_id):
-    c = db.execute("SELECT * FROM cours_revision WHERE id=?", (c_id,)).fetchone()
+    c = db.execute("SELECT * FROM cours_revision WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone()
     if not c:
         return jsonify({'error': 'Introuvable'}), 404
-    db.execute("DELETE FROM cours_revision WHERE id=?", (c_id,))
+    db.execute("DELETE FROM cours_revision WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id']))
     db.commit()
     log_action(g.user, 'suppression', 'cours_revision', c_id, {'titre': c['titre']})
     return jsonify({'success': True})
@@ -139,6 +139,8 @@ def delete_cours(c_id):
 @bp.route('/<c_id>/participants', methods=['GET'])
 @require_auth
 def list_participants(c_id):
+    if not db.execute("SELECT id FROM cours_revision WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone():
+        return jsonify({'error': 'Cours introuvable'}), 404
     rows = db.execute(
         """SELECT p.*,
            (SELECT COUNT(*) FROM revision_evaluations e WHERE e.participant_id=p.id) as nb_evaluations
@@ -152,7 +154,7 @@ def list_participants(c_id):
 @require_role(*GESTION_ROLES)
 def add_participant(c_id):
     body = request.get_json(silent=True) or {}
-    cours = db.execute("SELECT * FROM cours_revision WHERE id=?", (c_id,)).fetchone()
+    cours = db.execute("SELECT * FROM cours_revision WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone()
     if not cours:
         return jsonify({'error': 'Cours introuvable'}), 404
 
@@ -161,7 +163,7 @@ def add_participant(c_id):
 
     # Si un élève interne est sélectionné, on récupère son nom/prénom automatiquement
     if eleve_id:
-        eleve = db.execute("SELECT * FROM eleves WHERE id=?", (eleve_id,)).fetchone()
+        eleve = db.execute("SELECT * FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id'])).fetchone()
         if not eleve:
             return jsonify({'error': 'Élève introuvable'}), 404
         nom, prenom = eleve['nom'], eleve['prenom']
@@ -181,9 +183,9 @@ def add_participant(c_id):
 
     pid = gen_id('rp')
     db.execute(
-        "INSERT INTO revision_participants (id,cours_id,eleve_id,nom,prenom,telephone,ecole_origine,est_externe) "
-        "VALUES (?,?,?,?,?,?,?,?)",
-        (pid, c_id, eleve_id, nom, prenom, body.get('telephone'), ecole_origine, est_externe),
+        "INSERT INTO revision_participants (id,ecole_id,cours_id,eleve_id,nom,prenom,telephone,ecole_origine,est_externe) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (pid, g.user['ecole_id'], c_id, eleve_id, nom, prenom, body.get('telephone'), ecole_origine, est_externe),
     )
     db.commit()
     log_action(g.user, 'inscription', 'cours_revision', c_id,
@@ -196,14 +198,14 @@ def add_participant(c_id):
 @require_auth
 @require_role(*GESTION_SANS_ENSEIGNANT)
 def delete_participant(p_id):
-    db.execute("DELETE FROM revision_participants WHERE id=?", (p_id,))
+    db.execute("DELETE FROM revision_participants WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id']))
     db.commit()
     return jsonify({'success': True})
 
 
 @bp.route('/participants/<p_id>/payer', methods=['POST'])
 @require_auth
-@require_role('admin', 'directeur', 'comptable', 'secretaire')
+@require_role('admin', 'comptable')
 def payer_participant(p_id):
     body = request.get_json(silent=True) or {}
     try:
@@ -215,7 +217,7 @@ def payer_participant(p_id):
 
     p = db.execute(
         """SELECT rp.*, c.titre as cours_titre, c.prix as prix_cours
-           FROM revision_participants rp JOIN cours_revision c ON c.id=rp.cours_id WHERE rp.id=?""", (p_id,)
+           FROM revision_participants rp JOIN cours_revision c ON c.id=rp.cours_id WHERE rp.id=? AND rp.ecole_id=?""", (p_id, g.user['ecole_id'])
     ).fetchone()
     if not p:
         return jsonify({'error': 'Participant introuvable'}), 404
@@ -233,9 +235,9 @@ def payer_participant(p_id):
     date_vers = body.get('date_vers') or datetime.now().strftime('%Y-%m-%d')
     tid = gen_id('t')
     db.execute(
-        "INSERT INTO transactions (id,type,date_op,description,categorie,moyen_paiement,montant,reference,eleve_id,cree_par,statut_validation) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        (tid, 'entree', date_vers, f"Cours de révision « {p['cours_titre']} » — {p['prenom']} {p['nom']}",
+        "INSERT INTO transactions (id,ecole_id,type,date_op,description,categorie,moyen_paiement,montant,reference,eleve_id,cree_par,statut_validation) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        (tid, g.user['ecole_id'], 'entree', date_vers, f"Cours de révision « {p['cours_titre']} » — {p['prenom']} {p['nom']}",
          'Cours de révision', body.get('moyen_paiement', 'Espèces'), montant,
          body.get('reference') or f"REV-{p_id}", p['eleve_id'], g.user['id'], 'auto'),
     )
@@ -251,6 +253,8 @@ def payer_participant(p_id):
 @bp.route('/participants/<p_id>/evaluations', methods=['GET'])
 @require_auth
 def list_evaluations(p_id):
+    if not db.execute("SELECT id FROM revision_participants WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id'])).fetchone():
+        return jsonify({'error': 'Participant introuvable'}), 404
     rows = db.execute(
         """SELECT e.*, u.full_name as evaluateur_nom FROM revision_evaluations e
            LEFT JOIN users u ON u.id=e.evaluateur_id WHERE e.participant_id=? ORDER BY e.date_evaluation DESC""",
@@ -264,15 +268,15 @@ def list_evaluations(p_id):
 @require_role('admin', 'directeur', 'enseignant')
 def create_evaluation(p_id):
     body = request.get_json(silent=True) or {}
-    p = db.execute("SELECT * FROM revision_participants WHERE id=?", (p_id,)).fetchone()
+    p = db.execute("SELECT * FROM revision_participants WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id'])).fetchone()
     if not p:
         return jsonify({'error': 'Participant introuvable'}), 404
     date_evaluation = body.get('date_evaluation') or datetime.now().strftime('%Y-%m-%d')
     eid = gen_id('reval')
     db.execute(
-        "INSERT INTO revision_evaluations (id,participant_id,date_evaluation,note,note_max,appreciation,evaluateur_id) "
-        "VALUES (?,?,?,?,?,?,?)",
-        (eid, p_id, date_evaluation, body.get('note'), body.get('note_max', 20), body.get('appreciation'), g.user['id']),
+        "INSERT INTO revision_evaluations (id,ecole_id,participant_id,date_evaluation,note,note_max,appreciation,evaluateur_id) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (eid, g.user['ecole_id'], p_id, date_evaluation, body.get('note'), body.get('note_max', 20), body.get('appreciation'), g.user['id']),
     )
     db.commit()
     log_action(g.user, 'evaluation', 'cours_revision', p_id,
@@ -285,7 +289,7 @@ def create_evaluation(p_id):
 @require_auth
 @require_role('admin', 'directeur', 'enseignant')
 def delete_evaluation(e_id):
-    db.execute("DELETE FROM revision_evaluations WHERE id=?", (e_id,))
+    db.execute("DELETE FROM revision_evaluations WHERE id=? AND ecole_id=?", (e_id, g.user['ecole_id']))
     db.commit()
     return jsonify({'success': True})
 
@@ -296,6 +300,8 @@ def delete_evaluation(e_id):
 @bp.route('/<c_id>/enseignants', methods=['GET'])
 @require_auth
 def list_enseignants_cours(c_id):
+    if not db.execute("SELECT id FROM cours_revision WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone():
+        return jsonify({'error': 'Cours introuvable'}), 404
     rows = db.execute(
         """SELECT ce.*, p.nom, p.prenom, p.telephone FROM cours_revision_enseignants ce
            JOIN personnel p ON p.id=ce.personnel_id WHERE ce.cours_id=? ORDER BY p.nom""", (c_id,)
@@ -311,16 +317,16 @@ def assigner_enseignant(c_id):
     personnel_id = body.get('personnel_id')
     if not personnel_id:
         return jsonify({'error': 'Enseignant requis'}), 400
-    if not db.execute("SELECT id FROM cours_revision WHERE id=?", (c_id,)).fetchone():
+    if not db.execute("SELECT id FROM cours_revision WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Cours introuvable'}), 404
-    p = db.execute("SELECT * FROM personnel WHERE id=?", (personnel_id,)).fetchone()
+    p = db.execute("SELECT * FROM personnel WHERE id=? AND ecole_id=?", (personnel_id, g.user['ecole_id'])).fetchone()
     if not p:
         return jsonify({'error': 'Enseignant introuvable'}), 404
     ceid = gen_id('ce')
     try:
         db.execute(
-            "INSERT INTO cours_revision_enseignants (id,cours_id,personnel_id,matiere,jour,creneau) VALUES (?,?,?,?,?,?)",
-            (ceid, c_id, personnel_id, body.get('matiere'), body.get('jour'), body.get('creneau')))
+            "INSERT INTO cours_revision_enseignants (id,ecole_id,cours_id,personnel_id,matiere,jour,creneau) VALUES (?,?,?,?,?,?,?)",
+            (ceid, g.user['ecole_id'], c_id, personnel_id, body.get('matiere'), body.get('jour'), body.get('creneau')))
         db.commit()
     except Exception:
         return jsonify({'error': 'Cet enseignant est déjà assigné à ce cours'}), 409
@@ -338,7 +344,7 @@ def assigner_enseignant(c_id):
 @require_auth
 @require_role(*GESTION_SANS_ENSEIGNANT)
 def retirer_enseignant(ce_id):
-    db.execute("DELETE FROM cours_revision_enseignants WHERE id=?", (ce_id,))
+    db.execute("DELETE FROM cours_revision_enseignants WHERE id=? AND ecole_id=?", (ce_id, g.user['ecole_id']))
     db.commit()
     return jsonify({'success': True})
 
@@ -349,6 +355,8 @@ def retirer_enseignant(ce_id):
 @bp.route('/<c_id>/seances', methods=['GET'])
 @require_auth
 def list_seances(c_id):
+    if not db.execute("SELECT id FROM cours_revision WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone():
+        return jsonify({'error': 'Cours introuvable'}), 404
     rows = db.execute(
         """SELECT rs.*, p.nom, p.prenom FROM revision_seances rs
            JOIN personnel p ON p.id=rs.personnel_id WHERE rs.cours_id=? ORDER BY rs.date_seance DESC""", (c_id,)
@@ -365,17 +373,17 @@ def enregistrer_seance(c_id):
     date_seance = body.get('date_seance')
     if not personnel_id or not date_seance:
         return jsonify({'error': 'Enseignant et date requis'}), 400
-    cours = db.execute("SELECT * FROM cours_revision WHERE id=?", (c_id,)).fetchone()
+    cours = db.execute("SELECT * FROM cours_revision WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone()
     if not cours:
         return jsonify({'error': 'Cours introuvable'}), 404
-    p = db.execute("SELECT * FROM personnel WHERE id=?", (personnel_id,)).fetchone()
+    p = db.execute("SELECT * FROM personnel WHERE id=? AND ecole_id=?", (personnel_id, g.user['ecole_id'])).fetchone()
     if not p:
         return jsonify({'error': 'Enseignant introuvable'}), 404
     sid = gen_id('rs')
     duree = body.get('duree_heures', cours['duree_seance'] or 1)
     db.execute(
-        "INSERT INTO revision_seances (id,cours_id,personnel_id,date_seance,duree_heures) VALUES (?,?,?,?,?)",
-        (sid, c_id, personnel_id, date_seance, duree),
+        "INSERT INTO revision_seances (id,ecole_id,cours_id,personnel_id,date_seance,duree_heures) VALUES (?,?,?,?,?,?)",
+        (sid, g.user['ecole_id'], c_id, personnel_id, date_seance, duree),
     )
     db.commit()
     log_action(g.user, 'seance_enseignee', 'cours_revision', c_id,
@@ -388,7 +396,7 @@ def enregistrer_seance(c_id):
 @require_auth
 @require_role(*GESTION_SANS_ENSEIGNANT)
 def delete_seance(s_id):
-    db.execute("DELETE FROM revision_seances WHERE id=?", (s_id,))
+    db.execute("DELETE FROM revision_seances WHERE id=? AND ecole_id=?", (s_id, g.user['ecole_id']))
     db.commit()
     return jsonify({'success': True})
 
@@ -408,8 +416,8 @@ def calculer_redistribution():
 
     total_recettes = db.execute(
         """SELECT COALESCE(SUM(montant),0) as s FROM transactions
-           WHERE type='entree' AND categorie='Cours de révision' AND statut_validation IN ('auto','valide')
-           AND strftime('%Y-%m',date_op)=?""", (mois,)
+           WHERE ecole_id=? AND type='entree' AND categorie='Cours de révision' AND statut_validation IN ('auto','valide')
+           AND strftime('%Y-%m',date_op)=?""", (g.user['ecole_id'], mois)
     ).fetchone()['s']
     pool_60pct = round(total_recettes * 0.60)
 
@@ -418,8 +426,8 @@ def calculer_redistribution():
            SUM(rs.duree_heures) as total_heures,
            SUM(CASE WHEN rs.redistribue=1 THEN rs.duree_heures ELSE 0 END) as heures_deja_payees
            FROM revision_seances rs JOIN personnel p ON p.id=rs.personnel_id
-           WHERE strftime('%Y-%m',rs.date_seance)=?
-           GROUP BY rs.personnel_id ORDER BY p.nom""", (mois,)
+           WHERE rs.ecole_id=? AND strftime('%Y-%m',rs.date_seance)=?
+           GROUP BY rs.personnel_id ORDER BY p.nom""", (g.user['ecole_id'], mois)
     ).fetchall())
 
     total_heures_mois = sum(h['total_heures'] for h in heures_par_enseignant)
@@ -452,22 +460,22 @@ def verser_redistribution():
     if not personnel_id or not mois or not montant:
         return jsonify({'error': 'Enseignant, mois et montant requis'}), 400
 
-    p = db.execute("SELECT * FROM personnel WHERE id=?", (personnel_id,)).fetchone()
+    p = db.execute("SELECT * FROM personnel WHERE id=? AND ecole_id=?", (personnel_id, g.user['ecole_id'])).fetchone()
     if not p:
         return jsonify({'error': 'Enseignant introuvable'}), 404
 
     date_vers = body.get('date_vers') or datetime.now().strftime('%Y-%m-%d')
     tid = gen_id('t')
     db.execute(
-        "INSERT INTO transactions (id,type,date_op,description,categorie,moyen_paiement,montant,reference,cree_par,statut_validation) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?)",
-        (tid, 'sortie', date_vers, f"Redistribution cours de révision ({mois}) — {p['prenom']} {p['nom']}",
+        "INSERT INTO transactions (id,ecole_id,type,date_op,description,categorie,moyen_paiement,montant,reference,cree_par,statut_validation) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (tid, g.user['ecole_id'], 'sortie', date_vers, f"Redistribution cours de révision ({mois}) — {p['prenom']} {p['nom']}",
          'Redistribution cours de révision', body.get('moyen_paiement', 'Espèces'), montant,
          f"REDIST-{personnel_id}-{mois}", g.user['id'], 'auto'),
     )
     db.execute(
-        "UPDATE revision_seances SET redistribue=1 WHERE personnel_id=? AND strftime('%Y-%m',date_seance)=?",
-        (personnel_id, mois),
+        "UPDATE revision_seances SET redistribue=1 WHERE personnel_id=? AND ecole_id=? AND strftime('%Y-%m',date_seance)=?",
+        (personnel_id, g.user['ecole_id'], mois),
     )
     db.commit()
     log_action(g.user, 'redistribution_versee', 'cours_revision', personnel_id,

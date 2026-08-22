@@ -20,8 +20,8 @@ def list_notes():
     trimestre = request.args.get('trimestre')
 
     sql = """SELECT n.*, e.nom, e.prenom, e.classe, e.matricule
-             FROM notes n JOIN eleves e ON e.id=n.eleve_id WHERE 1=1"""
-    params = []
+             FROM notes n JOIN eleves e ON e.id=n.eleve_id WHERE n.ecole_id=?"""
+    params = [g.user['ecole_id']]
 
     if g.user['role'] == 'enseignant':
         mes_classes = get_classes_enseignant(g.user['id'])
@@ -29,6 +29,16 @@ def list_notes():
             return jsonify([])
         sql += f" AND e.classe IN ({','.join(['?']*len(mes_classes))})"
         params += mes_classes
+
+    if g.user['role'] == 'parent':
+        mes_enfants = [r['eleve_id'] for r in db.execute(
+            "SELECT eleve_id FROM parents_eleves WHERE user_id=?", (g.user['id'],)).fetchall()]
+        if not mes_enfants:
+            return jsonify([])
+        if eleve_id and eleve_id not in mes_enfants:
+            return jsonify({'error': "Accès refusé à cet élève"}), 403
+        sql += f" AND n.eleve_id IN ({','.join(['?']*len(mes_enfants))})"
+        params += mes_enfants
 
     if eleve_id: sql += " AND n.eleve_id=?"; params.append(eleve_id)
     if classe: sql += " AND e.classe=?"; params.append(classe)
@@ -50,8 +60,8 @@ def create_note():
         return jsonify({'error': 'Champs requis'}), 400
     nid = gen_id('n')
     db.execute(
-        "INSERT INTO notes (id,eleve_id,matiere,trimestre,type,note,note_max,date_note) VALUES (?,?,?,?,?,?,?,?)",
-        (nid, eleve_id, matiere, trimestre, body.get('type'), body.get('note'),
+        "INSERT INTO notes (id,ecole_id,eleve_id,matiere,trimestre,type,note,note_max,date_note) VALUES (?,?,?,?,?,?,?,?,?)",
+        (nid, g.user['ecole_id'], eleve_id, matiere, trimestre, body.get('type'), body.get('note'),
          body.get('note_max', 20), body.get('date_note')),
     )
     db.commit()
@@ -66,8 +76,8 @@ def update_note(note_id):
     body = request.get_json(silent=True) or {}
     db.execute(
         "UPDATE notes SET note=COALESCE(?,note), note_max=COALESCE(?,note_max), "
-        "type=COALESCE(?,type), date_note=COALESCE(?,date_note) WHERE id=?",
-        (body.get('note'), body.get('note_max'), body.get('type'), body.get('date_note'), note_id),
+        "type=COALESCE(?,type), date_note=COALESCE(?,date_note) WHERE id=? AND ecole_id=?",
+        (body.get('note'), body.get('note_max'), body.get('type'), body.get('date_note'), note_id, g.user['ecole_id']),
     )
     db.commit()
     row = db.execute("SELECT * FROM notes WHERE id=?", (note_id,)).fetchone()
@@ -78,7 +88,7 @@ def update_note(note_id):
 @require_auth
 @require_role('admin', 'directeur', 'enseignant')
 def delete_note(note_id):
-    db.execute("DELETE FROM notes WHERE id=?", (note_id,))
+    db.execute("DELETE FROM notes WHERE id=? AND ecole_id=?", (note_id, g.user['ecole_id']))
     db.commit()
     return jsonify({'success': True})
 
@@ -90,8 +100,8 @@ def delete_note(note_id):
 @require_auth
 def list_devoirs():
     classe, statut = request.args.get('classe'), request.args.get('statut')
-    sql = "SELECT * FROM devoirs WHERE 1=1"
-    params = []
+    sql = "SELECT * FROM devoirs WHERE ecole_id=?"
+    params = [g.user['ecole_id']]
 
     if g.user['role'] == 'enseignant':
         mes_classes = get_classes_enseignant(g.user['id'])
@@ -99,6 +109,15 @@ def list_devoirs():
             return jsonify([])
         sql += f" AND classe IN ({','.join(['?']*len(mes_classes))})"
         params += mes_classes
+
+    if g.user['role'] == 'parent':
+        classes_enfants = [r['classe'] for r in db.execute(
+            """SELECT DISTINCT e.classe FROM parents_eleves pe JOIN eleves e ON e.id=pe.eleve_id
+               WHERE pe.user_id=? AND e.classe IS NOT NULL""", (g.user['id'],)).fetchall()]
+        if not classes_enfants:
+            return jsonify([])
+        sql += f" AND classe IN ({','.join(['?']*len(classes_enfants))})"
+        params += classes_enfants
 
     if classe: sql += " AND classe=?"; params.append(classe)
     if statut: sql += " AND statut=?"; params.append(statut)
@@ -116,9 +135,9 @@ def create_devoir():
         return jsonify({'error': 'Titre requis'}), 400
     did = gen_id('d')
     db.execute(
-        "INSERT INTO devoirs (id,titre,matiere,classe,professeur_id,date_assignation,date_remise,description,statut) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
-        (did, body['titre'], body.get('matiere'), body.get('classe'), body.get('professeur_id'),
+        "INSERT INTO devoirs (id,ecole_id,titre,matiere,classe,professeur_id,date_assignation,date_remise,description,statut) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (did, g.user['ecole_id'], body['titre'], body.get('matiere'), body.get('classe'), body.get('professeur_id'),
          body.get('date_assignation'), body.get('date_remise'), body.get('description'),
          body.get('statut', 'En cours')),
     )
@@ -135,9 +154,9 @@ def update_devoir(devoir_id):
     db.execute(
         "UPDATE devoirs SET titre=COALESCE(?,titre), matiere=COALESCE(?,matiere), "
         "classe=COALESCE(?,classe), date_remise=COALESCE(?,date_remise), "
-        "description=COALESCE(?,description), statut=COALESCE(?,statut) WHERE id=?",
+        "description=COALESCE(?,description), statut=COALESCE(?,statut) WHERE id=? AND ecole_id=?",
         (body.get('titre'), body.get('matiere'), body.get('classe'), body.get('date_remise'),
-         body.get('description'), body.get('statut'), devoir_id),
+         body.get('description'), body.get('statut'), devoir_id, g.user['ecole_id']),
     )
     db.commit()
     row = db.execute("SELECT * FROM devoirs WHERE id=?", (devoir_id,)).fetchone()
@@ -148,7 +167,7 @@ def update_devoir(devoir_id):
 @require_auth
 @require_role('admin', 'directeur', 'enseignant')
 def delete_devoir(devoir_id):
-    db.execute("DELETE FROM devoirs WHERE id=?", (devoir_id,))
+    db.execute("DELETE FROM devoirs WHERE id=? AND ecole_id=?", (devoir_id, g.user['ecole_id']))
     db.commit()
     return jsonify({'success': True})
 
@@ -161,8 +180,8 @@ def delete_devoir(devoir_id):
 def list_edt():
     classe = request.args.get('classe')
     professeur_id = request.args.get('professeur_id')
-    sql = "SELECT * FROM emploi_du_temps WHERE 1=1"
-    params = []
+    sql = "SELECT * FROM emploi_du_temps WHERE ecole_id=?"
+    params = [g.user['ecole_id']]
     if classe: sql += " AND classe=?"; params.append(classe)
     if professeur_id: sql += " AND professeur_id=?"; params.append(professeur_id)
     sql += " ORDER BY jour, creneau"
@@ -179,14 +198,14 @@ def create_edt():
     if not jour or not creneau or not classe:
         return jsonify({'error': 'Jour, créneau, classe requis'}), 400
     conflict = db.execute(
-        "SELECT id FROM emploi_du_temps WHERE jour=? AND creneau=? AND classe=?", (jour, creneau, classe)
+        "SELECT id FROM emploi_du_temps WHERE ecole_id=? AND jour=? AND creneau=? AND classe=?", (g.user['ecole_id'], jour, creneau, classe)
     ).fetchone()
     if conflict:
         return jsonify({'error': 'Conflit : ce créneau est déjà occupé pour cette classe'}), 409
     eid = gen_id('edt')
     db.execute(
-        "INSERT INTO emploi_du_temps (id,jour,creneau,classe,matiere,professeur_id,salle) VALUES (?,?,?,?,?,?,?)",
-        (eid, jour, creneau, classe, body.get('matiere'), body.get('professeur_id'), body.get('salle')),
+        "INSERT INTO emploi_du_temps (id,ecole_id,jour,creneau,classe,matiere,professeur_id,salle) VALUES (?,?,?,?,?,?,?,?)",
+        (eid, g.user['ecole_id'], jour, creneau, classe, body.get('matiere'), body.get('professeur_id'), body.get('salle')),
     )
     db.commit()
     row = db.execute("SELECT * FROM emploi_du_temps WHERE id=?", (eid,)).fetchone()
@@ -200,11 +219,13 @@ def update_edt(edt_id):
     body = request.get_json(silent=True) or {}
     db.execute(
         "UPDATE emploi_du_temps SET matiere=COALESCE(?,matiere), professeur_id=COALESCE(?,professeur_id), "
-        "salle=COALESCE(?,salle) WHERE id=?",
-        (body.get('matiere'), body.get('professeur_id'), body.get('salle'), edt_id),
+        "salle=COALESCE(?,salle) WHERE id=? AND ecole_id=?",
+        (body.get('matiere'), body.get('professeur_id'), body.get('salle'), edt_id, g.user['ecole_id']),
     )
     db.commit()
-    row = db.execute("SELECT * FROM emploi_du_temps WHERE id=?", (edt_id,)).fetchone()
+    row = db.execute("SELECT * FROM emploi_du_temps WHERE id=? AND ecole_id=?", (edt_id, g.user['ecole_id'])).fetchone()
+    if not row:
+        return jsonify({'error': 'Introuvable'}), 404
     return jsonify(row_to_dict(row))
 
 
@@ -212,7 +233,7 @@ def update_edt(edt_id):
 @require_auth
 @require_role('admin', 'directeur')
 def delete_edt(edt_id):
-    db.execute("DELETE FROM emploi_du_temps WHERE id=?", (edt_id,))
+    db.execute("DELETE FROM emploi_du_temps WHERE id=? AND ecole_id=?", (edt_id, g.user['ecole_id']))
     db.commit()
     return jsonify({'success': True})
 
@@ -229,8 +250,8 @@ def list_absences():
     date_fin = request.args.get('date_fin')
 
     sql = """SELECT a.*, e.nom, e.prenom, e.classe, e.matricule
-             FROM absences a JOIN eleves e ON e.id=a.eleve_id WHERE 1=1"""
-    params = []
+             FROM absences a JOIN eleves e ON e.id=a.eleve_id WHERE a.ecole_id=?"""
+    params = [g.user['ecole_id']]
 
     if g.user['role'] == 'enseignant':
         mes_classes = get_classes_enseignant(g.user['id'])
@@ -238,6 +259,16 @@ def list_absences():
             return jsonify([])
         sql += f" AND e.classe IN ({','.join(['?']*len(mes_classes))})"
         params += mes_classes
+
+    if g.user['role'] == 'parent':
+        mes_enfants = [r['eleve_id'] for r in db.execute(
+            "SELECT eleve_id FROM parents_eleves WHERE user_id=?", (g.user['id'],)).fetchall()]
+        if not mes_enfants:
+            return jsonify([])
+        if eleve_id and eleve_id not in mes_enfants:
+            return jsonify({'error': "Accès refusé à cet élève"}), 403
+        sql += f" AND a.eleve_id IN ({','.join(['?']*len(mes_enfants))})"
+        params += mes_enfants
 
     if eleve_id: sql += " AND a.eleve_id=?"; params.append(eleve_id)
     if classe: sql += " AND e.classe=?"; params.append(classe)
@@ -258,8 +289,8 @@ def stats_absences(eleve_id):
            SUM(CASE WHEN type='retard' THEN 1 ELSE 0 END) as total_retards,
            SUM(CASE WHEN type='absence' AND justifie=1 THEN 1 ELSE 0 END) as justifiees,
            SUM(CASE WHEN type='absence' AND justifie=0 THEN 1 ELSE 0 END) as non_justifiees
-           FROM absences WHERE eleve_id=?""",
-        (eleve_id,),
+           FROM absences WHERE eleve_id=? AND ecole_id=?""",
+        (eleve_id, g.user['ecole_id']),
     ).fetchone()
     result = dict(row)
     for k in result:
@@ -277,8 +308,8 @@ def create_absence():
         return jsonify({'error': 'Élève et date requis'}), 400
     aid = gen_id('abs')
     db.execute(
-        "INSERT INTO absences (id,eleve_id,date_abs,type,justifie,motif,duree) VALUES (?,?,?,?,?,?,?)",
-        (aid, eleve_id, date_abs, body.get('type', 'absence'), 1 if body.get('justifie') else 0,
+        "INSERT INTO absences (id,ecole_id,eleve_id,date_abs,type,justifie,motif,duree) VALUES (?,?,?,?,?,?,?,?)",
+        (aid, g.user['ecole_id'], eleve_id, date_abs, body.get('type', 'absence'), 1 if body.get('justifie') else 0,
          body.get('motif'), body.get('duree', 'journée')),
     )
     db.commit()
@@ -296,14 +327,16 @@ def update_absence(absence_id):
         return jsonify({'error': 'Une justification (motif) est obligatoire pour modifier une absence'}), 400
     db.execute(
         "UPDATE absences SET type=COALESCE(?,type), justifie=COALESCE(?,justifie), "
-        "motif=COALESCE(?,motif), duree=COALESCE(?,duree) WHERE id=?",
+        "motif=COALESCE(?,motif), duree=COALESCE(?,duree) WHERE id=? AND ecole_id=?",
         (body.get('type'), (1 if body.get('justifie') else 0) if 'justifie' in body else None,
-         body.get('motif'), body.get('duree'), absence_id),
+         body.get('motif'), body.get('duree'), absence_id, g.user['ecole_id']),
     )
     db.commit()
     if g.user['role'] == 'enseignant':
         log_action(g.user, 'modification', 'absence', absence_id, {'motif': body.get('motif')})
-    row = db.execute("SELECT * FROM absences WHERE id=?", (absence_id,)).fetchone()
+    row = db.execute("SELECT * FROM absences WHERE id=? AND ecole_id=?", (absence_id, g.user['ecole_id'])).fetchone()
+    if not row:
+        return jsonify({'error': 'Introuvable'}), 404
     return jsonify(row_to_dict(row))
 
 
@@ -311,7 +344,7 @@ def update_absence(absence_id):
 @require_auth
 @require_role('admin', 'directeur', 'secretaire')
 def delete_absence(absence_id):
-    db.execute("DELETE FROM absences WHERE id=?", (absence_id,))
+    db.execute("DELETE FROM absences WHERE id=? AND ecole_id=?", (absence_id, g.user['ecole_id']))
     db.commit()
     return jsonify({'success': True})
 
@@ -326,8 +359,8 @@ def list_reinscriptions():
     statut = request.args.get('statut')
     sql = """SELECT r.*, e.nom, e.prenom, e.matricule, e.classe as classe_actuelle, u.full_name as validee_par_nom
              FROM reinscriptions r JOIN eleves e ON e.id=r.eleve_id
-             LEFT JOIN users u ON u.id=r.validee_par WHERE 1=1"""
-    params = []
+             LEFT JOIN users u ON u.id=r.validee_par WHERE r.ecole_id=?"""
+    params = [g.user['ecole_id']]
     if annee_scolaire: sql += " AND r.annee_scolaire=?"; params.append(annee_scolaire)
     if statut: sql += " AND r.statut=?"; params.append(statut)
     sql += " ORDER BY r.date_demande DESC"
@@ -343,15 +376,15 @@ def create_reinscription():
     eleve_id, annee_scolaire = body.get('eleve_id'), body.get('annee_scolaire')
     if not eleve_id or not annee_scolaire:
         return jsonify({'error': 'Élève et année scolaire requis'}), 400
-    eleve = db.execute("SELECT classe FROM eleves WHERE id=?", (eleve_id,)).fetchone()
+    eleve = db.execute("SELECT classe FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id'])).fetchone()
     if not eleve:
         return jsonify({'error': 'Élève introuvable'}), 404
     rid = gen_id('r')
     try:
         db.execute(
-            "INSERT INTO reinscriptions (id,eleve_id,annee_scolaire,classe_precedente,classe_nouvelle,notes) "
-            "VALUES (?,?,?,?,?,?)",
-            (rid, eleve_id, annee_scolaire, eleve['classe'], body.get('classe_nouvelle'), body.get('notes')),
+            "INSERT INTO reinscriptions (id,ecole_id,eleve_id,annee_scolaire,classe_precedente,classe_nouvelle,notes) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (rid, g.user['ecole_id'], eleve_id, annee_scolaire, eleve['classe'], body.get('classe_nouvelle'), body.get('notes')),
         )
         db.commit()
     except Exception:
@@ -365,7 +398,7 @@ def create_reinscription():
 @require_role('admin', 'directeur')
 def valider_reinscription(r_id):
     body = request.get_json(silent=True) or {}
-    r = db.execute("SELECT * FROM reinscriptions WHERE id=?", (r_id,)).fetchone()
+    r = db.execute("SELECT * FROM reinscriptions WHERE id=? AND ecole_id=?", (r_id, g.user['ecole_id'])).fetchone()
     if not r:
         return jsonify({'error': 'Introuvable'}), 404
     statut = body.get('statut', 'validee')
@@ -393,7 +426,7 @@ def valider_reinscription(r_id):
 @require_auth
 @require_role('admin', 'directeur')
 def delete_reinscription(r_id):
-    db.execute("DELETE FROM reinscriptions WHERE id=?", (r_id,))
+    db.execute("DELETE FROM reinscriptions WHERE id=? AND ecole_id=?", (r_id, g.user['ecole_id']))
     db.commit()
     return jsonify({'success': True})
 
@@ -405,12 +438,12 @@ def delete_reinscription(r_id):
 @require_auth
 def list_personnel():
     mois = request.args.get('mois') or __import__('datetime').datetime.now().strftime('%Y-%m')
-    rows = db.execute("SELECT * FROM personnel ORDER BY nom, prenom").fetchall()
+    rows = db.execute("SELECT * FROM personnel WHERE ecole_id=? ORDER BY nom, prenom", (g.user['ecole_id'],)).fetchall()
     result = rows_to_list(rows)
     # Pour le personnel payé à l'heure, calculer le salaire du mois à partir des heures saisies
     for p in result:
         if p.get('type_remuneration') == 'horaire':
-            h = db.execute("SELECT nombre_heures FROM heures_enseignement WHERE personnel_id=? AND mois=?", (p['id'], mois)).fetchone()
+            h = db.execute("SELECT nombre_heures FROM heures_enseignement WHERE personnel_id=? AND ecole_id=? AND mois=?", (p['id'], g.user['ecole_id'], mois)).fetchone()
             p['heures_mois'] = h['nombre_heures'] if h else 0
             p['salaire_calcule'] = round((h['nombre_heures'] if h else 0) * (p.get('taux_horaire') or 0))
         else:
@@ -436,12 +469,12 @@ def create_personnel():
     derniere_erreur = None
     with matricule_lock:
         for _ in range(5):
-            matricule = matricule_impose or next_matricule_personnel()
+            matricule = matricule_impose or next_matricule_personnel(g.user['ecole_id'])
             try:
                 db.execute(
-                    "INSERT INTO personnel (id,nom,prenom,poste,matiere,telephone,email,date_embauche,salaire,user_id,cycle_enseignement,type_remuneration,taux_horaire,matricule,adresse) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (pid, body.get('nom', ''), body.get('prenom', ''), body.get('poste'), body.get('matiere'),
+                    "INSERT INTO personnel (id,ecole_id,nom,prenom,poste,matiere,telephone,email,date_embauche,salaire,user_id,cycle_enseignement,type_remuneration,taux_horaire,matricule,adresse) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (pid, g.user['ecole_id'], body.get('nom', ''), body.get('prenom', ''), body.get('poste'), body.get('matiere'),
                      body.get('telephone'), body.get('email'), body.get('date_embauche'),
                      body.get('salaire', 0), body.get('user_id'), body.get('cycle_enseignement'),
                      type_remuneration, body.get('taux_horaire', 0), matricule, body.get('adresse')),
@@ -471,15 +504,17 @@ def update_personnel(p_id):
            matiere=COALESCE(?,matiere), telephone=COALESCE(?,telephone), email=COALESCE(?,email),
            date_embauche=COALESCE(?,date_embauche), salaire=COALESCE(?,salaire),
            cycle_enseignement=COALESCE(?,cycle_enseignement), type_remuneration=COALESCE(?,type_remuneration),
-           taux_horaire=COALESCE(?,taux_horaire), adresse=COALESCE(?,adresse) WHERE id=?""",
+           taux_horaire=COALESCE(?,taux_horaire), adresse=COALESCE(?,adresse) WHERE id=? AND ecole_id=?""",
         (body.get('nom'), body.get('prenom'), body.get('poste'), body.get('matiere'),
          body.get('telephone'), body.get('email'), body.get('date_embauche'),
          body.get('salaire'), body.get('cycle_enseignement'), body.get('type_remuneration'),
-         body.get('taux_horaire'), body.get('adresse'), p_id),
+         body.get('taux_horaire'), body.get('adresse'), p_id, g.user['ecole_id']),
     )
     db.commit()
     log_action(g.user, 'modification', 'personnel', p_id, {'motif': body.get('motif'), **body})
-    row = db.execute("SELECT * FROM personnel WHERE id=?", (p_id,)).fetchone()
+    row = db.execute("SELECT * FROM personnel WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id'])).fetchone()
+    if not row:
+        return jsonify({'error': 'Introuvable'}), 404
     return jsonify(row_to_dict(row))
 
 
@@ -487,7 +522,7 @@ def update_personnel(p_id):
 @require_auth
 @require_role('admin', 'directeur', 'secretaire')
 def delete_personnel(p_id):
-    db.execute("DELETE FROM personnel WHERE id=?", (p_id,))
+    db.execute("DELETE FROM personnel WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id']))
     db.commit()
     log_action(g.user, 'suppression', 'personnel', p_id, {})
     return jsonify({'success': True})
@@ -500,7 +535,7 @@ ALLOWED_PHOTO_EXT = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
 @require_auth
 @require_role('admin', 'directeur', 'secretaire')
 def upload_photo_personnel(p_id):
-    if not db.execute("SELECT id FROM personnel WHERE id=?", (p_id,)).fetchone():
+    if not db.execute("SELECT id FROM personnel WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Introuvable'}), 404
     file = request.files.get('photo')
     if not file or file.filename == '':
@@ -512,7 +547,7 @@ def upload_photo_personnel(p_id):
     upload_dir = current_app.config['UPLOAD_DIR']
     file.save(os.path.join(upload_dir, fname))
     url = '/uploads/' + fname
-    db.execute("UPDATE personnel SET photo_url=? WHERE id=?", (url, p_id))
+    db.execute("UPDATE personnel SET photo_url=? WHERE id=? AND ecole_id=?", (url, p_id, g.user['ecole_id']))
     db.commit()
     return jsonify({'photo_url': url})
 
@@ -524,7 +559,7 @@ def upload_photo_personnel(p_id):
 @require_auth
 def list_heures_personnel(p_id):
     rows = db.execute(
-        "SELECT * FROM heures_enseignement WHERE personnel_id=? ORDER BY mois DESC", (p_id,)
+        "SELECT * FROM heures_enseignement WHERE personnel_id=? AND ecole_id=? ORDER BY mois DESC", (p_id, g.user['ecole_id'])
     ).fetchall()
     return jsonify(rows_to_list(rows))
 
@@ -537,19 +572,19 @@ def saisir_heures_personnel(p_id):
     mois, nombre_heures = body.get('mois'), body.get('nombre_heures')
     if not mois or nombre_heures is None:
         return jsonify({'error': 'Mois et nombre d\'heures requis'}), 400
-    personnel = db.execute("SELECT * FROM personnel WHERE id=?", (p_id,)).fetchone()
+    personnel = db.execute("SELECT * FROM personnel WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id'])).fetchone()
     if not personnel:
         return jsonify({'error': 'Personnel introuvable'}), 404
     hid = gen_id('h')
     db.execute(
-        "INSERT INTO heures_enseignement (id,personnel_id,mois,nombre_heures) VALUES (?,?,?,?) "
+        "INSERT INTO heures_enseignement (id,ecole_id,personnel_id,mois,nombre_heures) VALUES (?,?,?,?,?) "
         "ON CONFLICT(personnel_id,mois) DO UPDATE SET nombre_heures=excluded.nombre_heures",
-        (hid, p_id, mois, nombre_heures),
+        (hid, g.user['ecole_id'], p_id, mois, nombre_heures),
     )
     db.commit()
     log_action(g.user, 'saisie_heures', 'personnel', p_id,
                {'mois': mois, 'nombre_heures': nombre_heures, 'nom': f"{personnel['prenom']} {personnel['nom']}"})
-    row = db.execute("SELECT * FROM heures_enseignement WHERE personnel_id=? AND mois=?", (p_id, mois)).fetchone()
+    row = db.execute("SELECT * FROM heures_enseignement WHERE personnel_id=? AND ecole_id=? AND mois=?", (p_id, g.user['ecole_id'], mois)).fetchone()
     return jsonify(row_to_dict(row)), 201
 
 
@@ -581,11 +616,11 @@ def list_seances_cours():
     mois = request.args.get('mois')
     statut = request.args.get('statut')
     sql = """SELECT s.*, p.nom, p.prenom, p.matricule FROM seances_cours s
-             JOIN personnel p ON p.id=s.personnel_id WHERE 1=1"""
-    params = []
+             JOIN personnel p ON p.id=s.personnel_id WHERE s.ecole_id=?"""
+    params = [g.user['ecole_id']]
     # Un enseignant ne voit que ses propres séances
     if g.user['role'] == 'enseignant':
-        mon_personnel = db.execute("SELECT id FROM personnel WHERE user_id=?", (g.user['id'],)).fetchone()
+        mon_personnel = db.execute("SELECT id FROM personnel WHERE user_id=? AND ecole_id=?", (g.user['id'], g.user['ecole_id'])).fetchone()
         if not mon_personnel:
             return jsonify([])
         sql += " AND s.personnel_id=?"; params.append(mon_personnel['id'])
@@ -612,11 +647,11 @@ def create_seance_cours():
 
     # Un enseignant ne peut déclarer une séance que pour lui-même
     if g.user['role'] == 'enseignant':
-        mon_personnel = db.execute("SELECT id FROM personnel WHERE user_id=?", (g.user['id'],)).fetchone()
+        mon_personnel = db.execute("SELECT id FROM personnel WHERE user_id=? AND ecole_id=?", (g.user['id'], g.user['ecole_id'])).fetchone()
         if not mon_personnel or mon_personnel['id'] != personnel_id:
             return jsonify({'error': 'Vous ne pouvez déclarer une séance que pour vous-même'}), 403
 
-    personnel = db.execute("SELECT * FROM personnel WHERE id=?", (personnel_id,)).fetchone()
+    personnel = db.execute("SELECT * FROM personnel WHERE id=? AND ecole_id=?", (personnel_id, g.user['ecole_id'])).fetchone()
     if not personnel:
         return jsonify({'error': 'Personnel introuvable'}), 404
 
@@ -634,9 +669,9 @@ def create_seance_cours():
 
     sid = gen_id('sc')
     db.execute(
-        """INSERT INTO seances_cours (id,personnel_id,date_seance,jour,creneau,classe,salle,matiere,duree_heures,statut,cree_par)
-           VALUES (?,?,?,?,?,?,?,?,?,'en_attente',?)""",
-        (sid, personnel_id, date_seance, jour, creneau, body.get('classe'), body.get('salle'),
+        """INSERT INTO seances_cours (id,ecole_id,personnel_id,date_seance,jour,creneau,classe,salle,matiere,duree_heures,statut,cree_par)
+           VALUES (?,?,?,?,?,?,?,?,?,?,'en_attente',?)""",
+        (sid, g.user['ecole_id'], personnel_id, date_seance, jour, creneau, body.get('classe'), body.get('salle'),
          body.get('matiere'), duree, g.user['id']),
     )
     db.commit()
@@ -648,9 +683,9 @@ def create_seance_cours():
 
 @bp.route('/seances-cours/<s_id>/valider', methods=['PUT'])
 @require_auth
-@require_role('admin', 'directeur')
+@require_role('admin', 'directeur', 'directeur_etudes')
 def valider_seance_cours(s_id):
-    s = db.execute("SELECT * FROM seances_cours WHERE id=?", (s_id,)).fetchone()
+    s = db.execute("SELECT * FROM seances_cours WHERE id=? AND ecole_id=?", (s_id, g.user['ecole_id'])).fetchone()
     if not s:
         return jsonify({'error': 'Introuvable'}), 404
     if s['statut'] != 'en_attente':
@@ -667,7 +702,7 @@ def valider_seance_cours(s_id):
 
 @bp.route('/seances-cours/valider-groupe', methods=['PUT'])
 @require_auth
-@require_role('admin', 'directeur')
+@require_role('admin', 'directeur', 'directeur_etudes')
 def valider_groupe_seances():
     """Valide en une seule fois toutes les séances en attente d'un enseignant pour un mois donné."""
     body = request.get_json(silent=True) or {}
@@ -675,8 +710,8 @@ def valider_groupe_seances():
     if not personnel_id or not mois:
         return jsonify({'error': 'Enseignant et mois requis'}), 400
     ids = db.execute(
-        "SELECT id FROM seances_cours WHERE personnel_id=? AND substr(date_seance,1,7)=? AND statut='en_attente'",
-        (personnel_id, mois),
+        "SELECT id FROM seances_cours WHERE personnel_id=? AND ecole_id=? AND substr(date_seance,1,7)=? AND statut='en_attente'",
+        (personnel_id, g.user['ecole_id'], mois),
     ).fetchall()
     for row in ids:
         db.execute("UPDATE seances_cours SET statut='validee', valide_par=?, date_validation=CURRENT_TIMESTAMP WHERE id=?",
@@ -688,10 +723,10 @@ def valider_groupe_seances():
 
 @bp.route('/seances-cours/<s_id>/rejeter', methods=['PUT'])
 @require_auth
-@require_role('admin', 'directeur')
+@require_role('admin', 'directeur', 'directeur_etudes')
 def rejeter_seance_cours(s_id):
     body = request.get_json(silent=True) or {}
-    s = db.execute("SELECT * FROM seances_cours WHERE id=?", (s_id,)).fetchone()
+    s = db.execute("SELECT * FROM seances_cours WHERE id=? AND ecole_id=?", (s_id, g.user['ecole_id'])).fetchone()
     if not s:
         return jsonify({'error': 'Introuvable'}), 404
     if s['statut'] != 'en_attente':
@@ -710,7 +745,7 @@ def rejeter_seance_cours(s_id):
 @require_auth
 @require_role('admin', 'directeur')
 def delete_seance_cours(s_id):
-    db.execute("DELETE FROM seances_cours WHERE id=?", (s_id,))
+    db.execute("DELETE FROM seances_cours WHERE id=? AND ecole_id=?", (s_id, g.user['ecole_id']))
     db.commit()
     return jsonify({'success': True})
 
@@ -721,8 +756,8 @@ def creneaux_emploi_temps_personnel(p_id):
     """Retourne les créneaux réguliers (issus de l'emploi du temps) de cet enseignant,
     pour pré-remplir facilement la déclaration d'une séance."""
     rows = db.execute(
-        "SELECT DISTINCT jour, creneau, classe, salle, matiere FROM emploi_du_temps WHERE professeur_id=? ORDER BY jour, creneau",
-        (p_id,),
+        "SELECT DISTINCT jour, creneau, classe, salle, matiere FROM emploi_du_temps WHERE professeur_id=? AND ecole_id=? ORDER BY jour, creneau",
+        (p_id, g.user['ecole_id']),
     ).fetchall()
     return jsonify(rows_to_list(rows))
 
@@ -736,8 +771,8 @@ def list_absences_personnel():
     date_debut = request.args.get('date_debut')
     date_fin = request.args.get('date_fin')
     sql = """SELECT ap.*, p.nom, p.prenom, p.poste, p.matiere
-             FROM absences_personnel ap JOIN personnel p ON p.id=ap.personnel_id WHERE 1=1"""
-    params = []
+             FROM absences_personnel ap JOIN personnel p ON p.id=ap.personnel_id WHERE ap.ecole_id=?"""
+    params = [g.user['ecole_id']]
     if date_debut: sql += " AND (ap.date_fin IS NULL OR ap.date_fin>=?)"; params.append(date_debut)
     if date_fin: sql += " AND ap.date_debut<=?"; params.append(date_fin)
     sql += " ORDER BY ap.date_debut DESC"
@@ -752,8 +787,9 @@ def absences_personnel_aujourdhui():
     rows = db.execute(
         """SELECT ap.*, p.nom, p.prenom, p.poste, p.matiere
            FROM absences_personnel ap JOIN personnel p ON p.id=ap.personnel_id
-           WHERE date(ap.date_debut) <= date('now') AND (ap.date_fin IS NULL OR date(ap.date_fin) >= date('now'))
-           ORDER BY p.nom"""
+           WHERE ap.ecole_id=? AND date(ap.date_debut) <= date('now') AND (ap.date_fin IS NULL OR date(ap.date_fin) >= date('now'))
+           ORDER BY p.nom""",
+        (g.user['ecole_id'],)
     ).fetchall()
     return jsonify(rows_to_list(rows))
 
@@ -766,13 +802,13 @@ def signaler_absence_personnel():
     personnel_id, date_debut = body.get('personnel_id'), body.get('date_debut')
     if not personnel_id or not date_debut:
         return jsonify({'error': 'Personnel et date requis'}), 400
-    p = db.execute("SELECT * FROM personnel WHERE id=?", (personnel_id,)).fetchone()
+    p = db.execute("SELECT * FROM personnel WHERE id=? AND ecole_id=?", (personnel_id, g.user['ecole_id'])).fetchone()
     if not p:
         return jsonify({'error': 'Personnel introuvable'}), 404
     aid = gen_id('apr')
     db.execute(
-        "INSERT INTO absences_personnel (id,personnel_id,date_debut,date_fin,motif,remplace_par,signale_par) VALUES (?,?,?,?,?,?,?)",
-        (aid, personnel_id, date_debut, body.get('date_fin'), body.get('motif'), body.get('remplace_par'), g.user['id']),
+        "INSERT INTO absences_personnel (id,ecole_id,personnel_id,date_debut,date_fin,motif,remplace_par,signale_par) VALUES (?,?,?,?,?,?,?,?)",
+        (aid, g.user['ecole_id'], personnel_id, date_debut, body.get('date_fin'), body.get('motif'), body.get('remplace_par'), g.user['id']),
     )
     db.commit()
     log_action(g.user, 'signalement_absence', 'personnel', personnel_id,
@@ -788,11 +824,13 @@ def update_absence_personnel(a_id):
     body = request.get_json(silent=True) or {}
     db.execute(
         "UPDATE absences_personnel SET date_fin=COALESCE(?,date_fin), motif=COALESCE(?,motif), "
-        "remplace_par=COALESCE(?,remplace_par) WHERE id=?",
-        (body.get('date_fin'), body.get('motif'), body.get('remplace_par'), a_id),
+        "remplace_par=COALESCE(?,remplace_par) WHERE id=? AND ecole_id=?",
+        (body.get('date_fin'), body.get('motif'), body.get('remplace_par'), a_id, g.user['ecole_id']),
     )
     db.commit()
-    row = db.execute("SELECT * FROM absences_personnel WHERE id=?", (a_id,)).fetchone()
+    row = db.execute("SELECT * FROM absences_personnel WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id'])).fetchone()
+    if not row:
+        return jsonify({'error': 'Introuvable'}), 404
     return jsonify(row_to_dict(row))
 
 
@@ -800,7 +838,7 @@ def update_absence_personnel(a_id):
 @require_auth
 @require_role('admin', 'directeur', 'secretaire')
 def delete_absence_personnel(a_id):
-    db.execute("DELETE FROM absences_personnel WHERE id=?", (a_id,))
+    db.execute("DELETE FROM absences_personnel WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id']))
     db.commit()
     return jsonify({'success': True})
 

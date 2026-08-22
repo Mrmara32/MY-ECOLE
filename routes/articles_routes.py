@@ -3,7 +3,7 @@ import time
 import random
 from flask import Blueprint, request, jsonify, g, current_app
 
-from database import db, gen_id, rows_to_list, row_to_dict, log_action
+from database import db, gen_id, rows_to_list, row_to_dict, log_action, ecole_id_depuis_code
 from auth import require_auth, require_role
 
 bp = Blueprint('articles_routes', __name__, url_prefix='/api/articles')
@@ -23,10 +23,13 @@ def _with_media(article):
 
 @bp.route('', methods=['GET'])
 def list_articles():
-    """Liste publique (pas d'auth requise) — pour affichage type 'actualités de l'école'."""
+    """Liste publique (pas d'auth requise) — pour affichage type 'actualités de l'école'.
+    Le code établissement (?ecole=CODE) identifie l'école visitée sur le site vitrine ;
+    à défaut, l'école n°1 (rétro-compatibilité mono-école)."""
+    ecole_id = ecole_id_depuis_code(request.args.get('ecole'))
     type_ = request.args.get('type')
-    sql = "SELECT a.*, u.full_name as auteur_nom FROM articles a LEFT JOIN users u ON u.id=a.auteur_id WHERE a.publie=1"
-    params = []
+    sql = "SELECT a.*, u.full_name as auteur_nom FROM articles a LEFT JOIN users u ON u.id=a.auteur_id WHERE a.publie=1 AND a.ecole_id=?"
+    params = [ecole_id]
     if type_: sql += " AND a.type=?"; params.append(type_)
     sql += " ORDER BY a.date_publication DESC LIMIT 100"
     rows = rows_to_list(db.execute(sql, params).fetchall())
@@ -42,7 +45,7 @@ def list_articles_admin():
     """Liste complète (y compris non publiés) pour la gestion interne."""
     rows = rows_to_list(db.execute(
         "SELECT a.*, u.full_name as auteur_nom FROM articles a LEFT JOIN users u ON u.id=a.auteur_id "
-        "ORDER BY a.date_publication DESC"
+        "WHERE a.ecole_id=? ORDER BY a.date_publication DESC", (g.user['ecole_id'],)
     ).fetchall())
     for r in rows:
         _with_media(r)
@@ -51,7 +54,8 @@ def list_articles_admin():
 
 @bp.route('/<a_id>', methods=['GET'])
 def get_article(a_id):
-    row = db.execute("SELECT a.*, u.full_name as auteur_nom FROM articles a LEFT JOIN users u ON u.id=a.auteur_id WHERE a.id=?", (a_id,)).fetchone()
+    ecole_id = ecole_id_depuis_code(request.args.get('ecole'))
+    row = db.execute("SELECT a.*, u.full_name as auteur_nom FROM articles a LEFT JOIN users u ON u.id=a.auteur_id WHERE a.id=? AND a.ecole_id=?", (a_id, ecole_id)).fetchone()
     if not row:
         return jsonify({'error': 'Introuvable'}), 404
     return jsonify(_with_media(row_to_dict(row)))
@@ -67,8 +71,8 @@ def create_article():
         return jsonify({'error': 'Titre requis'}), 400
     aid = gen_id('art')
     db.execute(
-        "INSERT INTO articles (id,titre,contenu,type,auteur_id,publie) VALUES (?,?,?,?,?,?)",
-        (aid, titre, body.get('contenu'), body.get('type', 'article'), g.user['id'], 1 if body.get('publie', True) else 0),
+        "INSERT INTO articles (id,ecole_id,titre,contenu,type,auteur_id,publie) VALUES (?,?,?,?,?,?,?)",
+        (aid, g.user['ecole_id'], titre, body.get('contenu'), body.get('type', 'article'), g.user['id'], 1 if body.get('publie', True) else 0),
     )
     db.commit()
     log_action(g.user, 'creation', 'article', aid, {'titre': titre})
@@ -81,7 +85,7 @@ def create_article():
 @require_role(*PUBLISH_ROLES)
 def update_article(a_id):
     body = request.get_json(silent=True) or {}
-    a = db.execute("SELECT * FROM articles WHERE id=?", (a_id,)).fetchone()
+    a = db.execute("SELECT * FROM articles WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id'])).fetchone()
     if not a:
         return jsonify({'error': 'Introuvable'}), 404
     if a['auteur_id'] != g.user['id'] and g.user['role'] not in ('admin', 'directeur'):
@@ -102,12 +106,12 @@ def update_article(a_id):
 @require_auth
 @require_role(*PUBLISH_ROLES)
 def delete_article(a_id):
-    a = db.execute("SELECT * FROM articles WHERE id=?", (a_id,)).fetchone()
+    a = db.execute("SELECT * FROM articles WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id'])).fetchone()
     if not a:
         return jsonify({'error': 'Introuvable'}), 404
     if a['auteur_id'] != g.user['id'] and g.user['role'] not in ('admin', 'directeur'):
         return jsonify({'error': 'Accès refusé'}), 403
-    db.execute("DELETE FROM articles WHERE id=?", (a_id,))
+    db.execute("DELETE FROM articles WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id']))
     db.commit()
     log_action(g.user, 'suppression', 'article', a_id, {'titre': a['titre']})
     return jsonify({'success': True})
@@ -136,7 +140,7 @@ def upload_image_contenu():
 @require_auth
 @require_role(*PUBLISH_ROLES)
 def upload_media(a_id):
-    if not db.execute("SELECT id FROM articles WHERE id=?", (a_id,)).fetchone():
+    if not db.execute("SELECT id FROM articles WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Article introuvable'}), 404
     file = request.files.get('fichier')
     if not file or file.filename == '':
@@ -156,8 +160,8 @@ def upload_media(a_id):
 
     mid = gen_id('med')
     db.execute(
-        "INSERT INTO articles_media (id,article_id,type,url,legende) VALUES (?,?,?,?,?)",
-        (mid, a_id, media_type, url, request.form.get('legende')),
+        "INSERT INTO articles_media (id,ecole_id,article_id,type,url,legende) VALUES (?,?,?,?,?,?)",
+        (mid, g.user['ecole_id'], a_id, media_type, url, request.form.get('legende')),
     )
     db.commit()
     row = db.execute("SELECT * FROM articles_media WHERE id=?", (mid,)).fetchone()
@@ -168,6 +172,6 @@ def upload_media(a_id):
 @require_auth
 @require_role(*PUBLISH_ROLES)
 def delete_media(m_id):
-    db.execute("DELETE FROM articles_media WHERE id=?", (m_id,))
+    db.execute("DELETE FROM articles_media WHERE id=? AND ecole_id=?", (m_id, g.user['ecole_id']))
     db.commit()
     return jsonify({'success': True})

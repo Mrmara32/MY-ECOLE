@@ -11,11 +11,12 @@ bp = Blueprint('auth_routes', __name__, url_prefix='/api/auth')
 def login_route():
     body = request.get_json(silent=True) or {}
     username, password = body.get('username'), body.get('password')
+    code_ecole = body.get('code_ecole')
     if not username or not password:
         return jsonify({'error': 'Identifiant et mot de passe requis'}), 400
-    result = do_login(username, password)
+    result = do_login(username, password, code_ecole)
     if not result:
-        return jsonify({'error': 'Identifiant ou mot de passe incorrect'}), 401
+        return jsonify({'error': 'Identifiant, mot de passe ou établissement incorrect'}), 401
     return jsonify(result)
 
 
@@ -23,7 +24,7 @@ def login_route():
 @require_auth
 def me():
     u = db.execute(
-        "SELECT id,username,full_name,role,email,telephone FROM users WHERE id=?", (g.user['id'],)
+        "SELECT id,ecole_id,username,full_name,role,email,telephone,civilite FROM users WHERE id=?", (g.user['id'],)
     ).fetchone()
     if not u:
         return jsonify({'error': 'Introuvable'}), 404

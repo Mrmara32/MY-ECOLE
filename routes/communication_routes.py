@@ -14,7 +14,7 @@ bp = Blueprint('communication_routes', __name__, url_prefix='/api')
 def list_annonces():
     rows = db.execute(
         "SELECT a.*, u.full_name as auteur_nom FROM annonces a LEFT JOIN users u ON u.id=a.auteur_id "
-        "ORDER BY a.date_publication DESC LIMIT 100"
+        "WHERE a.ecole_id=? ORDER BY a.date_publication DESC LIMIT 100", (g.user['ecole_id'],)
     ).fetchall()
     return jsonify(rows_to_list(rows))
 
@@ -29,8 +29,8 @@ def create_annonce():
         return jsonify({'error': 'Titre et contenu requis'}), 400
     aid = gen_id('ann')
     db.execute(
-        "INSERT INTO annonces (id,auteur_id,titre,contenu,cible) VALUES (?,?,?,?,?)",
-        (aid, g.user['id'], titre, contenu, body.get('cible', 'tous')),
+        "INSERT INTO annonces (id,ecole_id,auteur_id,titre,contenu,cible) VALUES (?,?,?,?,?,?)",
+        (aid, g.user['ecole_id'], g.user['id'], titre, contenu, body.get('cible', 'tous')),
     )
     db.commit()
     row = db.execute(
@@ -45,7 +45,7 @@ def create_annonce():
 @require_role('admin', 'directeur', 'secretaire', 'charge_communication')
 def update_annonce(a_id):
     body = request.get_json(silent=True) or {}
-    a = db.execute("SELECT * FROM annonces WHERE id=?", (a_id,)).fetchone()
+    a = db.execute("SELECT * FROM annonces WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id'])).fetchone()
     if not a:
         return jsonify({'error': 'Introuvable'}), 404
     if a['auteur_id'] != g.user['id'] and g.user['role'] != 'admin':
@@ -63,12 +63,12 @@ def update_annonce(a_id):
 @require_auth
 @require_role('admin', 'directeur', 'secretaire', 'charge_communication')
 def delete_annonce(a_id):
-    a = db.execute("SELECT * FROM annonces WHERE id=?", (a_id,)).fetchone()
+    a = db.execute("SELECT * FROM annonces WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id'])).fetchone()
     if not a:
         return jsonify({'error': 'Introuvable'}), 404
     if a['auteur_id'] != g.user['id'] and g.user['role'] != 'admin':
         return jsonify({'error': 'Accès refusé'}), 403
-    db.execute("DELETE FROM annonces WHERE id=?", (a_id,))
+    db.execute("DELETE FROM annonces WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id']))
     db.commit()
     return jsonify({'success': True})
 
@@ -81,8 +81,8 @@ def delete_annonce(a_id):
 def list_messages():
     destinataire_type = request.args.get('destinataire_type')
     destinataire_id = request.args.get('destinataire_id')
-    sql = "SELECT m.*, u.full_name as expediteur_nom FROM messages m LEFT JOIN users u ON u.id=m.expediteur_id WHERE 1=1"
-    params = []
+    sql = "SELECT m.*, u.full_name as expediteur_nom FROM messages m LEFT JOIN users u ON u.id=m.expediteur_id WHERE m.ecole_id=?"
+    params = [g.user['ecole_id']]
     if destinataire_type: sql += " AND m.destinataire_type=?"; params.append(destinataire_type)
     if destinataire_id: sql += " AND m.destinataire_id=?"; params.append(destinataire_id)
     sql += " ORDER BY m.date_envoi DESC LIMIT 200"
@@ -100,8 +100,8 @@ def create_message():
         return jsonify({'error': 'Destinataire et contenu requis'}), 400
     mid = gen_id('msg')
     db.execute(
-        "INSERT INTO messages (id,expediteur_id,destinataire_type,destinataire_id,sujet,contenu) VALUES (?,?,?,?,?,?)",
-        (mid, g.user['id'], destinataire_type, body.get('destinataire_id'), body.get('sujet'), contenu),
+        "INSERT INTO messages (id,ecole_id,expediteur_id,destinataire_type,destinataire_id,sujet,contenu) VALUES (?,?,?,?,?,?,?)",
+        (mid, g.user['ecole_id'], g.user['id'], destinataire_type, body.get('destinataire_id'), body.get('sujet'), contenu),
     )
     db.commit()
     row = db.execute(
@@ -115,7 +115,7 @@ def create_message():
 @require_auth
 @require_role('admin', 'directeur', 'secretaire', 'charge_communication')
 def delete_message(m_id):
-    db.execute("DELETE FROM messages WHERE id=?", (m_id,))
+    db.execute("DELETE FROM messages WHERE id=? AND ecole_id=?", (m_id, g.user['ecole_id']))
     db.commit()
     return jsonify({'success': True})
 
@@ -126,26 +126,28 @@ def delete_message(m_id):
 @bp.route('/dashboard', methods=['GET'])
 @require_auth
 def dashboard():
+    ecole_id = g.user['ecole_id']
+
     def scalar(sql, params=()):
-        row = db.execute(sql, params).fetchone()
+        row = db.execute(sql, (ecole_id,) + tuple(params)).fetchone()
         return list(row)[0] if row else 0
 
     stats = {
-        'eleves': scalar("SELECT COUNT(*) FROM eleves WHERE statut='actif'"),
-        'eleves_filles': scalar("SELECT COUNT(*) FROM eleves WHERE statut='actif' AND sexe='F'"),
-        'personnel': scalar("SELECT COUNT(*) FROM personnel"),
-        'recettes': scalar("SELECT COALESCE(SUM(montant),0) FROM transactions WHERE type='entree' AND statut_validation IN ('auto','valide')"),
-        'depenses': scalar("SELECT COALESCE(SUM(montant),0) FROM transactions WHERE type='sortie' AND statut_validation IN ('auto','valide')"),
-        'salaires_verses': scalar("SELECT COALESCE(SUM(montant),0) FROM transactions WHERE type='sortie' AND categorie='Salaires' AND statut_validation IN ('auto','valide')"),
-        'absences_jour': scalar("SELECT COUNT(*) FROM absences WHERE date_abs=date('now') AND type='absence'"),
-        'impayes': scalar("SELECT COALESCE(SUM(montant_du-montant_paye),0) FROM paiements WHERE statut!='paye'"),
-        'eleves_avec_impayes': scalar("SELECT COUNT(DISTINCT eleve_id) FROM paiements WHERE statut!='paye'"),
-        'devoirs_actifs': scalar("SELECT COUNT(*) FROM devoirs WHERE statut='En cours'"),
-        'reinsc_attente': scalar("SELECT COUNT(*) FROM reinscriptions WHERE statut='en_attente'"),
-        'depenses_en_attente': scalar("SELECT COUNT(*) FROM transactions WHERE statut_validation IN ('attente_directeur','attente_admin')"),
-        'montant_en_attente': scalar("SELECT COALESCE(SUM(montant),0) FROM transactions WHERE statut_validation IN ('attente_directeur','attente_admin')"),
-        'total_du_scolarite': scalar("SELECT COALESCE(SUM(montant_du),0) FROM paiements"),
-        'total_paye_scolarite': scalar("SELECT COALESCE(SUM(montant_paye),0) FROM paiements"),
+        'eleves': scalar("SELECT COUNT(*) FROM eleves WHERE ecole_id=? AND statut='actif'"),
+        'eleves_filles': scalar("SELECT COUNT(*) FROM eleves WHERE ecole_id=? AND statut='actif' AND sexe='F'"),
+        'personnel': scalar("SELECT COUNT(*) FROM personnel WHERE ecole_id=?"),
+        'recettes': scalar("SELECT COALESCE(SUM(montant),0) FROM transactions WHERE ecole_id=? AND type='entree' AND statut_validation IN ('auto','valide')"),
+        'depenses': scalar("SELECT COALESCE(SUM(montant),0) FROM transactions WHERE ecole_id=? AND type='sortie' AND statut_validation IN ('auto','valide')"),
+        'salaires_verses': scalar("SELECT COALESCE(SUM(montant),0) FROM transactions WHERE ecole_id=? AND type='sortie' AND categorie='Salaires' AND statut_validation IN ('auto','valide')"),
+        'absences_jour': scalar("SELECT COUNT(*) FROM absences WHERE ecole_id=? AND date_abs=date('now') AND type='absence'"),
+        'impayes': scalar("SELECT COALESCE(SUM(montant_du-montant_paye),0) FROM paiements WHERE ecole_id=? AND statut!='paye'"),
+        'eleves_avec_impayes': scalar("SELECT COUNT(DISTINCT eleve_id) FROM paiements WHERE ecole_id=? AND statut!='paye'"),
+        'devoirs_actifs': scalar("SELECT COUNT(*) FROM devoirs WHERE ecole_id=? AND statut='En cours'"),
+        'reinsc_attente': scalar("SELECT COUNT(*) FROM reinscriptions WHERE ecole_id=? AND statut='en_attente'"),
+        'depenses_en_attente': scalar("SELECT COUNT(*) FROM transactions WHERE ecole_id=? AND statut_validation IN ('attente_directeur','attente_admin')"),
+        'montant_en_attente': scalar("SELECT COALESCE(SUM(montant),0) FROM transactions WHERE ecole_id=? AND statut_validation IN ('attente_directeur','attente_admin')"),
+        'total_du_scolarite': scalar("SELECT COALESCE(SUM(montant_du),0) FROM paiements WHERE ecole_id=?"),
+        'total_paye_scolarite': scalar("SELECT COALESCE(SUM(montant_paye),0) FROM paiements WHERE ecole_id=?"),
     }
     stats['depenses_hors_salaires'] = stats['depenses'] - stats['salaires_verses']
     stats['solde'] = stats['recettes'] - stats['depenses']
@@ -159,57 +161,62 @@ def dashboard():
            COALESCE(SUM(pp.montant_paye),0) as montant_paye
            FROM eleves e
            LEFT JOIN paiements pp ON pp.eleve_id = e.id
-           WHERE e.statut='actif' AND e.classe IS NOT NULL
-           GROUP BY e.classe ORDER BY e.classe"""
+           WHERE e.ecole_id=? AND e.statut='actif' AND e.classe IS NOT NULL
+           GROUP BY e.classe ORDER BY e.classe""",
+        (ecole_id,)
     ).fetchall())
     for r in recouvrement_par_classe:
         r['montant_reste'] = r['montant_du'] - r['montant_paye']
 
     recettes_par_categorie = rows_to_list(db.execute(
         """SELECT COALESCE(categorie,'Non catégorisé') as categorie, COALESCE(SUM(montant),0) as montant
-           FROM transactions WHERE type='entree' AND statut_validation IN ('auto','valide')
-           GROUP BY categorie ORDER BY montant DESC"""
+           FROM transactions WHERE ecole_id=? AND type='entree' AND statut_validation IN ('auto','valide')
+           GROUP BY categorie ORDER BY montant DESC""",
+        (ecole_id,)
     ).fetchall())
 
     eleves_impayes_liste = rows_to_list(db.execute(
         """SELECT e.id, e.nom, e.prenom, e.classe, e.matricule,
            SUM(p.montant_du-p.montant_paye) as reste
            FROM eleves e JOIN paiements p ON p.eleve_id=e.id
-           WHERE p.statut!='paye'
-           GROUP BY e.id ORDER BY reste DESC LIMIT 10"""
+           WHERE p.ecole_id=? AND p.statut!='paye'
+           GROUP BY e.id ORDER BY reste DESC LIMIT 10""",
+        (ecole_id,)
     ).fetchall())
 
     finances_mois = rows_to_list(db.execute(
         """SELECT strftime('%Y-%m',date_op) as mois,
            SUM(CASE WHEN type='entree' THEN montant ELSE 0 END) as recettes,
            SUM(CASE WHEN type='sortie' THEN montant ELSE 0 END) as depenses
-           FROM transactions WHERE date_op >= date('now','-12 months') AND statut_validation IN ('auto','valide')
-           GROUP BY strftime('%Y-%m',date_op) ORDER BY mois"""
+           FROM transactions WHERE ecole_id=? AND date_op >= date('now','-12 months') AND statut_validation IN ('auto','valide')
+           GROUP BY strftime('%Y-%m',date_op) ORDER BY mois""",
+        (ecole_id,)
     ).fetchall())
 
     eleves_classe = rows_to_list(db.execute(
-        "SELECT classe, COUNT(*) as n FROM eleves WHERE statut='actif' AND classe IS NOT NULL "
-        "GROUP BY classe ORDER BY classe"
+        "SELECT classe, COUNT(*) as n FROM eleves WHERE ecole_id=? AND statut='actif' AND classe IS NOT NULL "
+        "GROUP BY classe ORDER BY classe", (ecole_id,)
     ).fetchall())
 
     dernieres_transactions = rows_to_list(db.execute(
-        "SELECT * FROM transactions ORDER BY date_op DESC, created_at DESC LIMIT 5"
+        "SELECT * FROM transactions WHERE ecole_id=? ORDER BY date_op DESC, created_at DESC LIMIT 5", (ecole_id,)
     ).fetchall())
 
     prochains_devoirs = rows_to_list(db.execute(
-        "SELECT * FROM devoirs WHERE statut='En cours' AND date_remise>=date('now') ORDER BY date_remise LIMIT 5"
+        "SELECT * FROM devoirs WHERE ecole_id=? AND statut='En cours' AND date_remise>=date('now') ORDER BY date_remise LIMIT 5", (ecole_id,)
     ).fetchall())
 
     dernieres_annonces = rows_to_list(db.execute(
         "SELECT a.*, u.full_name as auteur_nom FROM annonces a LEFT JOIN users u ON u.id=a.auteur_id "
-        "ORDER BY a.date_publication DESC LIMIT 3"
+        "WHERE a.ecole_id=? ORDER BY a.date_publication DESC LIMIT 3", (ecole_id,)
     ).fetchall())
 
     personnel_absent_jour = rows_to_list(db.execute(
         """SELECT ap.*, p.nom, p.prenom, p.poste, p.matiere
            FROM absences_personnel ap JOIN personnel p ON p.id=ap.personnel_id
-           WHERE date(ap.date_debut) <= date('now') AND (ap.date_fin IS NULL OR date(ap.date_fin) >= date('now'))
-           ORDER BY p.nom"""
+           WHERE ap.ecole_id=? AND date(ap.date_debut) <= date('now') AND (ap.date_fin IS NULL OR date(ap.date_fin) >= date('now'))
+           ORDER BY p.nom""",
+        (ecole_id,)
     ).fetchall())
     stats['personnel_absent_jour'] = len(personnel_absent_jour)
 

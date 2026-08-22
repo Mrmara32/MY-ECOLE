@@ -1,5 +1,5 @@
 import json
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 
 from database import db, rows_to_list
 from auth import require_auth, require_role
@@ -21,8 +21,8 @@ def list_journal():
     q = request.args.get('q')
     limit = min(int(request.args.get('limit', 200)), 1000)
 
-    sql = "SELECT * FROM journal_audit WHERE 1=1"
-    params = []
+    sql = "SELECT * FROM journal_audit WHERE ecole_id=?"
+    params = [g.user['ecole_id']]
     if entite: sql += " AND entite=?"; params.append(entite)
     if action: sql += " AND action=?"; params.append(action)
     if user_id: sql += " AND user_id=?"; params.append(user_id)
@@ -48,6 +48,6 @@ def list_journal():
 @require_role('admin')
 def entites_journal():
     """Liste les types d'entités et d'actions présents dans le journal, pour peupler les filtres."""
-    entites = [r['entite'] for r in db.execute("SELECT DISTINCT entite FROM journal_audit ORDER BY entite").fetchall()]
-    actions = [r['action'] for r in db.execute("SELECT DISTINCT action FROM journal_audit ORDER BY action").fetchall()]
+    entites = [r['entite'] for r in db.execute("SELECT DISTINCT entite FROM journal_audit WHERE ecole_id=? ORDER BY entite", (g.user['ecole_id'],)).fetchall()]
+    actions = [r['action'] for r in db.execute("SELECT DISTINCT action FROM journal_audit WHERE ecole_id=? ORDER BY action", (g.user['ecole_id'],)).fetchall()]
     return jsonify({'entites': entites, 'actions': actions})

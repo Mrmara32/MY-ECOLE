@@ -3,7 +3,7 @@ import time
 import random
 from flask import Blueprint, request, jsonify, current_app, g
 
-from database import db, gen_id, rows_to_list, row_to_dict, log_action, get_classes_enseignant, matricule_lock, next_sequence
+from database import db, gen_id, rows_to_list, row_to_dict, log_action, get_classes_enseignant, matricule_lock, next_sequence, ecole_id_depuis_code
 from auth import require_auth, require_role
 
 bp = Blueprint('eleves_routes', __name__, url_prefix='/api/eleves')
@@ -21,7 +21,7 @@ ALLOWED_EXT = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
 
 
 def next_matricule():
-    return next_sequence('matricule_eleve', 'M', 6)
+    return next_sequence('matricule_eleve', 'M', 6, ecole_id=g.user['ecole_id'])
 
 
 @bp.route('', methods=['GET'])
@@ -32,8 +32,8 @@ def list_eleves():
     annee_scolaire = request.args.get('annee_scolaire')
     q = request.args.get('q')
 
-    sql = "SELECT * FROM eleves WHERE 1=1"
-    params = []
+    sql = "SELECT * FROM eleves WHERE ecole_id=?"
+    params = [g.user['ecole_id']]
 
     # Un enseignant ne voit que les élèves des classes qu'il enseigne réellement
     if g.user['role'] == 'enseignant':
@@ -63,7 +63,8 @@ def list_eleves():
 @require_auth
 def meta_classes():
     rows = db.execute(
-        "SELECT DISTINCT classe FROM eleves WHERE classe IS NOT NULL ORDER BY classe"
+        "SELECT DISTINCT classe FROM eleves WHERE classe IS NOT NULL AND ecole_id=? ORDER BY classe",
+        (g.user['ecole_id'],)
     ).fetchall()
     return jsonify([r['classe'] for r in rows])
 
@@ -71,7 +72,7 @@ def meta_classes():
 @bp.route('/<eleve_id>', methods=['GET'])
 @require_auth
 def get_eleve(eleve_id):
-    row = db.execute("SELECT * FROM eleves WHERE id=?", (eleve_id,)).fetchone()
+    row = db.execute("SELECT * FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id'])).fetchone()
     if not row:
         return jsonify({'error': 'Introuvable'}), 404
     return jsonify(row_to_dict(row))
@@ -91,6 +92,7 @@ def preinscription_publique():
         return jsonify({'error': 'Nom et prénom requis'}), 400
 
     eid = gen_id('e')
+    ecole_id = ecole_id_depuis_code(body.get('code_ecole') or request.args.get('ecole'))
     champs_autorises = ['date_naissance', 'lieu_naissance', 'sexe', 'classe',
                          'pere_nom', 'pere_prenom', 'pere_telephone', 'pere_email',
                          'mere_nom', 'mere_prenom', 'mere_telephone', 'mere_email',
@@ -102,9 +104,9 @@ def preinscription_publique():
     matricule = None
     with matricule_lock:
         for _ in range(5):
-            matricule = next_matricule()
-            cols = ['id', 'matricule', 'nom', 'prenom'] + list(provided.keys())
-            vals = [eid, matricule, nom, prenom] + list(provided.values())
+            matricule = next_sequence('matricule_eleve', 'M', 6, ecole_id=ecole_id)
+            cols = ['id', 'ecole_id', 'matricule', 'nom', 'prenom'] + list(provided.keys())
+            vals = [eid, ecole_id, matricule, nom, prenom] + list(provided.values())
             placeholders = ','.join(['?'] * len(cols))
             try:
                 db.execute(f"INSERT INTO eleves ({','.join(cols)}) VALUES ({placeholders})", vals)
@@ -149,8 +151,8 @@ def create_eleve():
     with matricule_lock:
         for _ in range(5):
             matricule = matricule_impose or next_matricule()
-            cols = ['id', 'matricule'] + list(provided.keys())
-            vals = [eid, matricule] + list(provided.values())
+            cols = ['id', 'ecole_id', 'matricule'] + list(provided.keys())
+            vals = [eid, g.user['ecole_id'], matricule] + list(provided.values())
             placeholders = ','.join(['?'] * len(cols))
             try:
                 db.execute(f"INSERT INTO eleves ({','.join(cols)}) VALUES ({placeholders})", vals)
@@ -179,13 +181,13 @@ def valider_preinscription(eleve_id):
     paiement des frais d'inscription/réinscription confirmé — l'élève passe alors
     au statut 'actif' et devient pleinement inscrit."""
     body = request.get_json(silent=True) or {}
-    e = db.execute("SELECT * FROM eleves WHERE id=?", (eleve_id,)).fetchone()
+    e = db.execute("SELECT * FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id'])).fetchone()
     if not e:
         return jsonify({'error': 'Introuvable'}), 404
     if e['statut'] != 'preinscrit':
         return jsonify({'error': "Cet élève n'est pas en attente de préinscription"}), 400
 
-    db.execute("UPDATE eleves SET statut='actif' WHERE id=?", (eleve_id,))
+    db.execute("UPDATE eleves SET statut='actif' WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id']))
     db.commit()
     log_action(g.user, 'validation_preinscription', 'eleve', eleve_id,
                {'nom': e['nom'], 'prenom': e['prenom'], 'montant_paye': body.get('montant')})
@@ -216,7 +218,7 @@ def valider_preinscription(eleve_id):
 @require_role('admin', 'directeur', 'secretaire', 'comptable')
 def update_eleve(eleve_id):
     body = request.get_json(silent=True) or {}
-    if not db.execute("SELECT id FROM eleves WHERE id=?", (eleve_id,)).fetchone():
+    if not db.execute("SELECT id FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Introuvable'}), 404
 
     sets, vals = [], []
@@ -226,7 +228,8 @@ def update_eleve(eleve_id):
             vals.append(body[f])
     if sets:
         vals.append(eleve_id)
-        db.execute(f"UPDATE eleves SET {','.join(sets)} WHERE id=?", vals)
+        vals.append(g.user['ecole_id'])
+        db.execute(f"UPDATE eleves SET {','.join(sets)} WHERE id=? AND ecole_id=?", vals)
         db.commit()
 
     log_action(g.user, 'modification', 'eleve', eleve_id,
@@ -246,7 +249,7 @@ def upload_photo(eleve_id):
     if ext not in ALLOWED_EXT:
         return jsonify({'error': 'Format non supporté'}), 400
 
-    if not db.execute("SELECT id FROM eleves WHERE id=?", (eleve_id,)).fetchone():
+    if not db.execute("SELECT id FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Élève introuvable'}), 404
 
     fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
@@ -254,7 +257,7 @@ def upload_photo(eleve_id):
     file.save(os.path.join(upload_dir, fname))
 
     url = '/uploads/' + fname
-    db.execute("UPDATE eleves SET photo_url=? WHERE id=?", (url, eleve_id))
+    db.execute("UPDATE eleves SET photo_url=? WHERE id=? AND ecole_id=?", (url, eleve_id, g.user['ecole_id']))
     db.commit()
     return jsonify({'photo_url': url})
 
@@ -263,10 +266,10 @@ def upload_photo(eleve_id):
 @require_auth
 @require_role('admin', 'directeur', 'secretaire')
 def delete_eleve(eleve_id):
-    existing = db.execute("SELECT * FROM eleves WHERE id=?", (eleve_id,)).fetchone()
+    existing = db.execute("SELECT * FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id'])).fetchone()
     if not existing:
         return jsonify({'error': 'Introuvable'}), 404
-    db.execute("DELETE FROM eleves WHERE id=?", (eleve_id,))
+    db.execute("DELETE FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id']))
     db.commit()
     log_action(g.user, 'suppression', 'eleve', eleve_id, {'nom': existing['nom'], 'prenom': existing['prenom']})
     return jsonify({'success': True})

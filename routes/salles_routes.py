@@ -10,11 +10,12 @@ bp = Blueprint('salles_routes', __name__, url_prefix='/api/salles')
 @require_auth
 def list_salles():
     actives_only = request.args.get('actives') != '0'
-    sql = "SELECT * FROM salles"
+    sql = "SELECT * FROM salles WHERE ecole_id=?"
+    params = [g.user['ecole_id']]
     if actives_only:
-        sql += " WHERE active=1"
+        sql += " AND active=1"
     sql += " ORDER BY nom"
-    rows = db.execute(sql).fetchall()
+    rows = db.execute(sql, params).fetchall()
     return jsonify(rows_to_list(rows))
 
 
@@ -26,11 +27,11 @@ def create_salle():
     nom = body.get('nom')
     if not nom:
         return jsonify({'error': 'Nom requis'}), 400
-    if db.execute("SELECT id FROM salles WHERE nom=?", (nom,)).fetchone():
+    if db.execute("SELECT id FROM salles WHERE ecole_id=? AND nom=?", (g.user['ecole_id'], nom)).fetchone():
         return jsonify({'error': 'Cette salle existe déjà'}), 409
     sid = gen_id('salle')
-    db.execute("INSERT INTO salles (id,nom,capacite,batiment) VALUES (?,?,?,?)",
-               (sid, nom, body.get('capacite'), body.get('batiment')))
+    db.execute("INSERT INTO salles (id,ecole_id,nom,capacite,batiment) VALUES (?,?,?,?,?)",
+               (sid, g.user['ecole_id'], nom, body.get('capacite'), body.get('batiment')))
     db.commit()
     log_action(g.user, 'creation', 'salle', sid, {'nom': nom})
     row = db.execute("SELECT * FROM salles WHERE id=?", (sid,)).fetchone()
@@ -42,16 +43,16 @@ def create_salle():
 @require_role('admin', 'directeur', 'secretaire')
 def update_salle(s_id):
     body = request.get_json(silent=True) or {}
-    if not db.execute("SELECT id FROM salles WHERE id=?", (s_id,)).fetchone():
+    if not db.execute("SELECT id FROM salles WHERE id=? AND ecole_id=?", (s_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Introuvable'}), 404
     db.execute(
         "UPDATE salles SET nom=COALESCE(?,nom), capacite=COALESCE(?,capacite), "
-        "batiment=COALESCE(?,batiment), active=COALESCE(?,active) WHERE id=?",
+        "batiment=COALESCE(?,batiment), active=COALESCE(?,active) WHERE id=? AND ecole_id=?",
         (body.get('nom'), body.get('capacite'), body.get('batiment'),
-         (1 if body.get('active') else 0) if 'active' in body else None, s_id),
+         (1 if body.get('active') else 0) if 'active' in body else None, s_id, g.user['ecole_id']),
     )
     db.commit()
-    row = db.execute("SELECT * FROM salles WHERE id=?", (s_id,)).fetchone()
+    row = db.execute("SELECT * FROM salles WHERE id=? AND ecole_id=?", (s_id, g.user['ecole_id'])).fetchone()
     return jsonify(row_to_dict(row))
 
 
@@ -59,9 +60,9 @@ def update_salle(s_id):
 @require_auth
 @require_role('admin', 'directeur')
 def delete_salle(s_id):
-    if not db.execute("SELECT id FROM salles WHERE id=?", (s_id,)).fetchone():
+    if not db.execute("SELECT id FROM salles WHERE id=? AND ecole_id=?", (s_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Introuvable'}), 404
-    db.execute("DELETE FROM salles WHERE id=?", (s_id,))
+    db.execute("DELETE FROM salles WHERE id=? AND ecole_id=?", (s_id, g.user['ecole_id']))
     db.commit()
     log_action(g.user, 'suppression', 'salle', s_id, {})
     return jsonify({'success': True})
