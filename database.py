@@ -55,9 +55,30 @@ def rows_to_list(rows):
 
 
 SCHEMA = """
+-- ═══════════════════════════════════════════════════════════════════
+-- MULTI-ÉTABLISSEMENT — Fondations (Phase 1)
+-- Chaque école est un espace totalement indépendant : sa propre administration,
+-- ses propres données, sans aucune visibilité croisée avec une autre école,
+-- même hébergées sur la même installation de l'application.
+-- ═══════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS ecoles (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  nom                 TEXT NOT NULL,
+  code                TEXT UNIQUE NOT NULL,
+  email_contact       TEXT,
+  telephone_contact   TEXT,
+  statut_licence      TEXT NOT NULL DEFAULT 'essai' CHECK(statut_licence IN ('essai','active','suspendue','expiree')),
+  date_debut_licence   TEXT DEFAULT CURRENT_TIMESTAMP,
+  date_expiration_licence TEXT,
+  actif               INTEGER DEFAULT 1,
+  created_at          TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS settings (
-  cle   TEXT PRIMARY KEY,
-  valeur TEXT
+  ecole_id INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  cle   TEXT NOT NULL,
+  valeur TEXT,
+  PRIMARY KEY (ecole_id, cle)
 );
 
 -- Compteurs internes (ex: dernier numéro de matricule utilisé), séparés des
@@ -67,35 +88,54 @@ CREATE TABLE IF NOT EXISTS settings (
 -- toute collision, y compris sous forte charge concurrente, contrairement à un
 -- calcul basé sur "le dernier matricule créé" (peu fiable : la résolution des
 -- horodatages SQLite est à la seconde près, insuffisante en cas de créations
--- multiples la même seconde).
+-- multiples la même seconde). Chaque école a sa propre numérotation, repartant
+-- de zéro — la matricule M000001 de l'École A n'a aucun lien avec celle de l'École B.
 CREATE TABLE IF NOT EXISTS sequences (
-  nom    TEXT PRIMARY KEY,
-  valeur INTEGER NOT NULL DEFAULT 0
+  ecole_id INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  nom    TEXT NOT NULL,
+  valeur INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (ecole_id, nom)
 );
 
 CREATE TABLE IF NOT EXISTS users (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  username     TEXT UNIQUE NOT NULL,
+  ecole_id     INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  username     TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   full_name    TEXT NOT NULL,
-  role         TEXT NOT NULL CHECK(role IN ('admin','directeur','comptable','enseignant','secretaire','charge_communication')),
+  role         TEXT NOT NULL CHECK(role IN ('admin','directeur','comptable','enseignant','secretaire','charge_communication','directeur_etudes','parent')),
   email        TEXT,
   telephone    TEXT,
+  civilite     TEXT,
+  est_super_admin INTEGER DEFAULT 0,
   active       INTEGER DEFAULT 1,
   created_at   TEXT DEFAULT CURRENT_TIMESTAMP,
-  last_login   TEXT
+  last_login   TEXT,
+  UNIQUE(ecole_id, username)
+);
+
+CREATE TABLE IF NOT EXISTS parents_eleves (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id         TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  eleve_id   TEXT NOT NULL REFERENCES eleves(id) ON DELETE CASCADE,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, eleve_id)
 );
 
 CREATE TABLE IF NOT EXISTS classes (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id         TEXT PRIMARY KEY,
-  nom        TEXT UNIQUE NOT NULL,
+  nom        TEXT NOT NULL,
   cycle      TEXT NOT NULL CHECK(cycle IN ('maternelle','primaire','college','lycee')),
   ordre      INTEGER DEFAULT 0,
   active     INTEGER DEFAULT 1,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(ecole_id, nom)
 );
 
 CREATE TABLE IF NOT EXISTS personnel (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id            TEXT PRIMARY KEY,
   nom           TEXT NOT NULL,
   prenom        TEXT NOT NULL,
@@ -113,6 +153,7 @@ CREATE TABLE IF NOT EXISTS personnel (
 );
 
 CREATE TABLE IF NOT EXISTS heures_enseignement (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id           TEXT PRIMARY KEY,
   personnel_id TEXT NOT NULL REFERENCES personnel(id) ON DELETE CASCADE,
   mois         TEXT NOT NULL,
@@ -127,6 +168,7 @@ CREATE TABLE IF NOT EXISTS heures_enseignement (
 -- de valider chaque séance, et d'en déduire automatiquement le nombre d'heures
 -- comptabilisées en paie pour le personnel rémunéré à l'heure (collège/lycée).
 CREATE TABLE IF NOT EXISTS seances_cours (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id              TEXT PRIMARY KEY,
   personnel_id    TEXT NOT NULL REFERENCES personnel(id) ON DELETE CASCADE,
   date_seance     TEXT NOT NULL,
@@ -145,8 +187,9 @@ CREATE TABLE IF NOT EXISTS seances_cours (
 );
 
 CREATE TABLE IF NOT EXISTS eleves (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id                TEXT PRIMARY KEY,
-  matricule         TEXT UNIQUE,
+  matricule         TEXT,
   nom               TEXT NOT NULL,
   prenom            TEXT NOT NULL,
   date_naissance    TEXT,
@@ -185,10 +228,12 @@ CREATE TABLE IF NOT EXISTS eleves (
   assurance_nom     TEXT,
   assurance_numero  TEXT,
   vaccins           TEXT,
-  created_at        TEXT DEFAULT CURRENT_TIMESTAMP
+  created_at        TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(ecole_id, matricule)
 );
 
 CREATE TABLE IF NOT EXISTS notes (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id         TEXT PRIMARY KEY,
   eleve_id   TEXT NOT NULL REFERENCES eleves(id) ON DELETE CASCADE,
   matiere    TEXT NOT NULL,
@@ -201,6 +246,7 @@ CREATE TABLE IF NOT EXISTS notes (
 );
 
 CREATE TABLE IF NOT EXISTS devoirs (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id              TEXT PRIMARY KEY,
   titre           TEXT NOT NULL,
   matiere         TEXT,
@@ -214,6 +260,7 @@ CREATE TABLE IF NOT EXISTS devoirs (
 );
 
 CREATE TABLE IF NOT EXISTS emploi_du_temps (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id           TEXT PRIMARY KEY,
   jour         TEXT NOT NULL,
   creneau      TEXT NOT NULL,
@@ -222,10 +269,11 @@ CREATE TABLE IF NOT EXISTS emploi_du_temps (
   professeur_id TEXT,
   salle        TEXT,
   created_at   TEXT DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(jour, creneau, classe)
+  UNIQUE(ecole_id, jour, creneau, classe)
 );
 
 CREATE TABLE IF NOT EXISTS absences (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id         TEXT PRIMARY KEY,
   eleve_id   TEXT NOT NULL REFERENCES eleves(id) ON DELETE CASCADE,
   date_abs   TEXT NOT NULL,
@@ -237,6 +285,7 @@ CREATE TABLE IF NOT EXISTS absences (
 );
 
 CREATE TABLE IF NOT EXISTS absences_personnel (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id           TEXT PRIMARY KEY,
   personnel_id TEXT NOT NULL REFERENCES personnel(id) ON DELETE CASCADE,
   date_debut   TEXT NOT NULL,
@@ -248,6 +297,7 @@ CREATE TABLE IF NOT EXISTS absences_personnel (
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id             TEXT PRIMARY KEY,
   type           TEXT NOT NULL CHECK(type IN ('entree','sortie')),
   date_op        TEXT NOT NULL,
@@ -262,10 +312,39 @@ CREATE TABLE IF NOT EXISTS transactions (
   valide_par     INTEGER REFERENCES users(id) ON DELETE SET NULL,
   date_validation TEXT,
   motif_rejet    TEXT,
+  rapproche      INTEGER DEFAULT 0,
+  date_rapprochement TEXT,
   created_at     TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS transactions_recurrentes (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id             TEXT PRIMARY KEY,
+  type           TEXT NOT NULL CHECK(type IN ('entree','sortie')),
+  categorie      TEXT NOT NULL,
+  description    TEXT,
+  montant        REAL NOT NULL,
+  moyen_paiement TEXT,
+  jour_du_mois   INTEGER NOT NULL DEFAULT 1 CHECK(jour_du_mois BETWEEN 1 AND 28),
+  actif          INTEGER DEFAULT 1,
+  dernier_mois_genere TEXT,
+  cree_par       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at     TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS budgets (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id         TEXT PRIMARY KEY,
+  categorie  TEXT NOT NULL,
+  type       TEXT NOT NULL CHECK(type IN ('entree','sortie')),
+  mois       TEXT NOT NULL,
+  montant_prevu REAL NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(ecole_id, categorie, type, mois)
+);
+
 CREATE TABLE IF NOT EXISTS journal_audit (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id          TEXT PRIMARY KEY,
   user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
   user_nom    TEXT,
@@ -277,6 +356,7 @@ CREATE TABLE IF NOT EXISTS journal_audit (
 );
 
 CREATE TABLE IF NOT EXISTS articles (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id               TEXT PRIMARY KEY,
   titre            TEXT NOT NULL,
   contenu          TEXT,
@@ -288,6 +368,7 @@ CREATE TABLE IF NOT EXISTS articles (
 );
 
 CREATE TABLE IF NOT EXISTS articles_media (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id         TEXT PRIMARY KEY,
   article_id TEXT NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
   type       TEXT NOT NULL CHECK(type IN ('photo','video')),
@@ -298,24 +379,29 @@ CREATE TABLE IF NOT EXISTS articles_media (
 );
 
 CREATE TABLE IF NOT EXISTS eleve_du_mois (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id         TEXT PRIMARY KEY,
   eleve_id   TEXT NOT NULL REFERENCES eleves(id) ON DELETE CASCADE,
-  mois       TEXT NOT NULL UNIQUE,
+  mois       TEXT NOT NULL,
   motif      TEXT,
   designe_par INTEGER REFERENCES users(id) ON DELETE SET NULL,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(ecole_id, mois)
 );
 
 CREATE TABLE IF NOT EXISTS salles (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id         TEXT PRIMARY KEY,
-  nom        TEXT UNIQUE NOT NULL,
+  nom        TEXT NOT NULL,
   capacite   INTEGER,
   batiment   TEXT,
   active     INTEGER DEFAULT 1,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(ecole_id, nom)
 );
 
 CREATE TABLE IF NOT EXISTS cours_revision (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id            TEXT PRIMARY KEY,
   titre         TEXT NOT NULL,
   matiere       TEXT,
@@ -332,6 +418,7 @@ CREATE TABLE IF NOT EXISTS cours_revision (
 );
 
 CREATE TABLE IF NOT EXISTS cours_revision_enseignants (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id           TEXT PRIMARY KEY,
   cours_id     TEXT NOT NULL REFERENCES cours_revision(id) ON DELETE CASCADE,
   personnel_id TEXT NOT NULL REFERENCES personnel(id) ON DELETE CASCADE,
@@ -343,6 +430,7 @@ CREATE TABLE IF NOT EXISTS cours_revision_enseignants (
 );
 
 CREATE TABLE IF NOT EXISTS revision_seances (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id             TEXT PRIMARY KEY,
   cours_id       TEXT NOT NULL REFERENCES cours_revision(id) ON DELETE CASCADE,
   personnel_id   TEXT NOT NULL REFERENCES personnel(id) ON DELETE CASCADE,
@@ -353,6 +441,7 @@ CREATE TABLE IF NOT EXISTS revision_seances (
 );
 
 CREATE TABLE IF NOT EXISTS bulletins_salaire (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id            TEXT PRIMARY KEY,
   personnel_id  TEXT NOT NULL REFERENCES personnel(id) ON DELETE CASCADE,
   mois          TEXT NOT NULL,
@@ -374,6 +463,7 @@ CREATE TABLE IF NOT EXISTS bulletins_salaire (
 );
 
 CREATE TABLE IF NOT EXISTS avances_salaire (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id                TEXT PRIMARY KEY,
   personnel_id      TEXT NOT NULL REFERENCES personnel(id) ON DELETE CASCADE,
   montant           REAL NOT NULL,
@@ -386,6 +476,7 @@ CREATE TABLE IF NOT EXISTS avances_salaire (
 );
 
 CREATE TABLE IF NOT EXISTS types_primes (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id         TEXT PRIMARY KEY,
   nom        TEXT UNIQUE NOT NULL,
   active     INTEGER DEFAULT 1,
@@ -393,6 +484,7 @@ CREATE TABLE IF NOT EXISTS types_primes (
 );
 
 CREATE TABLE IF NOT EXISTS validations_paie (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id                      TEXT PRIMARY KEY,
   mois                    TEXT NOT NULL UNIQUE,
   statut                  TEXT DEFAULT 'attente_directeur' CHECK(statut IN ('attente_directeur','attente_admin','approuve','rejete')),
@@ -408,6 +500,7 @@ CREATE TABLE IF NOT EXISTS validations_paie (
 );
 
 CREATE TABLE IF NOT EXISTS candidatures_enseignants (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id              TEXT PRIMARY KEY,
   nom             TEXT NOT NULL,
   prenom          TEXT NOT NULL,
@@ -426,6 +519,7 @@ CREATE TABLE IF NOT EXISTS candidatures_enseignants (
 );
 
 CREATE TABLE IF NOT EXISTS revision_participants (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id               TEXT PRIMARY KEY,
   cours_id         TEXT NOT NULL REFERENCES cours_revision(id) ON DELETE CASCADE,
   eleve_id         TEXT REFERENCES eleves(id) ON DELETE SET NULL,
@@ -440,6 +534,7 @@ CREATE TABLE IF NOT EXISTS revision_participants (
 );
 
 CREATE TABLE IF NOT EXISTS revision_evaluations (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id             TEXT PRIMARY KEY,
   participant_id TEXT NOT NULL REFERENCES revision_participants(id) ON DELETE CASCADE,
   date_evaluation TEXT NOT NULL,
@@ -451,16 +546,18 @@ CREATE TABLE IF NOT EXISTS revision_evaluations (
 );
 
 CREATE TABLE IF NOT EXISTS frais_scolarite (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id                  TEXT PRIMARY KEY,
   classe              TEXT NOT NULL,
   annee_scolaire      TEXT NOT NULL,
   frais_inscription   REAL DEFAULT 0,
   scolarite_annuelle  REAL DEFAULT 0,
   nombre_tranches     INTEGER DEFAULT 3,
-  UNIQUE(classe, annee_scolaire)
+  UNIQUE(ecole_id, classe, annee_scolaire)
 );
 
 CREATE TABLE IF NOT EXISTS paiements (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id             TEXT PRIMARY KEY,
   eleve_id       TEXT NOT NULL REFERENCES eleves(id) ON DELETE CASCADE,
   annee_scolaire TEXT,
@@ -474,6 +571,7 @@ CREATE TABLE IF NOT EXISTS paiements (
 );
 
 CREATE TABLE IF NOT EXISTS versements (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id             TEXT PRIMARY KEY,
   paiement_id    TEXT NOT NULL REFERENCES paiements(id) ON DELETE CASCADE,
   eleve_id       TEXT NOT NULL REFERENCES eleves(id) ON DELETE CASCADE,
@@ -486,6 +584,7 @@ CREATE TABLE IF NOT EXISTS versements (
 );
 
 CREATE TABLE IF NOT EXISTS reinscriptions (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id              TEXT PRIMARY KEY,
   eleve_id        TEXT NOT NULL REFERENCES eleves(id) ON DELETE CASCADE,
   annee_scolaire  TEXT NOT NULL,
@@ -501,6 +600,7 @@ CREATE TABLE IF NOT EXISTS reinscriptions (
 );
 
 CREATE TABLE IF NOT EXISTS cantine_abonnements (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id        TEXT PRIMARY KEY,
   eleve_id  TEXT NOT NULL REFERENCES eleves(id) ON DELETE CASCADE,
   mois      TEXT NOT NULL,
@@ -512,6 +612,7 @@ CREATE TABLE IF NOT EXISTS cantine_abonnements (
 );
 
 CREATE TABLE IF NOT EXISTS cantine_menus (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id         TEXT PRIMARY KEY,
   date_menu  TEXT NOT NULL UNIQUE,
   entree     TEXT,
@@ -521,6 +622,7 @@ CREATE TABLE IF NOT EXISTS cantine_menus (
 );
 
 CREATE TABLE IF NOT EXISTS messages (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id                TEXT PRIMARY KEY,
   expediteur_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
   destinataire_type TEXT NOT NULL CHECK(destinataire_type IN ('eleve','classe','tous_parents','tous')),
@@ -532,6 +634,7 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE TABLE IF NOT EXISTS annonces (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id               TEXT PRIMARY KEY,
   auteur_id        INTEGER REFERENCES users(id) ON DELETE SET NULL,
   titre            TEXT NOT NULL,
@@ -560,6 +663,14 @@ CREATE INDEX IF NOT EXISTS idx_reinsc_eleve    ON reinscriptions(eleve_id);
 # personnel dès qu'une base créée avant ces fonctionnalités était réutilisée.
 # ================================================================
 MIGRATIONS = {
+    'users': {
+        'civilite': "TEXT",  # 'M.' ou 'Mme' — utilisé pour le message de bienvenue personnalisé
+        'est_super_admin': "INTEGER DEFAULT 0",  # accès à la supervision de toutes les écoles clientes
+    },
+    'transactions': {
+        'rapproche': "INTEGER DEFAULT 0",
+        'date_rapprochement': "TEXT",
+    },
     'cours_revision_enseignants': {
         'jour': "TEXT",
         'creneau': "TEXT",
@@ -660,7 +771,74 @@ def run_migrations():
                     print(f"[migration] Erreur sur {table}.{colonne}: {e}")
     db.commit()
 
-    # Rattrapage : attribue un matricule à tout membre du personnel qui n'en a pas
+    # Fondations multi-établissement : ajoute ecole_id (rattaché par défaut à l'école n°1,
+    # celle existant avant cette évolution) à toutes les tables de données propres à une
+    # école, si la colonne n'existe pas déjà. Boucle séparée du dictionnaire MIGRATIONS
+    # ci-dessus pour ne jamais risquer d'interférer avec ses entrées existantes.
+    TABLES_MULTI_ECOLE = [
+        'parents_eleves', 'classes', 'personnel', 'heures_enseignement', 'seances_cours',
+        'eleves', 'notes', 'devoirs', 'emploi_du_temps', 'absences', 'absences_personnel',
+        'transactions', 'transactions_recurrentes', 'budgets', 'journal_audit', 'articles',
+        'articles_media', 'eleve_du_mois', 'salles', 'cours_revision', 'cours_revision_enseignants',
+        'revision_seances', 'bulletins_salaire', 'avances_salaire', 'types_primes', 'validations_paie',
+        'candidatures_enseignants', 'revision_participants', 'revision_evaluations', 'frais_scolarite',
+        'paiements', 'versements', 'reinscriptions', 'cantine_abonnements', 'cantine_menus',
+        'messages', 'annonces',
+    ]
+    for table in TABLES_MULTI_ECOLE:
+        if table not in tables_existantes:
+            continue
+        colonnes_actuelles = {r['name'] for r in db.execute(f"PRAGMA table_info({table})").fetchall()}
+        if 'ecole_id' not in colonnes_actuelles:
+            try:
+                db.execute(f"ALTER TABLE {table} ADD COLUMN ecole_id INTEGER NOT NULL DEFAULT 1")
+                print(f"[migration] Colonne ajoutée : {table}.ecole_id (multi-établissement)")
+            except Exception as e:
+                print(f"[migration] Erreur sur {table}.ecole_id: {e}")
+    db.commit()
+
+    # Migration spéciale : certaines contraintes UNIQUE existaient AVANT l'ajout d'ecole_id
+    # et ne portaient donc que sur des valeurs "ordinaires" (classe, mois...) qui peuvent
+    # tout à fait se répéter d'une école à l'autre. Sans cette correction, une deuxième
+    # école ne pourrait pas définir un barème pour "CM2" si la première l'a déjà fait.
+    for table, nouveau_marqueur, nouvelle_creation in [
+        ('classes', 'UNIQUE(ecole_id, nom)',
+         "CREATE TABLE classes (ecole_id INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE, id TEXT PRIMARY KEY, nom TEXT NOT NULL, cycle TEXT NOT NULL CHECK(cycle IN ('maternelle','primaire','college','lycee')), ordre INTEGER DEFAULT 0, active INTEGER DEFAULT 1, created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(ecole_id, nom))"),
+        ('salles', 'UNIQUE(ecole_id, nom)',
+         "CREATE TABLE salles (ecole_id INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE, id TEXT PRIMARY KEY, nom TEXT NOT NULL, capacite INTEGER, batiment TEXT, active INTEGER DEFAULT 1, created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(ecole_id, nom))"),
+        ('frais_scolarite', 'UNIQUE(ecole_id, classe, annee_scolaire)',
+         "CREATE TABLE frais_scolarite (ecole_id INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE, id TEXT PRIMARY KEY, classe TEXT NOT NULL, annee_scolaire TEXT NOT NULL, frais_inscription REAL DEFAULT 0, scolarite_annuelle REAL DEFAULT 0, nombre_tranches INTEGER DEFAULT 3, UNIQUE(ecole_id, classe, annee_scolaire))"),
+        ('budgets', 'UNIQUE(ecole_id, categorie, type, mois)',
+         "CREATE TABLE budgets (ecole_id INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE, id TEXT PRIMARY KEY, categorie TEXT NOT NULL, type TEXT NOT NULL CHECK(type IN ('entree','sortie')), mois TEXT NOT NULL, montant_prevu REAL NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(ecole_id, categorie, type, mois))"),
+        ('emploi_du_temps', 'UNIQUE(ecole_id, jour, creneau, classe)',
+         "CREATE TABLE emploi_du_temps (ecole_id INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE, id TEXT PRIMARY KEY, jour TEXT NOT NULL, creneau TEXT NOT NULL, classe TEXT NOT NULL, matiere TEXT, professeur_id TEXT, salle TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(ecole_id, jour, creneau, classe))"),
+        ('eleve_du_mois', 'UNIQUE(ecole_id, mois)',
+         "CREATE TABLE eleve_du_mois (ecole_id INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE, id TEXT PRIMARY KEY, eleve_id TEXT NOT NULL REFERENCES eleves(id) ON DELETE CASCADE, mois TEXT NOT NULL, motif TEXT, designe_par INTEGER REFERENCES users(id) ON DELETE SET NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(ecole_id, mois))"),
+    ]:
+        table_sql_row = db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        ).fetchone()
+        if not table_sql_row or nouveau_marqueur in (table_sql_row['sql'] or ''):
+            continue  # déjà à jour, ou table pas encore créée (sera créée directement avec la bonne contrainte)
+        table_old = f"{table}_old_migration"
+        try:
+            print(f"[migration] Correction de la contrainte unique de {table} (multi-établissement)")
+            db.execute("PRAGMA legacy_alter_table = ON")
+            db.execute("PRAGMA foreign_keys=OFF")
+            db.execute(f"ALTER TABLE {table} RENAME TO {table_old}")
+            db.execute(nouvelle_creation)
+            colonnes = [r['name'] for r in db.execute(f"PRAGMA table_info({table_old})").fetchall()]
+            colonnes_str = ",".join(colonnes)
+            db.execute(f"INSERT INTO {table} ({colonnes_str}) SELECT {colonnes_str} FROM {table_old}")
+            db.execute(f"DROP TABLE {table_old}")
+            db.execute("PRAGMA foreign_keys=ON")
+            db.execute("PRAGMA legacy_alter_table = OFF")
+            db.commit()
+            print(f"[migration] Contrainte unique de {table} corrigée avec succès")
+        except Exception as e:
+            print(f"[migration] Erreur lors de la correction de {table} : {e}")
+            db.execute("PRAGMA foreign_keys=ON")
+            db.execute("PRAGMA legacy_alter_table = OFF")
     # encore (créé avant l'introduction du matricule, ou via un chemin qui l'omettait,
     # comme l'approbation de candidature avant ce correctif).
     if 'personnel' in tables_existantes:
@@ -673,6 +851,20 @@ def run_migrations():
             db.commit()
         if sans_matricule:
             print(f"[migration] Matricule attribué à {len(sans_matricule)} membre(s) du personnel existant")
+
+    # Migration de rattrapage : sur une installation déjà existante (avant l'introduction
+    # du multi-établissement), le tout premier compte admin devient rétroactivement
+    # super-administrateur — c'est lui qui gérait déjà seul l'installation jusqu'ici.
+    if 'users' in tables_existantes:
+        deja_super_admin = db.execute("SELECT 1 FROM users WHERE est_super_admin=1").fetchone()
+        if not deja_super_admin:
+            premier_admin = db.execute(
+                "SELECT id FROM users WHERE role='admin' ORDER BY id ASC LIMIT 1"
+            ).fetchone()
+            if premier_admin:
+                db.execute("UPDATE users SET est_super_admin=1 WHERE id=?", (premier_admin['id'],))
+                db.commit()
+                print(f"[migration] Compte admin #{premier_admin['id']} promu super-administrateur")
 
     # Initialise (une seule fois) les compteurs de séquence à partir du plus haut
     # matricule déjà existant, pour que les bases déjà en service ne repartent
@@ -718,15 +910,18 @@ def run_migrations():
     NOUVEAU_SCHEMA_USERS = """
         CREATE TABLE users (
           id           INTEGER PRIMARY KEY AUTOINCREMENT,
-          username     TEXT UNIQUE NOT NULL,
+          ecole_id     INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+          username     TEXT NOT NULL,
           password_hash TEXT NOT NULL,
           full_name    TEXT NOT NULL,
-          role         TEXT NOT NULL CHECK(role IN ('admin','directeur','comptable','enseignant','secretaire','charge_communication')),
+          role         TEXT NOT NULL CHECK(role IN ('admin','directeur','comptable','enseignant','secretaire','charge_communication','directeur_etudes','parent')),
           email        TEXT,
           telephone    TEXT,
+          civilite     TEXT,
           active       INTEGER DEFAULT 1,
           created_at   TEXT DEFAULT CURRENT_TIMESTAMP,
-          last_login   TEXT
+          last_login   TEXT,
+          UNIQUE(ecole_id, username)
         )
     """
     users_existe = db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
@@ -758,9 +953,9 @@ def run_migrations():
             db.execute("PRAGMA foreign_keys=ON")
             db.execute("PRAGMA legacy_alter_table = OFF")
 
-    if users_existe and users_existe['sql'] and 'charge_communication' not in users_existe['sql']:
+    if users_existe and users_existe['sql'] and 'ecole_id' not in users_existe['sql']:
         try:
-            print("[migration] Mise à jour de la contrainte de rôle utilisateurs (ajout charge_communication)")
+            print("[migration] Mise à jour de la table utilisateurs (ajout directeur_etudes, parent, ecole_id — fondations multi-établissement)")
             db.execute("PRAGMA legacy_alter_table = ON")
             db.execute("PRAGMA foreign_keys=OFF")
             db.execute("ALTER TABLE users RENAME TO users_old_migration")
@@ -778,6 +973,64 @@ def run_migrations():
             db.execute("PRAGMA foreign_keys=ON")
             db.execute("PRAGMA legacy_alter_table = OFF")
 
+    # Migration spéciale : settings et sequences passent d'une clé primaire simple
+    # à une clé composite (ecole_id, cle) / (ecole_id, nom) — fondations multi-établissement.
+    # Même logique auto-réparatrice que pour users ci-dessus.
+    for table, nouvelle_creation, ancien_nom_cle in [
+        ('settings', "CREATE TABLE settings (ecole_id INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE, cle TEXT NOT NULL, valeur TEXT, PRIMARY KEY (ecole_id, cle))", 'cle'),
+        ('sequences', "CREATE TABLE sequences (ecole_id INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE, nom TEXT NOT NULL, valeur INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (ecole_id, nom))", 'nom'),
+    ]:
+        table_old = f"{table}_old_migration"
+        deja_migree = db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        ).fetchone()
+        table_old_existe = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table_old,)
+        ).fetchone()
+
+        if table_old_existe:
+            try:
+                print(f"[migration] Reprise d'une migration {table} interrompue précédemment...")
+                db.execute("PRAGMA legacy_alter_table = ON")
+                db.execute("PRAGMA foreign_keys=OFF")
+                if not deja_migree:
+                    db.execute(nouvelle_creation)
+                nb = db.execute(f"SELECT COUNT(*) as n FROM {table}").fetchone()['n']
+                if nb == 0:
+                    colonnes = [r['name'] for r in db.execute(f"PRAGMA table_info({table_old})").fetchall()]
+                    colonnes_str = ",".join(colonnes)
+                    db.execute(f"INSERT INTO {table} (ecole_id,{colonnes_str}) SELECT 1,{colonnes_str} FROM {table_old}")
+                db.execute(f"DROP TABLE {table_old}")
+                db.execute("PRAGMA foreign_keys=ON")
+                db.execute("PRAGMA legacy_alter_table = OFF")
+                db.commit()
+                print(f"[migration] Migration {table} réparée et terminée avec succès")
+                deja_migree = db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
+            except Exception as e:
+                print(f"[migration] Erreur lors de la réparation de la migration {table} : {e}")
+                db.execute("PRAGMA foreign_keys=ON")
+                db.execute("PRAGMA legacy_alter_table = OFF")
+
+        if deja_migree and deja_migree['sql'] and 'ecole_id' not in deja_migree['sql']:
+            try:
+                print(f"[migration] Ajout du multi-établissement à la table {table}")
+                db.execute("PRAGMA legacy_alter_table = ON")
+                db.execute("PRAGMA foreign_keys=OFF")
+                db.execute(f"ALTER TABLE {table} RENAME TO {table_old}")
+                db.execute(nouvelle_creation)
+                colonnes = [r['name'] for r in db.execute(f"PRAGMA table_info({table_old})").fetchall()]
+                colonnes_str = ",".join(colonnes)
+                db.execute(f"INSERT INTO {table} (ecole_id,{colonnes_str}) SELECT 1,{colonnes_str} FROM {table_old}")
+                db.execute(f"DROP TABLE {table_old}")
+                db.execute("PRAGMA foreign_keys=ON")
+                db.execute("PRAGMA legacy_alter_table = OFF")
+                db.commit()
+                print(f"[migration] Table {table} mise à jour avec succès (multi-établissement)")
+            except Exception as e:
+                print(f"[migration] Erreur lors de la mise à jour de {table} : {e}")
+                db.execute("PRAGMA foreign_keys=ON")
+                db.execute("PRAGMA legacy_alter_table = OFF")
+
     # Migration spéciale : ajout du statut 'preinscrit' à la contrainte CHECK de eleves
     # (nécessaire pour le point 7 du cahier des charges : préinscription par n'importe qui,
     # validée ensuite par le comptable une fois le paiement effectué).
@@ -785,7 +1038,8 @@ def run_migrations():
     NOUVEAU_SCHEMA_ELEVES = """
         CREATE TABLE eleves (
           id                TEXT PRIMARY KEY,
-          matricule         TEXT UNIQUE,
+          ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+          matricule         TEXT,
           nom               TEXT NOT NULL,
           prenom            TEXT NOT NULL,
           date_naissance    TEXT,
@@ -824,7 +1078,8 @@ def run_migrations():
           assurance_nom     TEXT,
           assurance_numero  TEXT,
           vaccins           TEXT,
-          created_at        TEXT DEFAULT CURRENT_TIMESTAMP
+          created_at        TEXT DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(ecole_id, matricule)
         )
     """
     eleves_existe = db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='eleves'").fetchone()
@@ -878,7 +1133,21 @@ def run_migrations():
 def init_db():
     db.executescript(SCHEMA)
     db.commit()
+
+    # École par défaut (id=1) : représente l'établissement existant lors du passage
+    # au multi-établissement, ou la première école créée sur une installation neuve.
+    if not db.execute("SELECT 1 FROM ecoles WHERE id=1").fetchone():
+        db.execute(
+            "INSERT INTO ecoles (id, nom, code, statut_licence) VALUES (1, 'École principale', 'ecole-1', 'active')"
+        )
+        db.commit()
+
     run_migrations()
+
+    # Licence (installation locale hors-ligne) : enregistre la date de première
+    # utilisation, une seule fois — point de départ de la période d'essai de 14 jours.
+    from licence import initialiser_date_installation
+    initialiser_date_installation(db)
 
     # Paramètres par défaut
     defaults = {
@@ -936,15 +1205,17 @@ def init_db():
             db.execute("INSERT OR IGNORE INTO types_primes (id,nom) VALUES (?,?)", (gen_id('tp'), nom))
         db.commit()
 
-    # Compte admin initial
+    # Compte admin initial — devient automatiquement super-administrateur (supervision
+    # de toutes les écoles clientes), puisqu'il s'agit du tout premier compte créé sur
+    # cette installation.
     count = db.execute("SELECT COUNT(*) as c FROM users").fetchone()['c']
     if count == 0:
         username = os.environ.get('ADMIN_USERNAME', 'admin')
         password = os.environ.get('ADMIN_PASSWORD', 'Admin@2025!')
         pwd_hash = generate_password_hash(password)
         db.execute(
-            "INSERT INTO users (username,password_hash,full_name,role,email) VALUES (?,?,?,?,?)",
-            (username, pwd_hash, 'Administrateur Principal', 'admin', 'admin@ecole.com'),
+            "INSERT INTO users (ecole_id,username,password_hash,full_name,role,email,est_super_admin) VALUES (?,?,?,?,?,?,?)",
+            (1, username, pwd_hash, 'Administrateur Principal', 'admin', 'admin@ecole.com', 1),
         )
         db.commit()
         print("\n" + "=" * 48)
@@ -955,27 +1226,41 @@ def init_db():
         print("=" * 48 + "\n")
 
 
-def get_settings():
-    rows = db.execute("SELECT cle, valeur FROM settings").fetchall()
+def ecole_id_depuis_code(code_ecole, defaut=1):
+    """Résout l'ecole_id à partir d'un code établissement (utilisé par les routes
+    publiques du site vitrine : articles, préinscription, candidature...). Si le code
+    est absent ou inconnu, retombe sur l'école n°1 (rétro-compatibilité mono-école)."""
+    if not code_ecole:
+        return defaut
+    row = db.execute("SELECT id FROM ecoles WHERE code=?", (code_ecole,)).fetchone()
+    return row['id'] if row else defaut
+
+
+def get_settings(ecole_id=1):
+    rows = db.execute("SELECT cle, valeur FROM settings WHERE ecole_id=?", (ecole_id,)).fetchall()
     return {r['cle']: r['valeur'] for r in rows}
 
 
-def next_sequence(nom, prefixe, largeur):
+def next_sequence(nom, prefixe, largeur, ecole_id=1):
     """Incrémente atomiquement et retourne le prochain identifiant séquentiel
     (ex: 'M000123'). Toujours utilisé à l'intérieur de matricule_lock par les
     appelants, pour une garantie totale d'unicité même sous forte charge
-    concurrente (contrairement à un calcul basé sur le dernier enregistrement créé)."""
-    row = db.execute("SELECT valeur FROM sequences WHERE nom=?", (nom,)).fetchone()
+    concurrente (contrairement à un calcul basé sur le dernier enregistrement créé).
+    Chaque école a sa propre numérotation, indépendante des autres."""
+    row = db.execute("SELECT valeur FROM sequences WHERE ecole_id=? AND nom=?", (ecole_id, nom)).fetchone()
     valeur = (row['valeur'] if row else 0) + 1
-    db.execute("INSERT INTO sequences (nom, valeur) VALUES (?,?) ON CONFLICT(nom) DO UPDATE SET valeur=?", (nom, valeur, valeur))
+    db.execute(
+        "INSERT INTO sequences (ecole_id, nom, valeur) VALUES (?,?,?) ON CONFLICT(ecole_id, nom) DO UPDATE SET valeur=?",
+        (ecole_id, nom, valeur, valeur),
+    )
     db.commit()
     return prefixe + str(valeur).zfill(largeur)
 
 
-def next_matricule_personnel():
+def next_matricule_personnel(ecole_id=1):
     """Génère le prochain matricule personnel (P0001, P0002…), partagé par toutes les
     routes qui créent une fiche personnel (création directe, approbation de candidature)."""
-    return next_sequence('matricule_personnel', 'P', 4)
+    return next_sequence('matricule_personnel', 'P', 4, ecole_id=ecole_id)
 
 
 def get_classes_enseignant(user_id):
@@ -1000,10 +1285,11 @@ def log_action(user, action, entite, entite_id=None, details=None):
         import json as _json
         uid = user.get('id') if user else None
         uname = user.get('name') if user else 'Système'
+        ecole_id = user.get('ecole_id', 1) if user else 1
         det = _json.dumps(details, ensure_ascii=False, default=str) if details is not None else None
         db.execute(
-            "INSERT INTO journal_audit (id,user_id,user_nom,action,entite,entite_id,details) VALUES (?,?,?,?,?,?,?)",
-            (gen_id('jrn'), uid, uname, action, entite, entite_id, det),
+            "INSERT INTO journal_audit (id,ecole_id,user_id,user_nom,action,entite,entite_id,details) VALUES (?,?,?,?,?,?,?,?)",
+            (gen_id('jrn'), ecole_id, uid, uname, action, entite, entite_id, det),
         )
         db.commit()
     except Exception as e:

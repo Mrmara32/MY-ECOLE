@@ -64,20 +64,44 @@ def create_app():
     # ── Page publique de candidature enseignant (accessible sans connexion) ──
     @app.route('/postuler.html')
     @app.route('/postuler')
-    def serve_postuler():
+    @app.route('/ecole/<code_ecole>/postuler')
+    def serve_postuler(code_ecole=None):
         return send_from_directory(PUBLIC_DIR, 'postuler.html')
 
     # ── Site vitrine public de l'école (accessible sans connexion) ──
     @app.route('/vitrine.html')
     @app.route('/vitrine')
-    def serve_vitrine():
+    @app.route('/ecole/<code_ecole>')
+    @app.route('/ecole/<code_ecole>/')
+    @app.route('/ecole/<code_ecole>/vitrine')
+    def serve_vitrine(code_ecole=None):
         return send_from_directory(PUBLIC_DIR, 'vitrine.html')
 
     # ── Page publique de pré-inscription élève (accessible sans connexion) ──
     @app.route('/preinscription.html')
     @app.route('/preinscription')
-    def serve_preinscription():
+    @app.route('/ecole/<code_ecole>/preinscription')
+    def serve_preinscription(code_ecole=None):
         return send_from_directory(PUBLIC_DIR, 'preinscription.html')
+
+    # ── Espace parents (connexion propre au compte parent, requise dans la page) ──
+    @app.route('/espace-parents.html')
+    @app.route('/espace-parents')
+    @app.route('/ecole/<code_ecole>/espace-parents')
+    def serve_espace_parents(code_ecole=None):
+        return send_from_directory(PUBLIC_DIR, 'espace-parents.html')
+
+    # ── Inscription d'une nouvelle école cliente (accessible sans connexion) ──
+    @app.route('/inscription-ecole.html')
+    @app.route('/inscription-ecole')
+    def serve_inscription_ecole():
+        return send_from_directory(PUBLIC_DIR, 'inscription-ecole.html')
+
+    # ── Annuaire public des écoles clientes (page d'accueil générale) ──
+    @app.route('/nos-ecoles.html')
+    @app.route('/nos-ecoles')
+    def serve_nos_ecoles():
+        return send_from_directory(PUBLIC_DIR, 'nos-ecoles.html')
 
     # ── Santé (publique) ──
     @app.route('/api/health')
@@ -101,6 +125,9 @@ def create_app():
     from routes.salles_routes import bp as salles_bp
     from routes.paie_routes import bp as paie_bp
     from routes.candidatures_routes import bp as candidatures_bp
+    from routes.parent_routes import bp as parent_bp
+    from routes.ecoles_routes import bp as ecoles_bp
+    from routes.licence_routes import bp as licence_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
@@ -117,6 +144,9 @@ def create_app():
     app.register_blueprint(salles_bp)
     app.register_blueprint(paie_bp)
     app.register_blueprint(candidatures_bp)
+    app.register_blueprint(parent_bp)
+    app.register_blueprint(ecoles_bp)
+    app.register_blueprint(licence_bp)
 
     # ── Page principale + SPA fallback ──
     @app.route('/')
