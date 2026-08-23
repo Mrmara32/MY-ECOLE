@@ -100,7 +100,7 @@ def inscription_ecole():
         db.commit()
         return jsonify({'error': f"Impossible de créer le compte administrateur : {e}"}), 400
 
-    email_envoye = envoyer_confirmation_ecole(email_contact, nom_ecole, jeton)
+    email_envoye = envoyer_confirmation_ecole(email_contact, nom_ecole, code, jeton)
     log_action(None, 'inscription_ecole', 'ecole', str(ecole_id), {'nom': nom_ecole, 'code': code})
     return jsonify({
         'ecole_id': ecole_id, 'code': code, 'nom': nom_ecole,
