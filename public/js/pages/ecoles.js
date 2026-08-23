@@ -71,6 +71,12 @@ async function modalDetailEcole(ecoleId) {
           <button type="submit" class="btn btn-primary">Enregistrer</button>
         </div>
       </form>
+      ${e.id !== 1 ? `
+      <div style="border-top:1px solid var(--line,#E1E8E4);padding-top:14px;margin-top:2px">
+        <div style="font-size:12px;font-weight:700;color:#DC2626;margin-bottom:8px">Zone de danger</div>
+        <button type="button" class="btn btn-outline" style="width:100%;color:#DC2626;border-color:#FCA5A5" onclick="confirmerSuppressionEcole(${e.id}, '${escJs(e.nom)}', '${escJs(e.code)}')">🗑 Supprimer définitivement cette école</button>
+        <div class="text-muted" style="font-size:11px;margin-top:6px">Supprime aussi toutes ses données : élèves, personnel, finances, tout. Action irréversible.</div>
+      </div>` : ''}
     </div>`);
 
   $('#f-ecole').onsubmit = async ev => {
@@ -85,3 +91,41 @@ async function modalDetailEcole(ecoleId) {
   };
 }
 window.modalDetailEcole = modalDetailEcole;
+
+function confirmerSuppressionEcole(ecoleId, nom, code) {
+  openModal(`⚠️ Supprimer « ${esc(nom)} » ?`, `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="background:#FEF2F2;border:1px solid #FCA5A5;color:#991B1B;padding:12px 14px;border-radius:10px;font-size:13px">
+        Cette action supprime <strong>définitivement</strong> l'école « ${esc(nom)} » ainsi que
+        <strong>toutes ses données</strong> : élèves, personnel, finances, utilisateurs — tout,
+        sans possibilité de retour en arrière.
+      </div>
+      <div class="fg">
+        <label>Pour confirmer, tapez le code établissement : <strong class="mono">${esc(code)}</strong></label>
+        <input id="confirm-code-suppr" placeholder="${esc(code)}" autocomplete="off">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal()">Annuler</button>
+        <button type="button" class="btn" style="background:#DC2626;color:#fff" id="btn-confirmer-suppr" disabled>Supprimer définitivement</button>
+      </div>
+    </div>`);
+
+  const input = $('#confirm-code-suppr');
+  const btn = $('#btn-confirmer-suppr');
+  input.addEventListener('input', () => { btn.disabled = input.value.trim() !== code; });
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Suppression…';
+    try {
+      await apiDeleteEcole(ecoleId);
+      toast('École supprimée', 'success');
+      closeModal();
+      pageEcoles();
+    } catch (err) {
+      toast(err.message, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Supprimer définitivement';
+    }
+  });
+}
+window.confirmerSuppressionEcole = confirmerSuppressionEcole;
