@@ -443,8 +443,7 @@ async function imprimerLivreJournal(dateDebut, dateFin) {
   const win = window.open('', '_blank');
   win.document.write(html);
   win.document.close();
-  win.focus();
-  setTimeout(() => win.print(), 700);
+  imprimerFenetre(win);
 }
 window.imprimerLivreJournal = imprimerLivreJournal;
 

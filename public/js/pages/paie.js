@@ -405,8 +405,7 @@ async function imprimerBulletinSalaire(bulletinId) {
   const win = window.open('', '_blank');
   win.document.write(html);
   win.document.close();
-  win.focus();
-  setTimeout(() => win.print(), 600);
+  imprimerFenetre(win);
 }
 window.pagePaieList = pagePaieList;
 window.modalPayerSalaire = modalPayerSalaire;

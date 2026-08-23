@@ -351,8 +351,7 @@ async function imprimerCarteAcces(personnelId) {
   const win = window.open('', '_blank');
   win.document.write(html);
   win.document.close();
-  win.focus();
-  setTimeout(() => win.print(), 700);
+  imprimerFenetre(win);
 }
 window.imprimerCarteAcces = imprimerCarteAcces;
 
@@ -449,7 +448,6 @@ async function imprimerBadge(personnelId) {
   const win = window.open('', '_blank');
   win.document.write(html);
   win.document.close();
-  win.focus();
-  setTimeout(() => win.print(), 700);
+  imprimerFenetre(win);
 }
 window.imprimerBadge = imprimerBadge;

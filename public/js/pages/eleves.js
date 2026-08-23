@@ -426,8 +426,7 @@ async function imprimerBulletin(eleveId, tri = 1) {
   const win = window.open('', '_blank');
   win.document.write(bulletinHtml);
   win.document.close();
-  win.focus();
-  setTimeout(() => win.print(), 800);
+  imprimerFenetre(win);
 }
 window.imprimerBulletin = imprimerBulletin;
 
@@ -534,8 +533,7 @@ async function imprimerCarteScolaire(eleveId) {
   const win = window.open('', '_blank');
   win.document.write(html);
   win.document.close();
-  win.focus();
-  setTimeout(() => win.print(), 700);
+  imprimerFenetre(win);
 }
 window.imprimerCarteScolaire = imprimerCarteScolaire;
 
