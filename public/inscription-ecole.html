@@ -80,6 +80,7 @@
     <div class="code-etab" id="code-affiche"></div>
     <div class="avertissement">⚠️ Ce code vous sera demandé à <strong>chaque connexion</strong>, en plus de votre identifiant et mot de passe. Notez-le dès maintenant.</div>
     <p style="font-size:13px;color:var(--ink-soft)" id="essai-jusquau"></p>
+    <div id="email-statut" style="font-size:12.5px;padding:12px 14px;border-radius:10px;margin:14px 0;text-align:left"></div>
     <a href="/" class="btn-connexion">Aller à la page de connexion →</a>
   </div>
 </div>
@@ -128,6 +129,18 @@ document.getElementById('form-inscription').addEventListener('submit', async e =
     document.getElementById('msg-ok').style.display = 'block';
     document.getElementById('code-affiche').textContent = d.code;
     document.getElementById('essai-jusquau').textContent = `Votre période d'essai gratuite court jusqu'au ${new Date(d.essai_jusquau).toLocaleDateString('fr-FR')}.`;
+
+    const emailStatut = document.getElementById('email-statut');
+    const emailSaisi = fd.email_contact;
+    if (d.email_envoye) {
+      emailStatut.style.background = '#F0FDF4';
+      emailStatut.style.color = '#166534';
+      emailStatut.textContent = `✅ Un e-mail de confirmation vient d'être envoyé à ${emailSaisi} — cliquez sur le lien qu'il contient pour activer votre compte.`;
+    } else {
+      emailStatut.style.background = '#FEF2F2';
+      emailStatut.style.color = '#DC2626';
+      emailStatut.textContent = `⚠️ L'e-mail de confirmation n'a pas pu être envoyé à ${emailSaisi} — contactez le support pour activer votre compte.`;
+    }
   } catch (err) {
     errBox.textContent = err.message;
     errBox.style.display = 'block';
