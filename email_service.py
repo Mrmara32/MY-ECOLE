@@ -90,9 +90,10 @@ def _gabarit(titre, contenu_html, bouton_texte=None, bouton_url=None):
     </div>"""
 
 
-def envoyer_confirmation_ecole(email_destinataire, nom_ecole, code_ecole, jeton):
-    url = f"{url_application()}/api/ecoles/confirmer/{jeton}"
-    encart_code = f"""
+def _encart_code(code_ecole):
+    if not code_ecole or code_ecole == 'ecole-1':
+        return ""
+    return f"""
         <div style="background:#F4F7F5;border:1px solid #E1E8E4;border-radius:10px;
                     padding:14px 18px;margin:16px 0;text-align:center">
           <div style="font-size:11.5px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">
@@ -103,11 +104,15 @@ def envoyer_confirmation_ecole(email_destinataire, nom_ecole, code_ecole, jeton)
             Il vous sera demandé à chaque connexion — conservez-le précieusement.
           </div>
         </div>"""
+
+
+def envoyer_confirmation_ecole(email_destinataire, nom_ecole, code_ecole, jeton):
+    url = f"{url_application()}/api/ecoles/confirmer/{jeton}"
     corps = _gabarit(
         "Bienvenue sur Gestion Scolaire !",
         f"""<p>Bonjour,</p>
         <p>Votre établissement <strong>{nom_ecole}</strong> vient d'être inscrit sur la plateforme.</p>
-        {encart_code}
+        {_encart_code(code_ecole)}
         <p>Pour activer votre compte et commencer à l'utiliser, veuillez confirmer votre adresse e-mail :</p>""",
         bouton_texte="Confirmer mon compte",
         bouton_url=url,
@@ -115,13 +120,14 @@ def envoyer_confirmation_ecole(email_destinataire, nom_ecole, code_ecole, jeton)
     return envoyer_email(email_destinataire, f"Confirmez votre inscription — {nom_ecole}", corps)
 
 
-def envoyer_confirmation_enseignant(email_destinataire, nom_enseignant, nom_ecole, jeton):
+def envoyer_confirmation_enseignant(email_destinataire, nom_enseignant, nom_ecole, code_ecole, jeton):
     url = f"{url_application()}/api/candidatures/confirmer/{jeton}"
     corps = _gabarit(
         "Votre candidature a été acceptée !",
         f"""<p>Bonjour {nom_enseignant},</p>
         <p>Votre candidature chez <strong>{nom_ecole}</strong> a été acceptée. Votre compte
         d'accès à l'application est prêt.</p>
+        {_encart_code(code_ecole)}
         <p>Pour l'activer, veuillez confirmer votre adresse e-mail :</p>""",
         bouton_texte="Activer mon compte",
         bouton_url=url,
@@ -129,12 +135,13 @@ def envoyer_confirmation_enseignant(email_destinataire, nom_enseignant, nom_ecol
     return envoyer_email(email_destinataire, f"Candidature acceptée — {nom_ecole}", corps)
 
 
-def envoyer_confirmation_parent(email_destinataire, nom_parent, nom_ecole, jeton):
+def envoyer_confirmation_parent(email_destinataire, nom_parent, nom_ecole, code_ecole, jeton):
     url = f"{url_application()}/api/parent/confirmer/{jeton}"
     corps = _gabarit(
         "Activez votre espace parents",
         f"""<p>Bonjour {nom_parent},</p>
         <p>Votre compte pour suivre la scolarité de votre enfant à <strong>{nom_ecole}</strong> a été créé.</p>
+        {_encart_code(code_ecole)}
         <p>Pour l'activer, veuillez confirmer votre adresse e-mail :</p>""",
         bouton_texte="Activer mon compte",
         bouton_url=url,
