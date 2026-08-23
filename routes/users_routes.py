@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, g
-from werkzeug.security import generate_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
 
 from database import db, rows_to_list, row_to_dict, log_action, gen_id
 from auth import require_auth, require_role
@@ -111,6 +111,17 @@ def delete_user(user_id):
     existing = db.execute("SELECT * FROM users WHERE id=? AND ecole_id=?", (user_id, g.user['ecole_id'])).fetchone()
     if not existing:
         return jsonify({'error': 'Introuvable'}), 404
+
+    # Sécurité renforcée : supprimer un compte administrateur exige de re-saisir
+    # son propre mot de passe, pour éviter une suppression accidentelle ou par un
+    # tiers ayant momentanément accès à une session déjà ouverte.
+    if existing['role'] == 'admin':
+        body = request.get_json(silent=True) or {}
+        mot_de_passe = body.get('mot_de_passe') or ''
+        moi = db.execute("SELECT password_hash FROM users WHERE id=?", (g.user['id'],)).fetchone()
+        if not moi or not check_password_hash(moi['password_hash'], mot_de_passe):
+            return jsonify({'error': 'Mot de passe incorrect — confirmation requise pour supprimer un compte administrateur'}), 403
+
     db.execute("DELETE FROM users WHERE id=? AND ecole_id=?", (user_id, g.user['ecole_id']))
     db.commit()
     log_action(g.user, 'suppression', 'utilisateur', str(user_id), {'username': existing['username']})

@@ -15,6 +15,12 @@ def login_route():
     if not username or not password:
         return jsonify({'error': 'Identifiant et mot de passe requis'}), 400
     result = do_login(username, password, code_ecole)
+    if result == 'ecole_non_confirmee':
+        return jsonify({'error': "Cette école n'a pas encore confirmé son adresse e-mail — vérifiez la boîte de réception (et les indésirables) pour le lien reçu à l'inscription."}), 403
+    if result == 'compte_non_confirme':
+        return jsonify({'error': "Ce compte n'est pas encore activé — vérifiez votre boîte de réception (et vos indésirables) pour le lien d'activation."}), 403
+    if result == 'compte_desactive':
+        return jsonify({'error': "Ce compte a été désactivé — contactez votre administration."}), 403
     if not result:
         return jsonify({'error': 'Identifiant, mot de passe ou établissement incorrect'}), 401
     return jsonify(result)

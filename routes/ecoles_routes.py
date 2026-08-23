@@ -1,9 +1,10 @@
 import re
 from flask import Blueprint, request, jsonify, g
-from werkzeug.security import generate_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
 
 from database import db, gen_id, rows_to_list, row_to_dict, log_action
 from auth import require_auth, require_super_admin
+from email_service import generer_jeton, envoyer_confirmation_ecole
 
 bp = Blueprint('ecoles_routes', __name__, url_prefix='/api/ecoles')
 
@@ -64,6 +65,8 @@ def inscription_ecole():
         return jsonify({'error': "Nom de l'école, nom de l'administrateur, identifiant et mot de passe sont requis"}), 400
     if len(admin_password) < 6:
         return jsonify({'error': 'Le mot de passe doit contenir au moins 6 caractères'}), 400
+    if not email_contact or '@' not in email_contact:
+        return jsonify({'error': "Une adresse e-mail valide est requise pour confirmer votre inscription"}), 400
 
     # Génère un code établissement unique à partir du nom (avec suffixe numérique si collision)
     code_base = _slugifier(nom_ecole)
@@ -75,11 +78,12 @@ def inscription_ecole():
 
     from datetime import datetime, timedelta
     date_expiration = (datetime.now() + timedelta(days=DUREE_ESSAI_JOURS)).strftime('%Y-%m-%d')
+    jeton = generer_jeton()
 
     cur = db.execute(
-        """INSERT INTO ecoles (nom, code, email_contact, telephone_contact, statut_licence, date_expiration_licence)
-           VALUES (?,?,?,?, 'essai', ?)""",
-        (nom_ecole, code, email_contact, body.get('telephone_contact'), date_expiration),
+        """INSERT INTO ecoles (nom, code, email_contact, telephone_contact, statut_licence, date_expiration_licence, jeton_confirmation)
+           VALUES (?,?,?,?, 'essai', ?, ?)""",
+        (nom_ecole, code, email_contact, body.get('telephone_contact'), date_expiration, jeton),
     )
     ecole_id = cur.lastrowid
 
@@ -96,12 +100,36 @@ def inscription_ecole():
         db.commit()
         return jsonify({'error': f"Impossible de créer le compte administrateur : {e}"}), 400
 
+    email_envoye = envoyer_confirmation_ecole(email_contact, nom_ecole, jeton)
     log_action(None, 'inscription_ecole', 'ecole', str(ecole_id), {'nom': nom_ecole, 'code': code})
     return jsonify({
         'ecole_id': ecole_id, 'code': code, 'nom': nom_ecole,
         'essai_jusquau': date_expiration,
-        'message': f"Bienvenue ! Votre école est prête. Notez bien votre code établissement : « {code} » — il vous sera demandé à chaque connexion.",
+        'email_envoye': email_envoye,
+        'message': (
+            f"Bienvenue ! Un e-mail de confirmation vient d'être envoyé à {email_contact} — "
+            f"cliquez sur le lien qu'il contient pour activer votre compte. "
+            f"Notez bien votre code établissement : « {code} » — il vous sera demandé à chaque connexion."
+            if email_envoye else
+            f"École créée. Notez bien votre code établissement : « {code} ». "
+            f"⚠️ L'e-mail de confirmation n'a pas pu être envoyé — contactez le support pour activer votre compte."
+        ),
     }), 201
+
+
+@bp.route('/confirmer/<jeton>', methods=['GET'])
+def confirmer_ecole(jeton):
+    """Active une école cliente après clic sur le lien reçu par e-mail. Route publique
+    (le jeton lui-même, long et aléatoire, fait office de preuve d'identité)."""
+    e = db.execute("SELECT * FROM ecoles WHERE jeton_confirmation=?", (jeton,)).fetchone()
+    if not e:
+        return "Lien de confirmation invalide ou déjà utilisé.", 400
+    db.execute("UPDATE ecoles SET email_confirme=1, jeton_confirmation=NULL WHERE id=?", (e['id'],))
+    db.commit()
+    log_action(None, 'confirmation_email', 'ecole', str(e['id']), {'nom': e['nom']})
+    # Redirige vers la page de connexion avec un petit message de succès
+    from flask import redirect
+    return redirect(f"/?ecole_confirmee=1&code={e['code']}")
 
 
 @bp.route('', methods=['GET'])
@@ -162,3 +190,21 @@ def update_ecole(ecole_id):
                {'motif': body.get('motif'), 'avant': {'statut_licence': existing['statut_licence']}, 'apres': body})
     row = db.execute("SELECT * FROM ecoles WHERE id=?", (ecole_id,)).fetchone()
     return jsonify(row_to_dict(row))
+
+
+@bp.route('/<int:ecole_id>', methods=['DELETE'])
+@require_auth
+@require_super_admin
+def delete_ecole(ecole_id):
+    """Supprime définitivement une école cliente et TOUTES ses données (élèves,
+    personnel, finances...). Réservé au super-administrateur. Irréversible —
+    le frontend doit demander une confirmation explicite avant d'appeler cette route."""
+    if ecole_id == 1:
+        return jsonify({'error': "Impossible de supprimer l'école principale de l'installation"}), 400
+    e = db.execute("SELECT * FROM ecoles WHERE id=?", (ecole_id,)).fetchone()
+    if not e:
+        return jsonify({'error': 'Introuvable'}), 404
+    db.execute("DELETE FROM ecoles WHERE id=?", (ecole_id,))
+    db.commit()
+    log_action(g.user, 'suppression', 'ecole', str(ecole_id), {'nom': e['nom'], 'code': e['code']})
+    return jsonify({'ok': True})
