@@ -79,13 +79,37 @@
     <h1>👨‍👩‍👧 Espace Parents</h1>
     <p class="sub" id="nom-ecole-contexte" style="display:none;font-weight:700;color:var(--primary,#164B41);margin:-6px 0 10px"></p>
     <p class="sub">Suivez la scolarité de votre enfant : notes, absences, devoirs et bulletin.</p>
-    <div id="login-err"></div>
-    <form id="login-form">
-      <div class="fg"><label>Identifiant</label><input id="l-user" required autocomplete="username"></div>
-      <div class="fg"><label>Mot de passe</label><input id="l-pass" type="password" required autocomplete="current-password"></div>
-      <button type="submit" id="login-btn" style="width:100%">Se connecter</button>
-    </form>
-    <p style="font-size:12px;color:var(--ink-soft);margin-top:18px;text-align:center">Vos identifiants vous ont été communiqués par l'établissement.</p>
+
+    <div style="display:flex;gap:8px;background:#F4F7F5;border-radius:999px;padding:4px;margin-bottom:18px">
+      <button type="button" id="tab-btn-connexion" onclick="afficherOngletParent('connexion')" style="flex:1;padding:10px;border:none;border-radius:999px;font-weight:700;font-size:13px;cursor:pointer;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.08)">Se connecter</button>
+      <button type="button" id="tab-btn-inscription" onclick="afficherOngletParent('inscription')" style="flex:1;padding:10px;border:none;border-radius:999px;font-weight:700;font-size:13px;cursor:pointer;background:transparent;color:#6B7280">Créer mon compte</button>
+    </div>
+
+    <div id="onglet-connexion">
+      <div id="login-err"></div>
+      <form id="login-form">
+        <div class="fg"><label>Identifiant</label><input id="l-user" required autocomplete="username"></div>
+        <div class="fg"><label>Mot de passe</label><input id="l-pass" type="password" required autocomplete="current-password"></div>
+        <button type="submit" id="login-btn" style="width:100%">Se connecter</button>
+      </form>
+      <p style="font-size:12px;color:var(--ink-soft);margin-top:18px;text-align:center">Vos identifiants vous ont été communiqués par l'établissement, ou créés vous-même via « Créer mon compte ».</p>
+    </div>
+
+    <div id="onglet-inscription" style="display:none">
+      <div id="inscription-err" style="display:none;background:#FEF2F2;color:#DC2626;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:14px"></div>
+      <div id="inscription-ok" style="display:none;text-align:center;padding:16px 4px">
+        <div style="font-size:36px;margin-bottom:8px">✅</div>
+        <p id="inscription-ok-texte" style="font-size:13.5px;color:var(--ink-soft,#4B5B63)"></p>
+      </div>
+      <form id="inscription-form">
+        <div class="fg"><label>Votre nom complet</label><input id="i-nom" required></div>
+        <div class="fg"><label>Matricule de votre enfant <span style="font-weight:400;color:#9CA3AF">(communiqué par l'école)</span></label><input id="i-matricule" required placeholder="ex : M000123"></div>
+        <div class="fg"><label>Votre e-mail</label><input id="i-email" type="email" required></div>
+        <div class="fg"><label>Identifiant souhaité</label><input id="i-user" required autocomplete="username"></div>
+        <div class="fg"><label>Mot de passe</label><input id="i-pass" type="password" required minlength="6" autocomplete="new-password"></div>
+        <button type="submit" id="inscription-btn" style="width:100%">Créer mon compte</button>
+      </form>
+    </div>
   </div>
 </div>
 
@@ -125,6 +149,56 @@ if (CODE_ECOLE) {
     })
     .catch(() => {});
 }
+
+function afficherOngletParent(onglet) {
+  const btnConnexion = document.getElementById('tab-btn-connexion');
+  const btnInscription = document.getElementById('tab-btn-inscription');
+  const styleActif = 'flex:1;padding:10px;border:none;border-radius:999px;font-weight:700;font-size:13px;cursor:pointer;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.08)';
+  const styleInactif = 'flex:1;padding:10px;border:none;border-radius:999px;font-weight:700;font-size:13px;cursor:pointer;background:transparent;color:#6B7280';
+  if (onglet === 'connexion') {
+    document.getElementById('onglet-connexion').style.display = '';
+    document.getElementById('onglet-inscription').style.display = 'none';
+    btnConnexion.style.cssText = styleActif;
+    btnInscription.style.cssText = styleInactif;
+  } else {
+    document.getElementById('onglet-connexion').style.display = 'none';
+    document.getElementById('onglet-inscription').style.display = '';
+    btnConnexion.style.cssText = styleInactif;
+    btnInscription.style.cssText = styleActif;
+  }
+}
+
+document.getElementById('inscription-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('inscription-btn');
+  const errBox = document.getElementById('inscription-err');
+  errBox.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Création…';
+  try {
+    const body = {
+      nom_complet: document.getElementById('i-nom').value.trim(),
+      matricule_enfant: document.getElementById('i-matricule').value.trim(),
+      email: document.getElementById('i-email').value.trim(),
+      username: document.getElementById('i-user').value.trim(),
+      password: document.getElementById('i-pass').value,
+    };
+    if (CODE_ECOLE) body.code_ecole = CODE_ECOLE;
+    const r = await fetch(API + '/parent/inscription', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Erreur');
+    document.getElementById('inscription-form').style.display = 'none';
+    document.getElementById('inscription-ok').style.display = 'block';
+    document.getElementById('inscription-ok-texte').textContent = d.message;
+  } catch (err) {
+    errBox.textContent = err.message;
+    errBox.style.display = '';
+    btn.disabled = false;
+    btn.textContent = 'Créer mon compte';
+  }
+});
 
 async function apiFetch(path, opts = {}) {
   const r = await fetch(API + path, {

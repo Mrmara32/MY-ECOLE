@@ -44,7 +44,11 @@
       </div>
       <div class="row2">
         <div class="fg"><label>Téléphone*</label><input name="telephone" required placeholder="+224 6XX XXX XXX"></div>
-        <div class="fg"><label>Email</label><input type="email" name="email"></div>
+        <div class="fg"><label>Email*</label><input type="email" name="email" required></div>
+      </div>
+      <div class="row2">
+        <div class="fg"><label>Identifiant de connexion souhaité*</label><input name="username_souhaite" required placeholder="ex : jdiallo" autocomplete="username"></div>
+        <div class="fg"><label>Mot de passe souhaité*</label><input type="password" name="password" required minlength="6" placeholder="Min. 6 caractères" autocomplete="new-password"></div>
       </div>
       <div class="fg">
         <label>Cycle(s) souhaité(s)* <span style="font-weight:400;color:#6B7280;font-size:11px">(un enseignant peut postuler pour plusieurs niveaux)</span></label>
@@ -112,6 +116,7 @@ document.getElementById('f-cand').addEventListener('submit', async (e) => {
     prenom: fd.get('prenom'), nom: fd.get('nom'), telephone: fd.get('telephone'),
     email: fd.get('email'), cycle: cyclesChoisis.join(', '), disponibilites: fd.get('disponibilites'),
     message: fd.get('message'), matieres,
+    username_souhaite: fd.get('username_souhaite'), password: fd.get('password'),
   };
   if (CODE_ECOLE) body.code_ecole = CODE_ECOLE;
   try {
