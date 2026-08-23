@@ -130,8 +130,10 @@ def approuver_candidature(c_id):
                  'enseignant', c['email'], jeton),
             )
             db.execute("UPDATE personnel SET user_id=? WHERE id=?", (cur.lastrowid, pid))
-            nom_ecole_row = db.execute("SELECT nom FROM ecoles WHERE id=?", (g.user['ecole_id'],)).fetchone()
-            envoyer_confirmation_enseignant(c['email'], c['prenom'], nom_ecole_row['nom'] if nom_ecole_row else 'votre école', jeton)
+            ecole_row = db.execute("SELECT nom, code FROM ecoles WHERE id=?", (g.user['ecole_id'],)).fetchone()
+            nom_ecole = ecole_row['nom'] if ecole_row else 'votre école'
+            code_ecole = ecole_row['code'] if ecole_row else None
+            envoyer_confirmation_enseignant(c['email'], c['prenom'], nom_ecole, code_ecole, jeton)
             compte_cree = True
 
     db.commit()

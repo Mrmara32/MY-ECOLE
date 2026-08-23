@@ -49,9 +49,10 @@ def inscription_parent():
     db.execute("INSERT INTO parents_eleves (id,user_id,eleve_id) VALUES (?,?,?)", (gen_id('pe'), user_id, eleve['id']))
     db.commit()
 
-    nom_ecole_row = db.execute("SELECT nom FROM ecoles WHERE id=?", (ecole_id,)).fetchone()
+    nom_ecole_row = db.execute("SELECT nom, code FROM ecoles WHERE id=?", (ecole_id,)).fetchone()
     nom_ecole = nom_ecole_row['nom'] if nom_ecole_row else 'votre école'
-    email_envoye = envoyer_confirmation_parent(email, nom_complet, nom_ecole, jeton)
+    code_ecole_email = nom_ecole_row['code'] if nom_ecole_row else None
+    email_envoye = envoyer_confirmation_parent(email, nom_complet, nom_ecole, code_ecole_email, jeton)
     log_action(None, 'inscription_parent', 'utilisateur', str(user_id), {'nom': nom_complet, 'enfant': f"{eleve['prenom']} {eleve['nom']}"})
 
     return jsonify({
