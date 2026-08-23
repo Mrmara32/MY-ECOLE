@@ -90,12 +90,24 @@ def _gabarit(titre, contenu_html, bouton_texte=None, bouton_url=None):
     </div>"""
 
 
-def envoyer_confirmation_ecole(email_destinataire, nom_ecole, jeton):
+def envoyer_confirmation_ecole(email_destinataire, nom_ecole, code_ecole, jeton):
     url = f"{url_application()}/api/ecoles/confirmer/{jeton}"
+    encart_code = f"""
+        <div style="background:#F4F7F5;border:1px solid #E1E8E4;border-radius:10px;
+                    padding:14px 18px;margin:16px 0;text-align:center">
+          <div style="font-size:11.5px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">
+            Votre code établissement
+          </div>
+          <div style="font-size:19px;font-weight:800;color:#0E332C;letter-spacing:.03em">{code_ecole}</div>
+          <div style="font-size:11.5px;color:#6B7280;margin-top:4px">
+            Il vous sera demandé à chaque connexion — conservez-le précieusement.
+          </div>
+        </div>"""
     corps = _gabarit(
         "Bienvenue sur Gestion Scolaire !",
         f"""<p>Bonjour,</p>
         <p>Votre établissement <strong>{nom_ecole}</strong> vient d'être inscrit sur la plateforme.</p>
+        {encart_code}
         <p>Pour activer votre compte et commencer à l'utiliser, veuillez confirmer votre adresse e-mail :</p>""",
         bouton_texte="Confirmer mon compte",
         bouton_url=url,
