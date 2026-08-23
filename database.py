@@ -71,6 +71,8 @@ CREATE TABLE IF NOT EXISTS ecoles (
   date_debut_licence   TEXT DEFAULT CURRENT_TIMESTAMP,
   date_expiration_licence TEXT,
   actif               INTEGER DEFAULT 1,
+  email_confirme      INTEGER DEFAULT 0,
+  jeton_confirmation  TEXT,
   created_at          TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -510,6 +512,8 @@ CREATE TABLE IF NOT EXISTS candidatures_enseignants (
   cycle           TEXT,
   disponibilites  TEXT,
   message         TEXT,
+  username_souhaite TEXT,
+  password_hash   TEXT,
   statut          TEXT DEFAULT 'en_attente' CHECK(statut IN ('en_attente','approuvee','rejetee')),
   personnel_id    TEXT REFERENCES personnel(id) ON DELETE SET NULL,
   approuve_par    INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -666,6 +670,16 @@ MIGRATIONS = {
     'users': {
         'civilite': "TEXT",  # 'M.' ou 'Mme' — utilisé pour le message de bienvenue personnalisé
         'est_super_admin': "INTEGER DEFAULT 0",  # accès à la supervision de toutes les écoles clientes
+        'email_confirme': "INTEGER DEFAULT 0",  # pour les comptes parents avec confirmation par e-mail
+        'jeton_confirmation': "TEXT",
+    },
+    'ecoles': {
+        'email_confirme': "INTEGER DEFAULT 0",
+        'jeton_confirmation': "TEXT",
+    },
+    'candidatures_enseignants': {
+        'username_souhaite': "TEXT",
+        'password_hash': "TEXT",
     },
     'transactions': {
         'rapproche': "INTEGER DEFAULT 0",
@@ -865,6 +879,13 @@ def run_migrations():
                 db.execute("UPDATE users SET est_super_admin=1 WHERE id=?", (premier_admin['id'],))
                 db.commit()
                 print(f"[migration] Compte admin #{premier_admin['id']} promu super-administrateur")
+
+    # Migration de rattrapage : toute école déjà inscrite AVANT l'introduction de la
+    # confirmation par e-mail est automatiquement considérée comme confirmée — sans
+    # quoi des écoles déjà actives se retrouveraient bloquées du jour au lendemain.
+    if 'ecoles' in tables_existantes:
+        db.execute("UPDATE ecoles SET email_confirme=1 WHERE email_confirme=0 AND jeton_confirmation IS NULL")
+        db.commit()
 
     # Initialise (une seule fois) les compteurs de séquence à partir du plus haut
     # matricule déjà existant, pour que les bases déjà en service ne repartent

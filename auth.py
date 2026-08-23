@@ -38,18 +38,22 @@ def login(username, password, code_ecole=None):
     pas globalement) — s'il est omis, on suppose l'école n°1 (installation mono-école
     existante), pour ne rien casser des connexions actuelles."""
     if code_ecole:
-        ecole = db.execute("SELECT id, actif, statut_licence FROM ecoles WHERE code=?", (code_ecole,)).fetchone()
+        ecole = db.execute("SELECT id, actif, statut_licence, email_confirme FROM ecoles WHERE code=?", (code_ecole,)).fetchone()
         if not ecole or not ecole['actif'] or ecole['statut_licence'] in ('suspendue', 'expiree'):
             return None
+        if not ecole['email_confirme']:
+            return 'ecole_non_confirmee'
         ecole_id = ecole['id']
     else:
         ecole_id = 1
 
     user = db.execute(
-        "SELECT * FROM users WHERE ecole_id=? AND username=? AND active=1", (ecole_id, username)
+        "SELECT * FROM users WHERE ecole_id=? AND username=?", (ecole_id, username)
     ).fetchone()
     if not user or not check_password_hash(user['password_hash'], password):
         return None
+    if not user['active']:
+        return 'compte_non_confirme' if user['jeton_confirmation'] else 'compte_desactive'
 
     db.execute("UPDATE users SET last_login=CURRENT_TIMESTAMP WHERE id=?", (user['id'],))
     db.commit()
