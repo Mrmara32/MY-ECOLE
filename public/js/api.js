@@ -30,10 +30,12 @@ async function apiUpload(path, formData) {
 }
 
 /* ── Auth ── */
-async function apiLogin(username, password) {
+async function apiLogin(username, password, codeEcole) {
+  const body = { username, password };
+  if (codeEcole) body.code_ecole = codeEcole;
   const r = await fetch(API_BASE + '/auth/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify(body),
   });
   const d = await r.json();
   if (!r.ok) throw new Error(d.error || 'Erreur');

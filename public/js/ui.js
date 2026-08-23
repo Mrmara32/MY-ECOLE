@@ -470,6 +470,34 @@ window.montantEnLettres = montantEnLettres;
    Utilisable pour : versements scolarité, cantine, cours de révision,
    et paiements à un prestataire de service (dépenses).
 ============================================================ */
+
+/* Lance l'impression d'une fenêtre seulement une fois les polices REELLEMENT
+   chargées (document.fonts.ready), au lieu d'un délai fixe arbitraire qui peut
+   s'avérer trop court sur une connexion lente — auquel cas la police demandée
+   n'est pas encore prête et le navigateur retombe sur une police de secours du
+   système, ce qui peut afficher des caractères incorrects (ex: accents mal
+   rendus) sur les documents imprimés. Une limite de sécurité (2.5s) évite un
+   blocage si jamais l'événement de chargement ne se déclenche pas. */
+function imprimerFenetre(win) {
+  let dejaImprime = false;
+  const lancer = () => {
+    if (dejaImprime) return;
+    dejaImprime = true;
+    win.focus();
+    win.print();
+  };
+  try {
+    if (win.document.fonts && win.document.fonts.ready) {
+      win.document.fonts.ready.then(lancer).catch(lancer);
+    } else {
+      lancer();
+    }
+  } catch (_) {
+    lancer();
+  }
+  setTimeout(lancer, 2500); // filet de sécurité si l'événement ne se déclenche jamais
+}
+
 async function imprimerRecu({ type, nom, description, montant, date, moyenPaiement, reference, recuPar }) {
   const settings = await apiGetSettings();
   const numeroRecu = reference || ('REC-' + Date.now().toString(36).toUpperCase());
@@ -480,7 +508,7 @@ async function imprimerRecu({ type, nom, description, montant, date, moyenPaieme
   const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Reçu — ${esc(nom)}</title>
   <style>
     *{box-sizing:border-box}
-    body{font-family:'Georgia','Times New Roman',serif;font-size:13px;color:#1F2937;margin:0;padding:26px;background:#F3F4F6}
+    body{font-family:Georgia,'Times New Roman',Arial,Helvetica,sans-serif;font-size:13px;color:#1F2937;margin:0;padding:26px;background:#F3F4F6}
     .recu{max-width:520px;margin:0 auto;background:#fff;border:1px solid #D1D5DB;border-radius:4px;padding:0;
       box-shadow:0 4px 18px rgba(0,0,0,.08)}
     .bandeau{height:6px;display:flex}
@@ -560,8 +588,7 @@ async function imprimerRecu({ type, nom, description, montant, date, moyenPaieme
   const win = window.open('', '_blank');
   win.document.write(html);
   win.document.close();
-  win.focus();
-  setTimeout(() => win.print(), 500);
+  imprimerFenetre(win);
 }
 window.imprimerRecu = imprimerRecu;
 

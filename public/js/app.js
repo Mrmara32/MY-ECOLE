@@ -68,12 +68,13 @@ async function initLogin() {
     e.preventDefault();
     const username = $('#l-user').value.trim();
     const password = $('#l-pass').value;
+    const codeEcole = $('#l-code-ecole').value.trim();
     const btn = $('#login-btn');
     btn.disabled = true;
     btn.textContent = 'Connexion…';
     $('#login-err').style.display = 'none';
     try {
-      const { token, user } = await apiLogin(username, password);
+      const { token, user } = await apiLogin(username, password, codeEcole);
       apiSetToken(token);
       currentUser = user;
       localStorage.setItem('gs_user', JSON.stringify(user));
