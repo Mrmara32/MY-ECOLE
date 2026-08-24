@@ -39,7 +39,7 @@ async function pagePersonnel() {
         <button class="btn btn-primary btn-sm" onclick="modalPersonnel()">+ Ajouter</button>
       </div>
       <div class="card-body" style="padding-bottom:0">
-        <div class="alert alert-info">💡 Les enseignants du <strong>collège</strong> et du <strong>lycée</strong> sont rémunérés à l'heure ;
+        <div class="alert alert-info">💡 Les enseignants du <strong>collège</strong>, <strong>lycée</strong>, <strong>enseignement supérieur</strong> et <strong>centre de formation</strong> sont rémunérés à l'heure ;
         ceux de la <strong>maternelle</strong> et du <strong>primaire</strong> (et le personnel administratif) sont rémunérés au mois.</div>
       </div>
       <div class="filters">

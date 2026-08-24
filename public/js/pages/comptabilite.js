@@ -1,4 +1,11 @@
 /* ===================== COMPTABILITÉ ===================== */
+const JOURNAL_LABELS = {
+  ventes: '<span class="badge bdg-ok">📥 Ventes</span>',
+  achats: '<span class="badge bdg-err">📤 Achats</span>',
+  salaires: '<span class="badge bdg-gray">💰 Salaires</span>',
+  diverses: '<span class="badge bdg-gray">📋 Diverses</span>',
+  a_nouveau: '<span class="badge bdg-gray">📅 À nouveau</span>',
+};
 const STATUT_VAL_BADGE = {
   auto: '', // pas de badge, opération normale déjà comptabilisée
   valide: '<span class="badge bdg-ok">✔ Validée</span>',
@@ -32,6 +39,7 @@ async function pageComptabilite() {
       $('#tb-compta').innerHTML = data.length ? data.map(t => `<tr>
         <td>${fmtDate(t.date_op)}</td>
         <td><span class="badge ${t.type==='entree'?'bdg-ok':'bdg-err'}">${t.type==='entree'?'➕ Recette':'➖ Dépense'}</span></td>
+        <td>${JOURNAL_LABELS[t.journal]||''}</td>
         <td>${esc(t.description||t.categorie||'—')}</td>
         <td><span class="badge bdg-gray">${esc(t.categorie||'—')}</span></td>
         <td>${esc(t.moyen_paiement||'—')}</td>
@@ -75,11 +83,17 @@ async function pageComptabilite() {
         <div class="fg"><label>Du</label><input type="date" id="f-tdeb" value="${new Date(new Date().getFullYear(),0,1).toISOString().split('T')[0]}"></div>
         <div class="fg"><label>Au</label><input type="date" id="f-tfin" value="${today()}"></div>
         <div class="fg"><label>Type</label><select id="f-ttype"><option value="">Tous</option><option value="entree">Recettes</option><option value="sortie">Dépenses</option></select></div>
+        <div class="fg"><label>Journal</label><select id="f-tjournal">
+          <option value="">Tous</option>
+          <option value="ventes">📥 Ventes</option><option value="achats">📤 Achats</option>
+          <option value="salaires">💰 Salaires</option><option value="diverses">📋 Opérations diverses</option>
+          <option value="a_nouveau">📅 À nouveau</option>
+        </select></div>
         <div class="fg grow"><label>Recherche</label><input id="q-t" placeholder="Description, référence…"></div>
         <button class="btn btn-outline btn-sm" style="align-self:flex-end" onclick="reloadTransactions()">🔍</button>
       </div>
       <div class="tbl-wrap"><table>
-        <thead><tr id="th-compta"><th>Date</th><th>Type</th><th>Description</th><th>Catégorie</th><th>Moyen</th><th class="text-right">Montant</th><th>Statut</th><th>Créé par</th><th>Lié / Actions</th></tr></thead>
+        <thead><tr id="th-compta"><th>Date</th><th>Type</th><th>Journal</th><th>Description</th><th>Catégorie</th><th>Moyen</th><th class="text-right">Montant</th><th>Statut</th><th>Créé par</th><th>Lié / Actions</th></tr></thead>
         <tbody id="tb-compta"></tbody>
       </table></div>
     </div>`;
@@ -87,17 +101,19 @@ async function pageComptabilite() {
     render(transactions);
 
     makeSortableTable('#th-compta', () => curr, render,
-      ['date_op', 'type', 'description', 'categorie', 'moyen_paiement', 'montant', 'statut_validation', 'cree_par_nom', null]);
+      ['date_op', 'type', 'journal', 'description', 'categorie', 'moyen_paiement', 'montant', 'statut_validation', 'cree_par_nom', null]);
 
     window.reloadTransactions = async () => {
       const deb = $('#f-tdeb').value;
       const fin = $('#f-tfin').value;
       const type = $('#f-ttype').value;
+      const journal = $('#f-tjournal').value;
       const q = $('#q-t').value;
       let qs = [];
       if (deb) qs.push(`date_debut=${deb}`);
       if (fin) qs.push(`date_fin=${fin}`);
       if (type) qs.push(`type=${type}`);
+      if (journal) qs.push(`journal=${journal}`);
       if (q) qs.push(`q=${encodeURIComponent(q)}`);
       try { curr = await apiGetTransactions(qs.join('&')); render(curr); }
       catch(e) { toast(e.message,'error'); }
@@ -142,6 +158,7 @@ async function rejeterTransactionPrompt(id) {
 
 async function modalTransaction(typeDefaut = 'entree') {
   const personnel = await apiGetPersonnel().catch(() => []);
+  const fournisseurs = await apiGetFournisseurs('actifs=1').catch(() => []);
   openModal('Saisir une opération', `
     <form id="f-tr" style="display:flex;flex-direction:column;gap:14px">
       <div class="form-2">
@@ -152,14 +169,28 @@ async function modalTransaction(typeDefaut = 'entree') {
         <div class="fg"><label>Date*</label><input type="date" name="date_op" value="${today()}" required></div>
       </div>
       <div class="form-2">
+        <div class="fg"><label>Journal comptable*</label><select name="journal" id="tr-journal">
+          ${optionsHtml([
+            {value:'ventes',label:'📥 Journal des Ventes'},{value:'achats',label:'📤 Journal des Achats'},
+            {value:'salaires',label:'💰 Journal Opérations Salaire'},{value:'diverses',label:'📋 Journal Opérations Diverses'},
+            {value:'a_nouveau',label:'📅 Journal À Nouveau'},
+          ], typeDefaut==='entree'?'ventes':'achats', false)}
+        </select></div>
         <div class="fg"><label>Catégorie</label><select name="categorie" id="tr-cat" onchange="updateCatOptions()">
           ${(typeDefaut==='entree'?CAT_ENTREE:CAT_SORTIE).map(c=>`<option>${esc(c)}</option>`).join('')}
         </select></div>
-        <div class="fg"><label>Montant (GNF)*</label><input type="number" name="montant" required min="1" step="1"></div>
       </div>
+      <div class="fg"><label>Montant (GNF)*</label><input type="number" name="montant" required min="1" step="1"></div>
       <div class="fg" id="tr-benef-wrap" style="display:${typeDefaut==='sortie'?'':'none'}">
         <label id="tr-benef-label">Bénéficiaire / Prestataire de service</label>
         <div id="tr-benef-field"><input name="beneficiaire" placeholder="Nom de la personne ou de l'entreprise payée"></div>
+      </div>
+      <div class="fg" id="tr-fournisseur-wrap" style="display:none">
+        <label>Fournisseur <span style="font-weight:400;color:#9CA3AF">(optionnel — pour suivre l'historique par fournisseur)</span></label>
+        <select name="fournisseur_id">
+          <option value="">— Aucun —</option>
+          ${fournisseurs.map(f => `<option value="${esc(f.id)}">${esc(f.nom)}</option>`).join('')}
+        </select>
       </div>
       <div class="fg"><label>Description</label><input name="description" placeholder="Détails de l'opération"></div>
       <div class="form-2">
@@ -182,6 +213,13 @@ async function modalTransaction(typeDefaut = 'entree') {
     }
     $('#tr-benef-wrap').style.display = type === 'sortie' ? '' : 'none';
 
+    // Journal : suggestion intelligente selon le type, modifiable librement par l'utilisateur.
+    // On ne l'écrase que si l'utilisateur ne l'a pas déjà modifié lui-même.
+    const journalSelect = $('#tr-journal');
+    if (!journalSelect.dataset.modifieParUtilisateur) {
+      journalSelect.value = type === 'entree' ? 'ventes' : 'achats';
+    }
+
     // Catégorie "Salaires" : proposer directement la liste des employés, groupée par poste,
     // plutôt qu'un champ libre — plus rapide et évite les erreurs de saisie de nom.
     const cat = $('#tr-cat').value;
@@ -196,11 +234,20 @@ async function modalTransaction(typeDefaut = 'entree') {
             `<option value="${esc(p.prenom)} ${esc(p.nom)}">${esc(p.prenom)} ${esc(p.nom)}</option>`).join('')}
         </optgroup>`).join('')}
       </select>`;
+      if (!journalSelect.dataset.modifieParUtilisateur) journalSelect.value = 'salaires';
     } else if (benefField.querySelector('select')) {
       $('#tr-benef-label').textContent = 'Bénéficiaire / Prestataire de service';
       benefField.innerHTML = `<input name="beneficiaire" placeholder="Nom de la personne ou de l'entreprise payée">`;
     }
+    updateFournisseurVisibility();
   };
+  window.updateFournisseurVisibility = () => {
+    $('#tr-fournisseur-wrap').style.display = $('#tr-journal').value === 'achats' ? '' : 'none';
+  };
+  $('#tr-journal').addEventListener('change', () => {
+    $('#tr-journal').dataset.modifieParUtilisateur = '1';
+    updateFournisseurVisibility();
+  });
   updateCatOptions();
   $('#f-tr').onsubmit = async e => {
     e.preventDefault();

@@ -25,8 +25,8 @@ async function pageClasses() {
         <button class="btn btn-primary btn-sm" onclick="modalClasse()">+ Ajouter une classe</button>
       </div>
       <div class="card-body" style="padding-bottom:0">
-        <div class="alert alert-info">💡 Les classes sont regroupées en 4 cycles : Maternelle, Primaire, Collège, Lycée.
-        Le cycle détermine notamment le mode de rémunération des enseignants (mensuel pour maternelle/primaire, horaire pour collège/lycée).</div>
+        <div class="alert alert-info">💡 Les classes sont regroupées en 6 cycles : Maternelle, Primaire, Collège, Lycée, Enseignement supérieur, Centre de formation.
+        Le cycle détermine notamment le mode de rémunération des enseignants (mensuel pour maternelle/primaire, horaire pour les autres).</div>
       </div>
       <div class="filters">
         <div class="fg grow"><label>Recherche</label><input id="q-cls" placeholder="Nom de la classe…"></div>
@@ -34,6 +34,7 @@ async function pageClasses() {
           <option value="">Tous</option>
           <option value="maternelle">Maternelle</option><option value="primaire">Primaire</option>
           <option value="college">Collège</option><option value="lycee">Lycée</option>
+          <option value="superieur">Enseignement supérieur</option><option value="formation">Centre de formation</option>
         </select></div>
       </div>
       <div class="tbl-wrap"><table>
@@ -70,6 +71,8 @@ async function modalClasse(id = null) {
         <option value="primaire" ${data.cycle==='primaire'?'selected':''}>Primaire</option>
         <option value="college" ${data.cycle==='college'?'selected':''}>Collège</option>
         <option value="lycee" ${data.cycle==='lycee'?'selected':''}>Lycée</option>
+        <option value="superieur" ${data.cycle==='superieur'?'selected':''}>Enseignement supérieur</option>
+        <option value="formation" ${data.cycle==='formation'?'selected':''}>Centre de formation</option>
       </select></div>
       <div class="fg"><label>Ordre d'affichage</label><input type="number" name="ordre" value="${data.ordre??''}" placeholder="0"></div>
       ${id ? motifFieldHtml() : ''}
