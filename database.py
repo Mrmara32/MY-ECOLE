@@ -129,7 +129,7 @@ CREATE TABLE IF NOT EXISTS classes (
   ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id         TEXT PRIMARY KEY,
   nom        TEXT NOT NULL,
-  cycle      TEXT NOT NULL CHECK(cycle IN ('maternelle','primaire','college','lycee')),
+  cycle      TEXT NOT NULL CHECK(cycle IN ('maternelle','primaire','college','lycee','superieur','formation')),
   ordre      INTEGER DEFAULT 0,
   active     INTEGER DEFAULT 1,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -298,6 +298,20 @@ CREATE TABLE IF NOT EXISTS absences_personnel (
   created_at   TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS fournisseurs (
+  ecole_id      INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id            TEXT PRIMARY KEY,
+  nom           TEXT NOT NULL,
+  categorie     TEXT,
+  telephone     TEXT,
+  email         TEXT,
+  adresse       TEXT,
+  notes         TEXT,
+  actif         INTEGER DEFAULT 1,
+  created_at    TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(ecole_id, nom)
+);
+
 CREATE TABLE IF NOT EXISTS transactions (
   ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id             TEXT PRIMARY KEY,
@@ -309,6 +323,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   montant        REAL NOT NULL,
   reference      TEXT,
   eleve_id       TEXT REFERENCES eleves(id) ON DELETE SET NULL,
+  fournisseur_id TEXT REFERENCES fournisseurs(id) ON DELETE SET NULL,
+  journal        TEXT NOT NULL DEFAULT 'diverses' CHECK(journal IN ('achats','ventes','salaires','diverses','a_nouveau')),
   cree_par       INTEGER REFERENCES users(id) ON DELETE SET NULL,
   statut_validation TEXT NOT NULL DEFAULT 'auto' CHECK(statut_validation IN ('auto','attente_directeur','attente_admin','valide','rejete')),
   valide_par     INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -684,6 +700,13 @@ MIGRATIONS = {
     'transactions': {
         'rapproche': "INTEGER DEFAULT 0",
         'date_rapprochement': "TEXT",
+        'cree_par': "INTEGER REFERENCES users(id) ON DELETE SET NULL",
+        'statut_validation': "TEXT NOT NULL DEFAULT 'auto'",
+        'valide_par': "INTEGER REFERENCES users(id) ON DELETE SET NULL",
+        'date_validation': "TEXT",
+        'motif_rejet': "TEXT",
+        'fournisseur_id': "TEXT REFERENCES fournisseurs(id) ON DELETE SET NULL",
+        'journal': "TEXT NOT NULL DEFAULT 'diverses'",
     },
     'cours_revision_enseignants': {
         'jour': "TEXT",
@@ -697,13 +720,6 @@ MIGRATIONS = {
         'prime_revision': "REAL DEFAULT 0",
         'heures_revision': "REAL DEFAULT 0",
         'avance_deduite': "REAL DEFAULT 0",
-    },
-    'transactions': {
-        'cree_par': "INTEGER REFERENCES users(id) ON DELETE SET NULL",
-        'statut_validation': "TEXT NOT NULL DEFAULT 'auto'",
-        'valide_par': "INTEGER REFERENCES users(id) ON DELETE SET NULL",
-        'date_validation': "TEXT",
-        'motif_rejet': "TEXT",
     },
     'cours_revision': {
         'salle': "TEXT",
@@ -797,7 +813,7 @@ def run_migrations():
         'revision_seances', 'bulletins_salaire', 'avances_salaire', 'types_primes', 'validations_paie',
         'candidatures_enseignants', 'revision_participants', 'revision_evaluations', 'frais_scolarite',
         'paiements', 'versements', 'reinscriptions', 'cantine_abonnements', 'cantine_menus',
-        'messages', 'annonces',
+        'messages', 'annonces', 'fournisseurs',
     ]
     for table in TABLES_MULTI_ECOLE:
         if table not in tables_existantes:
@@ -816,8 +832,10 @@ def run_migrations():
     # tout à fait se répéter d'une école à l'autre. Sans cette correction, une deuxième
     # école ne pourrait pas définir un barème pour "CM2" si la première l'a déjà fait.
     for table, nouveau_marqueur, nouvelle_creation in [
+        ('classes', "'superieur'",
+         "CREATE TABLE classes (ecole_id INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE, id TEXT PRIMARY KEY, nom TEXT NOT NULL, cycle TEXT NOT NULL CHECK(cycle IN ('maternelle','primaire','college','lycee','superieur','formation')), ordre INTEGER DEFAULT 0, active INTEGER DEFAULT 1, created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(ecole_id, nom))"),
         ('classes', 'UNIQUE(ecole_id, nom)',
-         "CREATE TABLE classes (ecole_id INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE, id TEXT PRIMARY KEY, nom TEXT NOT NULL, cycle TEXT NOT NULL CHECK(cycle IN ('maternelle','primaire','college','lycee')), ordre INTEGER DEFAULT 0, active INTEGER DEFAULT 1, created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(ecole_id, nom))"),
+         "CREATE TABLE classes (ecole_id INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE, id TEXT PRIMARY KEY, nom TEXT NOT NULL, cycle TEXT NOT NULL CHECK(cycle IN ('maternelle','primaire','college','lycee','superieur','formation')), ordre INTEGER DEFAULT 0, active INTEGER DEFAULT 1, created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(ecole_id, nom))"),
         ('salles', 'UNIQUE(ecole_id, nom)',
          "CREATE TABLE salles (ecole_id INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE, id TEXT PRIMARY KEY, nom TEXT NOT NULL, capacite INTEGER, batiment TEXT, active INTEGER DEFAULT 1, created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(ecole_id, nom))"),
         ('frais_scolarite', 'UNIQUE(ecole_id, classe, annee_scolaire)',

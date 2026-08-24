@@ -128,6 +128,7 @@ def create_app():
     from routes.parent_routes import bp as parent_bp
     from routes.ecoles_routes import bp as ecoles_bp
     from routes.licence_routes import bp as licence_bp
+    from routes.fournisseurs_routes import bp as fournisseurs_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
@@ -147,6 +148,7 @@ def create_app():
     app.register_blueprint(parent_bp)
     app.register_blueprint(ecoles_bp)
     app.register_blueprint(licence_bp)
+    app.register_blueprint(fournisseurs_bp)
 
     # ── Page principale + SPA fallback ──
     @app.route('/')
