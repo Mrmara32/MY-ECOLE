@@ -129,6 +129,13 @@ const apiDeleteReinscription = (id)      => apiFetch(`/reinscriptions/${id}`, { 
 /* ── Transactions ── */
 const apiGetTransactions    = (q='')    => apiFetch('/transactions'+(q?'?'+q:''));
 
+/* ── Fournisseurs ── */
+const apiGetFournisseurs    = (q='')    => apiFetch('/fournisseurs'+(q?'?'+q:''));
+const apiGetFournisseur     = (id)      => apiFetch(`/fournisseurs/${id}`);
+const apiCreateFournisseur  = (d)       => apiFetch('/fournisseurs', { method:'POST', body:d });
+const apiUpdateFournisseur  = (id,d)    => apiFetch(`/fournisseurs/${id}`, { method:'PUT', body:d });
+const apiDeleteFournisseur  = (id)      => apiFetch(`/fournisseurs/${id}`, { method:'DELETE' });
+
 const apiGetTransactionsRecurrentes = () => apiFetch('/transactions-recurrentes');
 const apiCreateTransactionRecurrente = (d) => apiFetch('/transactions-recurrentes', { method:'POST', body:d });
 const apiUpdateTransactionRecurrente = (id,d) => apiFetch(`/transactions-recurrentes/${id}`, { method:'PUT', body:d });

@@ -361,7 +361,7 @@ function cycleDeClasse(nom) {
   const c = CLASSES_FULL.find(c => c.nom === nom);
   return c ? c.cycle : null;
 }
-const CYCLE_LABELS = { maternelle:'Maternelle', primaire:'Primaire', college:'Collège', lycee:'Lycée' };
+const CYCLE_LABELS = { maternelle:'Maternelle', primaire:'Primaire', college:'Collège', lycee:'Lycée', superieur:'Enseignement supérieur', formation:'Centre de formation' };
 const MATIERES = ['Mathématiques','Français','Anglais','Histoire-Géographie','SVT','Physique-Chimie','EPS','Arts Plastiques','Musique','Éducation Civique','Philosophie','Espagnol','Informatique','Arabe'];
 const POSTES = ['Directeur Général','Directeur des Études','Enseignant','Comptable','Secrétaire','Surveillant','Documentaliste','Personnel de service','Chauffeur','Infirmier(ère)','Autre'];
 const GROUPES_SANGUINS = ['A+','A-','B+','B-','AB+','AB-','O+','O-','Inconnu'];

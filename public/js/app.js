@@ -17,6 +17,7 @@ const PAGES = {
   paiements:       { icon:'💰', labelKey:'nav_paiements',           fn: pagePaiements,       roles:['admin','directeur','comptable','secretaire'] },
   cantine:         { icon:'🍽️', labelKey:'nav_cantine',            fn: pageCantine,         roles:['admin','directeur','comptable','secretaire'] },
   comptabilite:    { icon:'💳', labelKey:'nav_comptabilite',        fn: pageComptabilite,    roles:['admin','directeur','comptable'] },
+  fournisseurs:    { icon:'🏭', labelKey:'nav_fournisseurs',        fn: pageFournisseurs,    roles:['admin','directeur','comptable'] },
   revision:        { icon:'📖', labelKey:'nav_revision',            fn: pageRevision,        roles:['admin','directeur','comptable','enseignant','secretaire'] },
   paie:            { icon:'💵', labelKey:'nav_paie',                 fn: pagePaieList,        roles:['admin','directeur','comptable'] },
   reinscriptions:  { icon:'🔄', labelKey:'nav_reinscriptions',      fn: pageReinscriptions,  roles:['admin','directeur','secretaire'] },
@@ -34,7 +35,7 @@ const PAGES = {
 const NAV_GROUPS = [
   { labelKey: null, pages: ['dashboard'] },
   { labelKey: 'nav_section_scolarite', pages: ['eleves','eleveDuMois','notes','devoirs','emploi','seances','absences','classes','salles','reinscriptions'] },
-  { labelKey: 'nav_section_finances', pages: ['paiements','cantine','comptabilite','revision','paie'] },
+  { labelKey: 'nav_section_finances', pages: ['paiements','cantine','comptabilite','fournisseurs','revision','paie'] },
   { labelKey: 'nav_section_vie_ecole', pages: ['communication','actualites','personnel'] },
   { labelKey: 'nav_section_administration', pages: ['users','journal','settings'] },
   { labelKey: 'nav_section_super_admin', pages: ['ecoles'] },
