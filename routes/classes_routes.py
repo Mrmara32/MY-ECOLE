@@ -27,7 +27,7 @@ def create_classe():
     nom, cycle = body.get('nom'), body.get('cycle')
     if not nom or not cycle:
         return jsonify({'error': 'Nom et cycle requis'}), 400
-    if cycle not in ('maternelle', 'primaire', 'college', 'lycee'):
+    if cycle not in ('maternelle', 'primaire', 'college', 'lycee', 'superieur', 'formation'):
         return jsonify({'error': 'Cycle invalide'}), 400
     if db.execute("SELECT id FROM classes WHERE ecole_id=? AND nom=?", (g.user['ecole_id'], nom)).fetchone():
         return jsonify({'error': 'Cette classe existe déjà'}), 409

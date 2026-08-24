@@ -462,7 +462,7 @@ def create_personnel():
     cycles_str = body.get('cycle_enseignement') or ''
     cycles_liste = [c.strip() for c in cycles_str.split(',') if c.strip()]
     type_remuneration = body.get('type_remuneration') or (
-        'horaire' if ('college' in cycles_liste or 'lycee' in cycles_liste) and body.get('poste') == 'Enseignant' else 'mensuel'
+        'horaire' if ({'college', 'lycee', 'superieur', 'formation'} & set(cycles_liste)) and body.get('poste') == 'Enseignant' else 'mensuel'
     )
     # Nouvelle tentative automatique en cas de collision de matricule (créations
     # quasi simultanées) — voir la même logique pour les élèves.

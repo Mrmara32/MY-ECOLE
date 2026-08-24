@@ -80,10 +80,12 @@ def list_transactions():
     date_fin = request.args.get('date_fin')
     q = request.args.get('q')
     statut_validation = request.args.get('statut_validation')
+    journal = request.args.get('journal')
 
-    sql = ("SELECT t.*, e.nom as eleve_nom, e.prenom as eleve_prenom, "
+    sql = ("SELECT t.*, e.nom as eleve_nom, e.prenom as eleve_prenom, f.nom as fournisseur_nom, "
            "u1.full_name as cree_par_nom, u2.full_name as valide_par_nom "
            "FROM transactions t LEFT JOIN eleves e ON e.id=t.eleve_id "
+           "LEFT JOIN fournisseurs f ON f.id=t.fournisseur_id "
            "LEFT JOIN users u1 ON u1.id=t.cree_par LEFT JOIN users u2 ON u2.id=t.valide_par WHERE t.ecole_id=?")
     params = [g.user['ecole_id']]
     if type_: sql += " AND t.type=?"; params.append(type_)
@@ -92,6 +94,7 @@ def list_transactions():
     if date_fin: sql += " AND t.date_op<=?"; params.append(date_fin)
     if q: sql += " AND (t.description LIKE ? OR t.reference LIKE ?)"; params += [f"%{q}%", f"%{q}%"]
     if statut_validation: sql += " AND t.statut_validation=?"; params.append(statut_validation)
+    if journal: sql += " AND t.journal=?"; params.append(journal)
     sql += " ORDER BY t.date_op DESC, t.created_at DESC"
 
     rows = db.execute(sql, params).fetchall()
@@ -296,13 +299,22 @@ def create_transaction():
     if montant <= 0:
         return jsonify({'error': 'Le montant doit être positif'}), 400
 
+    journal = body.get('journal') or ('ventes' if type_ == 'entree' else 'achats')
+    if journal not in ('achats', 'ventes', 'salaires', 'diverses', 'a_nouveau'):
+        return jsonify({'error': 'Journal invalide'}), 400
+    fournisseur_id = body.get('fournisseur_id') or None
+    if fournisseur_id and not db.execute(
+        "SELECT 1 FROM fournisseurs WHERE id=? AND ecole_id=?", (fournisseur_id, g.user['ecole_id'])
+    ).fetchone():
+        return jsonify({'error': 'Fournisseur introuvable'}), 404
+
     statut = determiner_statut_validation(type_, montant, g.user['role'])
     tid = gen_id('t')
     db.execute(
-        "INSERT INTO transactions (id,ecole_id,type,date_op,description,categorie,moyen_paiement,montant,reference,eleve_id,cree_par,statut_validation) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO transactions (id,ecole_id,type,date_op,description,categorie,moyen_paiement,montant,reference,eleve_id,fournisseur_id,journal,cree_par,statut_validation) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (tid, g.user['ecole_id'], type_, date_op, body.get('description'), body.get('categorie'), body.get('moyen_paiement'),
-         montant, body.get('reference'), body.get('eleve_id'), g.user['id'], statut),
+         montant, body.get('reference'), body.get('eleve_id'), fournisseur_id, journal, g.user['id'], statut),
     )
     db.commit()
     log_action(g.user, 'creation', 'transaction', tid, {'type': type_, 'montant': montant, 'statut_validation': statut})

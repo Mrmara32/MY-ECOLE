@@ -395,10 +395,10 @@ def create_avance():
     # Décaissement immédiat de l'avance -> transaction de dépense
     tid = gen_id('t')
     db.execute(
-        "INSERT INTO transactions (id,ecole_id,type,date_op,description,categorie,moyen_paiement,montant,reference,cree_par,statut_validation) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO transactions (id,ecole_id,type,date_op,description,categorie,moyen_paiement,montant,reference,journal,cree_par,statut_validation) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         (tid, g.user['ecole_id'], 'sortie', date_avance, f"Avance sur salaire — {p['prenom']} {p['nom']}",
-         'Salaires', body.get('moyen_paiement', 'Espèces'), montant, f"AV-{aid}", g.user['id'], 'auto'),
+         'Salaires', body.get('moyen_paiement', 'Espèces'), montant, f"AV-{aid}", 'salaires', g.user['id'], 'auto'),
     )
     db.commit()
     log_action(g.user, 'avance_salaire', 'personnel', personnel_id,
@@ -493,11 +493,11 @@ def generer_bulletin():
     # car déjà couverte par la validation de la masse salariale ou l'autorité admin/directeur)
     tid = gen_id('t')
     db.execute(
-        "INSERT INTO transactions (id,ecole_id,type,date_op,description,categorie,moyen_paiement,montant,reference,cree_par,statut_validation) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO transactions (id,ecole_id,type,date_op,description,categorie,moyen_paiement,montant,reference,journal,cree_par,statut_validation) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         (tid, g.user['ecole_id'], 'sortie', date_paiement, f"Salaire {mois} — {p['prenom']} {p['nom']}",
          'Salaires', body.get('moyen_paiement', 'Virement bancaire'), montant_net,
-         f"SAL-{bid}", g.user['id'], 'auto'),
+         f"SAL-{bid}", 'salaires', g.user['id'], 'auto'),
     )
     db.commit()
     log_action(g.user, 'paiement_salaire', 'personnel', personnel_id,
