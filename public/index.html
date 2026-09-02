@@ -13,7 +13,7 @@
 
 <!-- ===================== LICENCE (installation autonome uniquement) ===================== -->
 <div id="licence-screen" style="display:none">
-  <div class="login-card" style="max-width:440px">
+  <div class="licence-card" style="max-width:440px">
     <div style="text-align:center;font-size:44px;margin-bottom:6px">🔒</div>
     <h1 style="text-align:center;font-size:19px;margin-bottom:8px">Période d'essai terminée</h1>
     <p style="text-align:center;font-size:13.5px;color:var(--ink-soft,#4B5B63);margin-bottom:22px">
@@ -35,40 +35,53 @@
 
 <!-- ===================== LOGIN ===================== -->
 <div id="login-screen">
-  <div class="login-card">
-    <div class="login-logo-wrap">
-      <img id="login-logo" src="" alt="" style="display:none;width:72px;height:72px;object-fit:contain;border-radius:8px">
-      <div id="login-logo-default" class="login-logo-icon">🎓</div>
-    </div>
-    <h1 id="login-ecole-nom" class="login-title">Groupe Scolaire</h1>
-    <p class="login-sub">Connexion à votre espace de gestion</p>
-    <div style="display:flex;gap:8px;background:#F4F7F5;border-radius:999px;padding:4px;margin-bottom:18px">
-      <button type="button" class="tab-connexion" style="flex:1;padding:10px;border:none;border-radius:999px;background:#fff;font-weight:700;font-size:13px;cursor:default;box-shadow:0 1px 3px rgba(0,0,0,.08)">Se connecter</button>
-      <a href="/inscription-ecole.html" style="flex:1;padding:10px;border:none;border-radius:999px;background:transparent;font-weight:700;font-size:13px;color:#6B7280;text-decoration:none;text-align:center">S'inscrire mon École</a>
-    </div>
-    <div style="display:flex;justify-content:center;margin-bottom:16px" id="login-lang-wrap"></div>
-    <form id="login-form">
-      <div class="fg">
-        <label>Identifiant</label>
-        <input type="text" id="l-user" placeholder="admin" autocomplete="username" required>
-      </div>
-      <div class="fg">
-        <label>Mot de passe</label>
-        <div class="input-eye">
-          <input type="password" id="l-pass" placeholder="••••••••" autocomplete="current-password" required>
-          <button type="button" class="eye-btn" onclick="togglePass()">👁</button>
-        </div>
-      </div>
-      <div class="fg">
-        <label>Code établissement <span style="font-weight:400;color:#9CA3AF">(optionnel — laissez vide pour l'école principale)</span></label>
-        <input type="text" id="l-code-ecole" placeholder="ex : mon-ecole-test" autocomplete="off">
-      </div>
-      <div id="login-err" class="alert alert-danger" style="display:none"></div>
-      <button type="submit" class="btn btn-primary w-full" id="login-btn">Se connecter</button>
-    </form>
+  <div class="login-split-left">
+    <div class="lsl-badge">MY-ÉCOLE</div>
+    <h1 class="lsl-headline">Votre école,<br>pilotée en toute<br>clarté.</h1>
+    <p class="lsl-desc">Élèves, personnel, comptabilité et familles — un seul outil pour tout gérer, d'une école unique à un réseau complet.</p>
+    <div class="lsl-divider"></div>
+    <ul class="lsl-checks">
+      <li>✓ Élèves, personnel et comptabilité réunis</li>
+      <li>✓ Une école ou plusieurs, un seul outil</li>
+      <li>✓ Fonctionne même sans connexion internet</li>
+      <li>✓ Essai gratuit de 14 jours, sans engagement</li>
+    </ul>
   </div>
-  <div style="text-align:center;margin-top:18px;font-size:11px;color:#9CA3AF">
-    Application développée par <strong>Actif System Groupe</strong> — Tél : 661-97-43-43
+  <div class="login-split-right">
+    <div class="login-card">
+      <div class="login-logo-wrap">
+        <img id="login-logo" src="" alt="" style="display:none;width:56px;height:56px;object-fit:contain;border-radius:8px">
+        <div id="login-logo-default" class="login-logo-icon">🎓</div>
+      </div>
+      <div class="login-eyebrow">CONNEXION</div>
+      <h1 class="login-title">Bon retour</h1>
+      <p class="login-sub" id="login-ecole-nom" style="display:none"></p>
+      <p class="login-sub">Connectez-vous pour accéder à votre espace de gestion.</p>
+      <div style="display:flex;justify-content:center;margin-bottom:16px" id="login-lang-wrap"></div>
+      <form id="login-form">
+        <div class="fg">
+          <label>Identifiant</label>
+          <input type="text" id="l-user" placeholder="admin" autocomplete="username" required>
+        </div>
+        <div class="fg">
+          <label>Mot de passe</label>
+          <div class="input-eye">
+            <input type="password" id="l-pass" placeholder="••••••••" autocomplete="current-password" required>
+            <button type="button" class="eye-btn" onclick="togglePass()">👁</button>
+          </div>
+        </div>
+        <div class="fg">
+          <label>Code établissement <span style="font-weight:400;color:#9CA3AF">(optionnel — laissez vide pour l'école principale)</span></label>
+          <input type="text" id="l-code-ecole" placeholder="ex : mon-ecole-test" autocomplete="off">
+        </div>
+        <div id="login-err" class="alert alert-danger" style="display:none"></div>
+        <button type="submit" class="btn btn-primary w-full" id="login-btn">Se connecter</button>
+      </form>
+      <p class="lsr-footer-link">Pas encore de compte ? <a href="/inscription-ecole.html">Inscrire mon école</a></p>
+    </div>
+    <div style="text-align:center;margin-top:18px;font-size:11px;color:#9CA3AF">
+      Application développée par <strong>Actif System Groupe</strong> — Tél : 661-97-43-43
+    </div>
   </div>
 </div>
 
