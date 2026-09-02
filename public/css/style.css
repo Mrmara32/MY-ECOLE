@@ -24,17 +24,48 @@ img{display:block}
 /* ============================================================
    LOGIN
 ============================================================ */
-#login-screen{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  background:linear-gradient(135deg,var(--c-primary) 0%,#312E81 100%);padding:20px}
+#login-screen{min-height:100vh;display:flex}
 #licence-screen{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
   background:linear-gradient(135deg,#7C2D12 0%,#312E81 100%);padding:20px}
-.login-card{background:#fff;border-radius:var(--r2);padding:40px;width:100%;max-width:420px;
+.licence-card{background:#fff;border-radius:var(--r2);padding:40px;width:100%;max-width:420px;
   box-shadow:var(--sh-lg);text-align:center}
-.login-logo-wrap{margin-bottom:16px;display:flex;justify-content:center}
-.login-logo-icon{font-size:56px}
-.login-title{font-size:22px;font-weight:700;color:var(--g9);margin-bottom:6px}
-.login-sub{color:var(--g5);font-size:13px;margin-bottom:28px}
+
+/* ── Volet gauche : argumentaire ── */
+.login-split-left{flex:1 1 46%;background:#0B4A38;color:#fff;padding:64px 56px;
+  display:flex;flex-direction:column;justify-content:center;min-width:0;
+  background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);
+  background-size:48px 48px}
+.lsl-badge{color:#E0A354;font-weight:700;font-size:13px;letter-spacing:.12em;margin-bottom:24px}
+.lsl-headline{font-family:Georgia,'Times New Roman',serif;font-size:44px;line-height:1.15;
+  font-weight:700;margin-bottom:22px;max-width:480px}
+.lsl-desc{color:#CFE3DA;font-size:15px;line-height:1.6;max-width:420px;margin-bottom:28px}
+.lsl-divider{width:64px;height:1px;background:rgba(255,255,255,.25);margin-bottom:22px}
+.lsl-checks{list-style:none;display:flex;flex-direction:column;gap:12px}
+.lsl-checks li{font-size:14.5px;color:#EAF4EF}
+
+/* ── Volet droit : connexion ── */
+.login-split-right{flex:1 1 54%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:#FDFBF6;padding:40px 20px;min-width:0}
+.login-card{background:transparent;border-radius:0;padding:0;width:100%;max-width:420px;
+  box-shadow:none;text-align:left}
+.login-logo-wrap{margin-bottom:16px;display:flex;justify-content:flex-start}
+.login-logo-icon{font-size:44px}
+.login-eyebrow{color:#B8873A;font-weight:700;font-size:12px;letter-spacing:.12em;margin-bottom:10px}
+.login-title{font-family:Georgia,'Times New Roman',serif;font-size:30px;font-weight:700;color:#0B4A38;margin-bottom:6px}
+.login-sub{color:#6B7570;font-size:13.5px;margin-bottom:20px}
 .login-card form{text-align:left;display:flex;flex-direction:column;gap:16px}
+.lsr-footer-link{text-align:center;font-size:13px;color:#6B7570;margin-top:22px}
+.lsr-footer-link a{color:#0B4A38;font-weight:700;text-decoration:none}
+.lsr-footer-link a:hover{text-decoration:underline}
+#login-btn{background:#0B4A38}
+#login-btn:hover{background:#0F6349}
+@media(max-width:860px){
+  #login-screen{flex-direction:column}
+  .login-split-left{padding:40px 28px;flex:0 0 auto}
+  .lsl-headline{font-size:32px}
+  .login-split-right{padding:32px 20px}
+}
 .input-eye{position:relative}
 .input-eye input{width:100%;padding-right:40px}
 .eye-btn{position:absolute;right:10px;top:50%;transform:translateY(-50%);
