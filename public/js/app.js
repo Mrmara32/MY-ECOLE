@@ -56,6 +56,7 @@ async function initLogin() {
     const s = await apiGetSettings();
     if (s.ecole_nom) {
       $('#login-ecole-nom').textContent = s.ecole_nom;
+      $('#login-ecole-nom').style.display = '';
       document.title = s.ecole_nom + ' — Connexion';
     }
     if (s.ecole_logo) {
