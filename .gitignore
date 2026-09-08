@@ -11,3 +11,4 @@ public/uploads/*
 build/
 dist/
 *.spec
+logs/

@@ -32,8 +32,10 @@ function renderElevesTable(list) {
       <thead><tr id="th-eleves"><th>Photo</th><th>Matricule</th><th>Nom & Prénom</th><th>Classe</th><th>Né(e) le</th><th>Contact parent</th><th>Statut</th><th>Actions</th></tr></thead>
       <tbody id="tb-eleves"></tbody>
     </table></div>
+    <div id="pag-eleves"></div>
   </div>`;
   let curr = list;
+  getPaginator('eleves').onChange = () => renderElevesRows(curr);
   renderElevesRows(curr);
   const filter = () => {
     const q = $('#q-elv').value.toLowerCase();
@@ -43,6 +45,7 @@ function renderElevesTable(list) {
       const txt = `${e.nom} ${e.prenom} ${e.matricule||''}`.toLowerCase();
       return (!q||txt.includes(q)) && (!cls||e.classe===cls) && (!stat||e.statut===stat);
     });
+    resetPaginator('eleves');
     renderElevesRows(curr);
   };
   $('#q-elv').addEventListener('input', filter);
@@ -57,7 +60,8 @@ const STATUT_COLORS = { actif:'bdg-ok', inactif:'bdg-gray', exclu:'bdg-err', tra
 const STATUT_LABELS_ELV = { actif:'Actif', inactif:'Inactif', exclu:'Exclu', transfere:'Transféré', reinsrit:'Réinscrit', preinscrit:'⏳ Préinscrit (à valider)' };
 
 function renderElevesRows(list) {
-  $('#tb-eleves').innerHTML = list.length ? list.map(e => `<tr>
+  const { items, page, totalPages, total } = paginate('eleves', list);
+  $('#tb-eleves').innerHTML = items.length ? items.map(e => `<tr>
     <td>${elevePhoto(e, 34)}</td>
     <td class="mono">${esc(e.matricule||'—')}</td>
     <td><strong>${esc(e.prenom)} ${esc(e.nom)}</strong></td>
@@ -73,6 +77,7 @@ function renderElevesRows(list) {
       <button class="btn btn-danger btn-xs" onclick="delEleve('${escJs(e.id)}')" title="Supprimer">🗑</button>
     </div></td>
   </tr>`).join('') : `<tr><td colspan="8">${emptyHtml('🎓','Aucun élève trouvé','Inscrivez le premier élève via le bouton + ci-dessus')}</td></tr>`;
+  $('#pag-eleves').innerHTML = paginationHtml('eleves', page, totalPages, total);
 }
 
 /* ── Formulaire d'inscription ── */

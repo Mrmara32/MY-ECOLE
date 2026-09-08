@@ -7,7 +7,8 @@ async function pagePersonnel() {
     const masse = list.reduce((s,p) => s + (Number(p.salaire_calcule ?? p.salaire)||0), 0);
 
     const render = (data) => {
-      $('#tb-personnel').innerHTML = data.length ? data.map(p => {
+      const { items, page, totalPages, total } = paginate('personnel', data);
+      $('#tb-personnel').innerHTML = items.length ? items.map(p => {
         const estHoraire = p.type_remuneration === 'horaire';
         return `<tr>
         <td><strong>${esc(p.prenom)} ${esc(p.nom)}</strong>${p.cycle_enseignement?`<br><span class="text-muted" style="font-size:11px">${p.cycle_enseignement.split(',').map(c=>esc(CYCLE_LABELS[c.trim()]||c.trim())).join(' · ')}</span>`:''}</td>
@@ -30,6 +31,7 @@ async function pagePersonnel() {
         </div></td>
       </tr>`;
       }).join('') : `<tr><td colspan="8">${emptyHtml('👨‍🏫','Aucun membre du personnel')}</td></tr>`;
+      $('#pag-personnel').innerHTML = paginationHtml('personnel', page, totalPages, total);
     };
 
     $('#content').innerHTML = `
@@ -50,9 +52,11 @@ async function pagePersonnel() {
         <thead><tr id="th-personnel"><th>Nom</th><th>Poste</th><th>Matière</th><th>Téléphone</th><th>Rémunération</th><th class="text-right">Montant (${moisCourantVal})</th><th>Embauché le</th><th>Actions</th></tr></thead>
         <tbody id="tb-personnel"></tbody>
       </table></div>
+      <div id="pag-personnel"></div>
     </div>`;
 
     let curr = list;
+    getPaginator('personnel').onChange = () => render(curr);
     render(curr);
     const filter = () => {
       const q = $('#q-per').value.toLowerCase();
@@ -61,6 +65,7 @@ async function pagePersonnel() {
         const txt = `${p.nom} ${p.prenom} ${p.email||''}`.toLowerCase();
         return (!q || txt.includes(q)) && (!poste || p.poste === poste);
       });
+      resetPaginator('personnel');
       render(curr);
     };
     $('#q-per').addEventListener('input', filter);

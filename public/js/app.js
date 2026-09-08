@@ -18,6 +18,7 @@ const PAGES = {
   cantine:         { icon:'🍽️', labelKey:'nav_cantine',            fn: pageCantine,         roles:['admin','directeur','comptable','secretaire'] },
   comptabilite:    { icon:'💳', labelKey:'nav_comptabilite',        fn: pageComptabilite,    roles:['admin','directeur','comptable'] },
   fournisseurs:    { icon:'🏭', labelKey:'nav_fournisseurs',        fn: pageFournisseurs,    roles:['admin','directeur','comptable'] },
+  logistique:      { icon:'🚚', labelKey:'nav_logistique',          fn: pageLogistique,      roles:['admin','directeur','secretaire','comptable'] },
   revision:        { icon:'📖', labelKey:'nav_revision',            fn: pageRevision,        roles:['admin','directeur','comptable','enseignant','secretaire'] },
   paie:            { icon:'💵', labelKey:'nav_paie',                 fn: pagePaieList,        roles:['admin','directeur','comptable'] },
   reinscriptions:  { icon:'🔄', labelKey:'nav_reinscriptions',      fn: pageReinscriptions,  roles:['admin','directeur','secretaire'] },
@@ -35,7 +36,7 @@ const PAGES = {
 const NAV_GROUPS = [
   { labelKey: null, pages: ['dashboard'] },
   { labelKey: 'nav_section_scolarite', pages: ['eleves','eleveDuMois','notes','devoirs','emploi','seances','absences','classes','salles','reinscriptions'] },
-  { labelKey: 'nav_section_finances', pages: ['paiements','cantine','comptabilite','fournisseurs','revision','paie'] },
+  { labelKey: 'nav_section_finances', pages: ['paiements','cantine','comptabilite','fournisseurs','logistique','revision','paie'] },
   { labelKey: 'nav_section_vie_ecole', pages: ['communication','actualites','personnel'] },
   { labelKey: 'nav_section_administration', pages: ['users','journal','settings'] },
   { labelKey: 'nav_section_super_admin', pages: ['ecoles'] },
@@ -188,6 +189,14 @@ function navigate(page) {
   // Titre
   $('#pg-title').textContent = `${pg.icon} ${t(pg.labelKey)}`;
   $('#pg-sub').textContent = '';
+  // Fil d'Ariane : Accueil > Section > Page (le lien Accueil ramène toujours au tableau de bord)
+  const groupe = NAV_GROUPS.find(g => g.pages.includes(page));
+  const crumbs = [`<a href="#" onclick="navigate('dashboard');return false">🏠 ${esc(t('nav_dashboard'))}</a>`];
+  if (page !== 'dashboard') {
+    if (groupe && groupe.labelKey) crumbs.push(`<span>${esc(t(groupe.labelKey))}</span>`);
+    crumbs.push(`<span class="breadcrumb-current">${esc(t(pg.labelKey))}</span>`);
+  }
+  $('#pg-breadcrumb').innerHTML = crumbs.join('<span class="breadcrumb-sep">›</span>');
   // Sur mobile, la sidebar est un tiroir : on la referme après avoir choisi une page
   toggleSidebar(false);
   // Charger la page

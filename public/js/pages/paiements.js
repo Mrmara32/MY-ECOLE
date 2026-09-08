@@ -19,7 +19,8 @@ async function pagePaiements() {
         </div>`;
       const SCOLOR = { paye:'bdg-ok', partiel:'bdg-warn', a_payer:'bdg-err', en_retard:'bdg-err' };
       const SLABEL = { paye:'Payé', partiel:'Partiel', a_payer:'À payer', en_retard:'En retard' };
-      $('#tb-pai').innerHTML = data.length ? data.map(p => {
+      const { items, page, totalPages, total } = paginate('paiements', data);
+      $('#tb-pai').innerHTML = items.length ? items.map(p => {
         const pct = p.montant_du > 0 ? Math.round(p.montant_paye/p.montant_du*100) : 0;
         return `<tr>
           <td>${elevePhoto({photo_url:null,nom:p.nom,prenom:p.prenom},28)}</td>
@@ -39,6 +40,7 @@ async function pagePaiements() {
           </div></td>
         </tr>`;
       }).join('') : `<tr><td colspan="9">${emptyHtml('💰','Aucun paiement')}</td></tr>`;
+      $('#pag-pai').innerHTML = paginationHtml('paiements', page, totalPages, total);
     };
 
     $('#content').innerHTML = `
@@ -64,9 +66,11 @@ async function pagePaiements() {
         <thead><tr id="th-pai"><th></th><th>Élève</th><th>Libellé</th><th class="text-right">Montant dû</th><th>Progression</th><th class="text-right">Reste</th><th>Échéance</th><th>Statut</th><th>Actions</th></tr></thead>
         <tbody id="tb-pai"></tbody>
       </table></div>
+      <div id="pag-pai"></div>
     </div>`;
 
     let curr = paiements;
+    getPaginator('paiements').onChange = () => render(curr);
     render(curr);
     const refilter = async () => {
       const cls = $('#f-pcls').value;
@@ -81,6 +85,7 @@ async function pagePaiements() {
         let data = await apiGetPaiements(qs.join('&'));
         if (q) data = data.filter(p => `${p.nom} ${p.prenom} ${p.matricule||''}`.toLowerCase().includes(q));
         curr = data;
+        resetPaginator('paiements');
         render(curr);
       } catch(e) { toast(e.message,'error'); }
     };

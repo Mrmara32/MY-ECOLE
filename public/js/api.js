@@ -136,6 +136,41 @@ const apiCreateFournisseur  = (d)       => apiFetch('/fournisseurs', { method:'P
 const apiUpdateFournisseur  = (id,d)    => apiFetch(`/fournisseurs/${id}`, { method:'PUT', body:d });
 const apiDeleteFournisseur  = (id)      => apiFetch(`/fournisseurs/${id}`, { method:'DELETE' });
 
+// ── Logistique : Stock / Fournitures ──
+const apiGetStockProduits   = (q='')    => apiFetch('/stock/produits'+(q?'?'+q:''));
+const apiCreateStockProduit = (d)       => apiFetch('/stock/produits', { method:'POST', body:d });
+const apiUpdateStockProduit = (id,d)    => apiFetch(`/stock/produits/${id}`, { method:'PUT', body:d });
+const apiDeleteStockProduit = (id)      => apiFetch(`/stock/produits/${id}`, { method:'DELETE' });
+const apiGetStockMouvements = (q='')    => apiFetch('/stock/mouvements'+(q?'?'+q:''));
+const apiCreateStockMouvement = (d)     => apiFetch('/stock/mouvements', { method:'POST', body:d });
+
+// ── Logistique : Achats / Commandes ──
+const apiGetCommandes       = (q='')    => apiFetch('/commandes'+(q?'?'+q:''));
+const apiGetCommande        = (id)      => apiFetch(`/commandes/${id}`);
+const apiCreateCommande     = (d)       => apiFetch('/commandes', { method:'POST', body:d });
+const apiUpdateCommande     = (id,d)    => apiFetch(`/commandes/${id}`, { method:'PUT', body:d });
+const apiReceptionnerCommande = (id)    => apiFetch(`/commandes/${id}/receptionner`, { method:'POST' });
+const apiDeleteCommande     = (id)      => apiFetch(`/commandes/${id}`, { method:'DELETE' });
+
+// ── Logistique : Maintenance ──
+const apiGetMaintenance     = (q='')    => apiFetch('/maintenance'+(q?'?'+q:''));
+const apiCreateMaintenance  = (d)       => apiFetch('/maintenance', { method:'POST', body:d });
+const apiUpdateMaintenance  = (id,d)    => apiFetch(`/maintenance/${id}`, { method:'PUT', body:d });
+const apiDeleteMaintenance  = (id)      => apiFetch(`/maintenance/${id}`, { method:'DELETE' });
+
+// ── Logistique : Transport scolaire ──
+const apiGetVehicules       = ()        => apiFetch('/transport/vehicules');
+const apiCreateVehicule     = (d)       => apiFetch('/transport/vehicules', { method:'POST', body:d });
+const apiUpdateVehicule     = (id,d)    => apiFetch(`/transport/vehicules/${id}`, { method:'PUT', body:d });
+const apiDeleteVehicule     = (id)      => apiFetch(`/transport/vehicules/${id}`, { method:'DELETE' });
+const apiGetItineraires     = ()        => apiFetch('/transport/itineraires');
+const apiCreateItineraire   = (d)       => apiFetch('/transport/itineraires', { method:'POST', body:d });
+const apiUpdateItineraire   = (id,d)    => apiFetch(`/transport/itineraires/${id}`, { method:'PUT', body:d });
+const apiDeleteItineraire   = (id)      => apiFetch(`/transport/itineraires/${id}`, { method:'DELETE' });
+const apiGetTransportEleves = (q='')    => apiFetch('/transport/eleves'+(q?'?'+q:''));
+const apiAssignTransportEleve = (d)     => apiFetch('/transport/eleves', { method:'POST', body:d });
+const apiUnassignTransportEleve = (id)  => apiFetch(`/transport/eleves/${id}`, { method:'DELETE' });
+
 const apiGetTransactionsRecurrentes = () => apiFetch('/transactions-recurrentes');
 const apiCreateTransactionRecurrente = (d) => apiFetch('/transactions-recurrentes', { method:'POST', body:d });
 const apiUpdateTransactionRecurrente = (id,d) => apiFetch(`/transactions-recurrentes/${id}`, { method:'PUT', body:d });

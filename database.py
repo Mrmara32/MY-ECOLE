@@ -665,6 +665,110 @@ CREATE TABLE IF NOT EXISTS annonces (
   created_at       TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ═══════════════════ MODULE LOGISTIQUE ═══════════════════
+
+CREATE TABLE IF NOT EXISTS stock_produits (
+  ecole_id       INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id             TEXT PRIMARY KEY,
+  nom            TEXT NOT NULL,
+  categorie      TEXT NOT NULL DEFAULT 'materiel' CHECK(categorie IN ('materiel','fourniture','alimentaire','entretien','autre')),
+  unite          TEXT NOT NULL DEFAULT 'unité',
+  quantite       REAL NOT NULL DEFAULT 0,
+  seuil_alerte   REAL NOT NULL DEFAULT 0,
+  prix_unitaire  REAL DEFAULT 0,
+  notes          TEXT,
+  created_at     TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(ecole_id, nom, categorie)
+);
+
+CREATE TABLE IF NOT EXISTS stock_mouvements (
+  ecole_id      INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id            TEXT PRIMARY KEY,
+  produit_id    TEXT NOT NULL REFERENCES stock_produits(id) ON DELETE CASCADE,
+  type          TEXT NOT NULL CHECK(type IN ('entree','sortie')),
+  quantite      REAL NOT NULL,
+  motif         TEXT,
+  commande_id   TEXT,
+  cree_par      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  date_mouvement TEXT NOT NULL DEFAULT (date('now')),
+  created_at    TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS commandes (
+  ecole_id       INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id             TEXT PRIMARY KEY,
+  numero         TEXT,
+  fournisseur_id TEXT REFERENCES fournisseurs(id) ON DELETE SET NULL,
+  statut         TEXT NOT NULL DEFAULT 'brouillon' CHECK(statut IN ('brouillon','envoyee','recue','annulee')),
+  date_commande  TEXT NOT NULL DEFAULT (date('now')),
+  date_reception TEXT,
+  montant_total  REAL NOT NULL DEFAULT 0,
+  notes          TEXT,
+  cree_par       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at     TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS commande_lignes (
+  id           TEXT PRIMARY KEY,
+  commande_id  TEXT NOT NULL REFERENCES commandes(id) ON DELETE CASCADE,
+  produit_id   TEXT REFERENCES stock_produits(id) ON DELETE SET NULL,
+  designation  TEXT NOT NULL,
+  quantite     REAL NOT NULL DEFAULT 1,
+  prix_unitaire REAL NOT NULL DEFAULT 0,
+  montant_ligne REAL NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS maintenance_interventions (
+  ecole_id         INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id               TEXT PRIMARY KEY,
+  titre            TEXT NOT NULL,
+  salle_id         TEXT REFERENCES salles(id) ON DELETE SET NULL,
+  lieu             TEXT,
+  equipement       TEXT,
+  description      TEXT,
+  priorite         TEXT NOT NULL DEFAULT 'normale' CHECK(priorite IN ('basse','normale','haute','urgente')),
+  statut           TEXT NOT NULL DEFAULT 'signalee' CHECK(statut IN ('signalee','en_cours','resolue','annulee')),
+  assigne_a        TEXT REFERENCES personnel(id) ON DELETE SET NULL,
+  cout             REAL DEFAULT 0,
+  signale_par      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  date_signalement TEXT NOT NULL DEFAULT (date('now')),
+  date_resolution  TEXT,
+  created_at       TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS transport_vehicules (
+  ecole_id       INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id             TEXT PRIMARY KEY,
+  immatriculation TEXT NOT NULL,
+  marque_modele  TEXT,
+  capacite       INTEGER DEFAULT 0,
+  statut         TEXT NOT NULL DEFAULT 'actif' CHECK(statut IN ('actif','maintenance','hors_service')),
+  chauffeur_id   TEXT REFERENCES personnel(id) ON DELETE SET NULL,
+  notes          TEXT,
+  created_at     TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(ecole_id, immatriculation)
+);
+
+CREATE TABLE IF NOT EXISTS transport_itineraires (
+  ecole_id     INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id           TEXT PRIMARY KEY,
+  nom          TEXT NOT NULL,
+  zone         TEXT,
+  vehicule_id  TEXT REFERENCES transport_vehicules(id) ON DELETE SET NULL,
+  description  TEXT,
+  created_at   TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS transport_eleves (
+  ecole_id      INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id            TEXT PRIMARY KEY,
+  eleve_id      TEXT NOT NULL REFERENCES eleves(id) ON DELETE CASCADE,
+  itineraire_id TEXT NOT NULL REFERENCES transport_itineraires(id) ON DELETE CASCADE,
+  point_montee  TEXT,
+  created_at    TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(itineraire_id, eleve_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_eleves_classe   ON eleves(classe);
 CREATE INDEX IF NOT EXISTS idx_notes_eleve     ON notes(eleve_id);
 CREATE INDEX IF NOT EXISTS idx_absences_eleve  ON absences(eleve_id);
@@ -672,6 +776,10 @@ CREATE INDEX IF NOT EXISTS idx_absences_date   ON absences(date_abs);
 CREATE INDEX IF NOT EXISTS idx_paiements_eleve ON paiements(eleve_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date_op);
 CREATE INDEX IF NOT EXISTS idx_reinsc_eleve    ON reinscriptions(eleve_id);
+CREATE INDEX IF NOT EXISTS idx_stockmvt_produit ON stock_mouvements(produit_id);
+CREATE INDEX IF NOT EXISTS idx_cmdlignes_cmd    ON commande_lignes(commande_id);
+CREATE INDEX IF NOT EXISTS idx_maint_statut     ON maintenance_interventions(statut);
+CREATE INDEX IF NOT EXISTS idx_transp_eleve     ON transport_eleves(eleve_id);
 """
 
 

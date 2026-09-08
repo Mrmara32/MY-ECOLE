@@ -711,3 +711,48 @@ const motifFieldHtml = () => `
     <label>Motif de la modification*</label>
     <input name="motif" required placeholder="Ex : correction d'une erreur de saisie, mise à jour suite à un changement…">
   </div>`;
+
+/* ── Pagination réutilisable (Précédent / Suivant) ──
+   Usage dans une page de liste :
+     const render = data => {
+       const { items, page, totalPages, total } = paginate('eleves', data);
+       $('#tb-eleves').innerHTML = items.map(...).join('');
+       $('#pag-eleves').innerHTML = paginationHtml('eleves', page, totalPages, total);
+     };
+     getPaginator('eleves').onChange = () => render(curr);
+   Et dans chaque filtre, avant render(curr) : resetPaginator('eleves');           */
+const _paginators = {};
+function getPaginator(id, pageSize = 20) {
+  if (!_paginators[id]) _paginators[id] = { page: 1, pageSize, onChange: null };
+  return _paginators[id];
+}
+function resetPaginator(id) { getPaginator(id).page = 1; }
+function paginate(id, data, pageSize = 20) {
+  const p = getPaginator(id, pageSize);
+  const totalPages = Math.max(1, Math.ceil(data.length / p.pageSize));
+  if (p.page > totalPages) p.page = totalPages;
+  if (p.page < 1) p.page = 1;
+  const start = (p.page - 1) * p.pageSize;
+  return { items: data.slice(start, start + p.pageSize), page: p.page, totalPages, total: data.length, pageSize: p.pageSize };
+}
+function paginationHtml(id, page, totalPages, total, pageSize) {
+  if (total === 0) return '';
+  const p = getPaginator(id);
+  pageSize = pageSize || p.pageSize;
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
+  return `<div class="pagination">
+    <span class="pagination-info">${from}–${to} sur ${total}</span>
+    <div class="pagination-btns">
+      <button type="button" class="btn btn-outline btn-xs" ${page<=1?'disabled':''} onclick="pagGo('${id}',${page-1})">‹ Précédent</button>
+      <span class="pagination-page">Page ${page} / ${totalPages}</span>
+      <button type="button" class="btn btn-outline btn-xs" ${page>=totalPages?'disabled':''} onclick="pagGo('${id}',${page+1})">Suivant ›</button>
+    </div>
+  </div>`;
+}
+function pagGo(id, page) {
+  const p = getPaginator(id);
+  p.page = page;
+  if (typeof p.onChange === 'function') p.onChange();
+}
+window.pagGo = pagGo;
