@@ -5,7 +5,7 @@
 /* ── Définition des pages ── */
 const PAGES = {
   dashboard:       { icon:'🏠', labelKey:'nav_dashboard',    fn: pageDashboard,       roles:['admin','directeur','comptable','enseignant','secretaire','charge_communication'] },
-  eleves:          { icon:'🎓', labelKey:'nav_eleves',              fn: pageEleves,          roles:['admin','directeur','enseignant','secretaire'] },
+  eleves:          { icon:'🎓', labelKey:'nav_eleves',              fn: pageEleves,          roles:['admin','directeur','enseignant','secretaire','comptable'] },
   eleveDuMois:     { icon:'⭐', labelKey:'nav_eleve_du_mois',       fn: pageEleveDuMois,     roles:['admin','directeur','enseignant','secretaire'] },
   notes:           { icon:'📊', labelKey:'nav_notes',   fn: pageNotes,           roles:['admin','directeur','enseignant','secretaire'] },
   devoirs:         { icon:'📚', labelKey:'nav_devoirs',             fn: pageDevoirs,         roles:['admin','directeur','enseignant','secretaire'] },
@@ -23,7 +23,7 @@ const PAGES = {
   reinscriptions:  { icon:'🔄', labelKey:'nav_reinscriptions',      fn: pageReinscriptions,  roles:['admin','directeur','secretaire'] },
   communication:   { icon:'📢', labelKey:'nav_communication',        fn: pageCommunication,  roles:['admin','directeur','secretaire','charge_communication'] },
   actualites:      { icon:'📰', labelKey:'nav_actualites', fn: pageActualites,     roles:['admin','directeur','secretaire','charge_communication'] },
-  personnel:       { icon:'👨‍🏫', labelKey:'nav_personnel',          fn: pagePersonnel,       roles:['admin','directeur','secretaire'] },
+  personnel:       { icon:'👨‍🏫', labelKey:'nav_personnel',          fn: pagePersonnel,       roles:['admin','directeur','secretaire','comptable'] },
   candidatures:    { icon:'📋', labelKey:'nav_candidatures',         fn: pageCandidatures,    roles:['admin','directeur'] },
   users:           { icon:'👥', labelKey:'nav_users',         fn: pageUsers,           roles:['admin'] },
   journal:         { icon:'🗂️', labelKey:'nav_journal',     fn: pageJournal,         roles:['admin'] },

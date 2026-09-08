@@ -113,8 +113,12 @@ async function validerReinsc(id, statut) {
     if (classe_nouvelle === null) return;
   }
   try {
-    await apiValiderReinscription(id, { statut, classe_nouvelle: classe_nouvelle || undefined });
-    toast(statut === 'validee' ? 'Réinscription validée ✅' : 'Réinscription refusée', statut === 'validee' ? 'success' : 'warning');
+    const r = await apiValiderReinscription(id, { statut, classe_nouvelle: classe_nouvelle || undefined });
+    if (statut === 'validee' && r.avertissement_paiement) {
+      toast(`Réinscription validée, mais paiement non généré : ${r.avertissement_paiement}`, 'warning');
+    } else {
+      toast(statut === 'validee' ? 'Réinscription validée ✅ (frais de réinscription générés)' : 'Réinscription refusée', statut === 'validee' ? 'success' : 'warning');
+    }
     pageReinscriptions();
   } catch(e) { toast(e.message,'error'); }
 }
