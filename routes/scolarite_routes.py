@@ -408,6 +408,7 @@ def valider_reinscription(r_id):
         (statut, g.user['id'], body.get('classe_nouvelle'), r_id),
     )
     db.commit()
+    avertissement_paiement = None
     if statut == 'validee':
         updated = db.execute("SELECT * FROM reinscriptions WHERE id=?", (r_id,)).fetchone()
         if updated['classe_nouvelle']:
@@ -416,10 +417,25 @@ def valider_reinscription(r_id):
                 (updated['classe_nouvelle'], updated['annee_scolaire'], updated['eleve_id']),
             )
             db.commit()
+            # Génère automatiquement l'échéance des frais de réinscription (+ tranches
+            # de scolarité) selon le barème de la nouvelle classe — sans quoi la
+            # réinscription était validée sans qu'aucun paiement n'apparaisse.
+            from routes.finances_routes import generer_paiements_pour_eleve
+            _, erreur = generer_paiements_pour_eleve(
+                g.user['ecole_id'], updated['eleve_id'], updated['annee_scolaire'], type_inscription='reinscription',
+            )
+            if erreur:
+                # On n'annule pas la réinscription pour autant : on prévient juste
+                # l'utilisateur qu'il devra générer le paiement manuellement (ex :
+                # barème absent, ou paiements déjà générés pour cette année).
+                avertissement_paiement = erreur[0]
     log_action(g.user, 'validation_reinscription' if statut == 'validee' else 'refus_reinscription', 'reinscription', r_id,
                {'eleve_id': r['eleve_id'], 'annee_scolaire': r['annee_scolaire'], 'classe_nouvelle': body.get('classe_nouvelle')})
     row = db.execute("SELECT * FROM reinscriptions WHERE id=?", (r_id,)).fetchone()
-    return jsonify(row_to_dict(row))
+    result = row_to_dict(row)
+    if avertissement_paiement:
+        result['avertissement_paiement'] = avertissement_paiement
+    return jsonify(result)
 
 
 @bp.route('/reinscriptions/<r_id>', methods=['DELETE'])
@@ -454,7 +470,7 @@ def list_personnel():
 
 @bp.route('/personnel', methods=['POST'])
 @require_auth
-@require_role('admin', 'directeur', 'secretaire')
+@require_role('admin', 'directeur', 'secretaire', 'comptable')
 def create_personnel():
     body = request.get_json(silent=True) or {}
     pid = gen_id('p')
@@ -496,7 +512,7 @@ def create_personnel():
 
 @bp.route('/personnel/<p_id>', methods=['PUT'])
 @require_auth
-@require_role('admin', 'directeur', 'secretaire')
+@require_role('admin', 'directeur', 'secretaire', 'comptable')
 def update_personnel(p_id):
     body = request.get_json(silent=True) or {}
     db.execute(

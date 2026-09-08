@@ -426,10 +426,10 @@ def create_frais():
     fid = gen_id('fs')
     try:
         db.execute(
-            "INSERT INTO frais_scolarite (id,ecole_id,classe,annee_scolaire,frais_inscription,scolarite_annuelle,nombre_tranches) "
-            "VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO frais_scolarite (id,ecole_id,classe,annee_scolaire,frais_inscription,frais_reinscription,scolarite_annuelle,nombre_tranches) "
+            "VALUES (?,?,?,?,?,?,?,?)",
             (fid, g.user['ecole_id'], classe, annee_scolaire, body.get('frais_inscription', 0),
-             body.get('scolarite_annuelle', 0), body.get('nombre_tranches', 3)),
+             body.get('frais_reinscription', 0), body.get('scolarite_annuelle', 0), body.get('nombre_tranches', 3)),
         )
         db.commit()
     except Exception:
@@ -445,8 +445,10 @@ def update_frais(f_id):
     body = request.get_json(silent=True) or {}
     db.execute(
         "UPDATE frais_scolarite SET frais_inscription=COALESCE(?,frais_inscription), "
+        "frais_reinscription=COALESCE(?,frais_reinscription), "
         "scolarite_annuelle=COALESCE(?,scolarite_annuelle), nombre_tranches=COALESCE(?,nombre_tranches) WHERE id=? AND ecole_id=?",
-        (body.get('frais_inscription'), body.get('scolarite_annuelle'), body.get('nombre_tranches'), f_id, g.user['ecole_id']),
+        (body.get('frais_inscription'), body.get('frais_reinscription'), body.get('scolarite_annuelle'),
+         body.get('nombre_tranches'), f_id, g.user['ecole_id']),
     )
     db.commit()
     row = db.execute("SELECT * FROM frais_scolarite WHERE id=? AND ecole_id=?", (f_id, g.user['ecole_id'])).fetchone()
@@ -488,6 +490,71 @@ def list_paiements():
     return jsonify(rows_to_list(rows))
 
 
+def generer_paiements_pour_eleve(ecole_id, eleve_id, annee_scolaire, type_inscription='nouvelle', date_debut=None):
+    """Logique partagée de génération des échéances (frais d'entrée + tranches de
+    scolarité), utilisée à la fois par la route manuelle /paiements/generer et par
+    la validation d'une réinscription (génération automatique). Renvoie
+    (count, erreur) : erreur est None en cas de succès, sinon un tuple (message, code_http).
+    """
+    eleve = db.execute("SELECT * FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, ecole_id)).fetchone()
+    if not eleve:
+        return 0, ('Élève introuvable', 404)
+
+    bareme = db.execute(
+        "SELECT * FROM frais_scolarite WHERE ecole_id=? AND classe=? AND annee_scolaire=?", (ecole_id, eleve['classe'], annee_scolaire)
+    ).fetchone()
+    if not bareme:
+        return 0, (f"Aucun barème pour la classe {eleve['classe']} en {annee_scolaire}", 404)
+
+    existing = db.execute(
+        "SELECT COUNT(*) as c FROM paiements WHERE eleve_id=? AND annee_scolaire=?", (eleve_id, annee_scolaire)
+    ).fetchone()['c']
+    if existing > 0:
+        return 0, ('Paiements déjà générés pour cet élève/année', 409)
+
+    start = datetime.fromisoformat(date_debut) if date_debut else datetime.now()
+    count = 0
+
+    # Type d'inscription (choix côté formulaire, ou déterminé automatiquement lors
+    # d'une réinscription validée) : un nouvel élève paie les frais d'inscription,
+    # un élève qui revient (réinscription) paie les frais de réinscription — les
+    # deux montants sont définis séparément dans le barème.
+    if type_inscription == 'reinscription':
+        montant_frais_entree = bareme['frais_reinscription'] if 'frais_reinscription' in bareme.keys() else 0
+        type_frais_entree, libelle_frais_entree = 'reinscription', 'Frais de réinscription'
+    else:
+        montant_frais_entree = bareme['frais_inscription']
+        type_frais_entree, libelle_frais_entree = 'inscription', "Frais d'inscription"
+
+    if montant_frais_entree > 0:
+        pid = gen_id('pai')
+        db.execute(
+            "INSERT INTO paiements (id,ecole_id,eleve_id,annee_scolaire,type_frais,libelle,montant_du,date_echeance) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (pid, ecole_id, eleve_id, annee_scolaire, type_frais_entree, libelle_frais_entree,
+             montant_frais_entree, start.strftime('%Y-%m-%d')),
+        )
+        count += 1
+
+    # Répartition des tranches de scolarité : 45% / 40% / 15% du montant annuel
+    # (remplace l'ancienne répartition en parts égales)
+    POURCENTAGES_TRANCHES = [0.45, 0.40, 0.15]
+    for i, pct in enumerate(POURCENTAGES_TRANCHES):
+        d = start + timedelta(days=i * 91)  # approx. tous les 3 mois
+        montant_tranche = round(bareme['scolarite_annuelle'] * pct)
+        pid = gen_id('pai') + str(i)
+        db.execute(
+            "INSERT INTO paiements (id,ecole_id,eleve_id,annee_scolaire,type_frais,libelle,montant_du,date_echeance) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (pid, ecole_id, eleve_id, annee_scolaire, f'tranche_{i+1}', f'Tranche {i+1} de scolarité ({int(pct*100)}%)',
+             montant_tranche, d.strftime('%Y-%m-%d')),
+        )
+        count += 1
+
+    db.commit()
+    return count, None
+
+
 @bp.route('/paiements/generer', methods=['POST'])
 @require_auth
 @require_role(*FIN_ROLES)
@@ -497,53 +564,14 @@ def generer_paiements():
     if not eleve_id or not annee_scolaire:
         return jsonify({'error': 'Élève et année requis'}), 400
 
-    eleve = db.execute("SELECT * FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id'])).fetchone()
-    if not eleve:
-        return jsonify({'error': 'Élève introuvable'}), 404
-
-    bareme = db.execute(
-        "SELECT * FROM frais_scolarite WHERE ecole_id=? AND classe=? AND annee_scolaire=?", (g.user['ecole_id'], eleve['classe'], annee_scolaire)
-    ).fetchone()
-    if not bareme:
-        return jsonify({'error': f"Aucun barème pour la classe {eleve['classe']} en {annee_scolaire}"}), 404
-
-    existing = db.execute(
-        "SELECT COUNT(*) as c FROM paiements WHERE eleve_id=? AND annee_scolaire=?", (eleve_id, annee_scolaire)
-    ).fetchone()['c']
-    if existing > 0:
-        return jsonify({'error': 'Paiements déjà générés pour cet élève/année'}), 409
-
-    date_debut = body.get('date_debut')
-    start = datetime.fromisoformat(date_debut) if date_debut else datetime.now()
-    count = 0
-
-    if bareme['frais_inscription'] > 0:
-        pid = gen_id('pai')
-        db.execute(
-            "INSERT INTO paiements (id,ecole_id,eleve_id,annee_scolaire,type_frais,libelle,montant_du,date_echeance) "
-            "VALUES (?,?,?,?,?,?,?,?)",
-            (pid, g.user['ecole_id'], eleve_id, annee_scolaire, 'inscription', "Frais d'inscription",
-             bareme['frais_inscription'], start.strftime('%Y-%m-%d')),
-        )
-        count += 1
-
-    # Répartition des tranches de scolarité : 45% / 40% / 15% du montant annuel
-    # (remplace l'ancienne répartition en parts égales)
-    POURCENTAGES_TRANCHES = [0.45, 0.40, 0.15]
-    nb = len(POURCENTAGES_TRANCHES)
-    for i, pct in enumerate(POURCENTAGES_TRANCHES):
-        d = start + timedelta(days=i * 91)  # approx. tous les 3 mois
-        montant_tranche = round(bareme['scolarite_annuelle'] * pct)
-        pid = gen_id('pai') + str(i)
-        db.execute(
-            "INSERT INTO paiements (id,ecole_id,eleve_id,annee_scolaire,type_frais,libelle,montant_du,date_echeance) "
-            "VALUES (?,?,?,?,?,?,?,?)",
-            (pid, g.user['ecole_id'], eleve_id, annee_scolaire, f'tranche_{i+1}', f'Tranche {i+1} de scolarité ({int(pct*100)}%)',
-             montant_tranche, d.strftime('%Y-%m-%d')),
-        )
-        count += 1
-
-    db.commit()
+    count, erreur = generer_paiements_pour_eleve(
+        g.user['ecole_id'], eleve_id, annee_scolaire,
+        type_inscription=body.get('type_inscription') or 'nouvelle',
+        date_debut=body.get('date_debut'),
+    )
+    if erreur:
+        message, code = erreur
+        return jsonify({'error': message}), code
     return jsonify({'success': True, 'count': count}), 201
 
 

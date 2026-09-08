@@ -571,6 +571,7 @@ CREATE TABLE IF NOT EXISTS frais_scolarite (
   classe              TEXT NOT NULL,
   annee_scolaire      TEXT NOT NULL,
   frais_inscription   REAL DEFAULT 0,
+  frais_reinscription REAL DEFAULT 0,
   scolarite_annuelle  REAL DEFAULT 0,
   nombre_tranches     INTEGER DEFAULT 3,
   UNIQUE(ecole_id, classe, annee_scolaire)
@@ -732,6 +733,11 @@ MIGRATIONS = {
         'photo_url': "TEXT",
         'matricule': "TEXT",
         'adresse': "TEXT",
+    },
+    'frais_scolarite': {
+        # Frais dû par un élève qui se réinscrit (ancien élève), distinct des frais
+        # d'inscription (nouvel élève) — les deux montants coexistent dans le même barème.
+        'frais_reinscription': "REAL DEFAULT 0",
     },
 }
 

@@ -132,11 +132,17 @@ async function modalGenPaiements() {
   const eleves = _paiEleves;
   openModal('Générer les échéances de scolarité', `
     <form id="f-gen" style="display:flex;flex-direction:column;gap:14px">
-      <div class="alert alert-info">Génère automatiquement les frais d'inscription et les tranches de scolarité selon le barème de la classe.</div>
+      <div class="alert alert-info">Génère automatiquement le frais d'entrée (inscription ou réinscription) et les tranches de scolarité selon le barème de la classe.</div>
       <div class="fg"><label>Élève*</label>
         <select name="eleve_id" required>
           <option value="">— Choisir —</option>
           ${eleves.filter(e=>e.statut==='actif').map(e=>`<option value="${esc(e.id)}">${esc(e.prenom)} ${esc(e.nom)} — ${esc(e.classe||'?')}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fg"><label>Type*</label>
+        <select name="type_inscription" required>
+          <option value="nouvelle">Frais d'inscription (nouvel élève)</option>
+          <option value="reinscription">Frais de réinscription (ancien élève)</option>
         </select>
       </div>
       <div class="form-2">
@@ -163,19 +169,20 @@ async function modalBaremes() {
       <button class="btn btn-primary btn-sm" onclick="modalAddBareme()">+ Ajouter un barème</button>
     </div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Classe</th><th>Année</th><th class="text-right">Inscription</th><th class="text-right">Scolarité</th><th>Tranches</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Classe</th><th>Année</th><th class="text-right">Inscription</th><th class="text-right">Réinscription</th><th class="text-right">Scolarité</th><th>Tranches</th><th>Actions</th></tr></thead>
       <tbody>
       ${frais.length ? frais.map(f=>`<tr>
         <td><span class="badge bdg-primary">${esc(f.classe)}</span></td>
         <td>${esc(f.annee_scolaire)}</td>
         <td class="mono text-right">${fmtMoney(f.frais_inscription)}</td>
+        <td class="mono text-right">${fmtMoney(f.frais_reinscription)}</td>
         <td class="mono text-right">${fmtMoney(f.scolarite_annuelle)}</td>
         <td class="text-center"><span class="badge bdg-primary">45% / 40% / 15%</span></td>
         <td><div class="td-actions">
           <button class="btn btn-outline btn-xs" onclick="modalEditBareme('${escJs(f.id)}')">✏️</button>
           <button class="btn btn-danger btn-xs" onclick="delBareme('${escJs(f.id)}')" ${currentUser.role!=='admin'?'style="display:none"':''}>🗑</button>
         </div></td>
-      </tr>`).join('') : `<tr><td colspan="6">${emptyHtml('⚙','Aucun barème défini')}</td></tr>`}
+      </tr>`).join('') : `<tr><td colspan="7">${emptyHtml('⚙','Aucun barème défini')}</td></tr>`}
       </tbody>
     </table></div>`, { wide: true });
 }
@@ -189,9 +196,10 @@ async function modalAddBareme() {
       </div>
       <div class="form-2">
         <div class="fg"><label>Frais d'inscription (GNF)</label><input type="number" name="frais_inscription" value="0"></div>
-        <div class="fg"><label>Scolarité annuelle (GNF)</label><input type="number" name="scolarite_annuelle" value="0"></div>
+        <div class="fg"><label>Frais de réinscription (GNF)</label><input type="number" name="frais_reinscription" value="0"></div>
       </div>
-      <div class="alert alert-info">💡 La scolarité annuelle est automatiquement répartie en 3 tranches : <strong>45%</strong>, <strong>40%</strong> puis <strong>15%</strong>.</div>
+      <div class="fg"><label>Scolarité annuelle (GNF)</label><input type="number" name="scolarite_annuelle" value="0"></div>
+      <div class="alert alert-info">💡 Le <strong>frais d'inscription</strong> s'applique à un nouvel élève, le <strong>frais de réinscription</strong> à un élève qui revient. La scolarité annuelle est automatiquement répartie en 3 tranches : <strong>45%</strong>, <strong>40%</strong> puis <strong>15%</strong>.</div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline" onclick="modalBaremes()">Retour</button>
         <button type="submit" class="btn btn-primary">Enregistrer</button>
@@ -201,6 +209,7 @@ async function modalAddBareme() {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(e.target));
     fd.frais_inscription = parseFloat(fd.frais_inscription)||0;
+    fd.frais_reinscription = parseFloat(fd.frais_reinscription)||0;
     fd.scolarite_annuelle = parseFloat(fd.scolarite_annuelle)||0;
     try { await apiCreateFrais(fd); toast('Barème ajouté','success'); modalBaremes(); }
     catch(err) { toast(err.message,'error'); }
@@ -216,8 +225,9 @@ async function modalEditBareme(id) {
       <div class="alert alert-info">Classe : <strong>${esc(f.classe)}</strong> — Année : <strong>${esc(f.annee_scolaire)}</strong></div>
       <div class="form-2">
         <div class="fg"><label>Frais d'inscription (GNF)</label><input type="number" name="frais_inscription" value="${f.frais_inscription||0}"></div>
-        <div class="fg"><label>Scolarité annuelle (GNF)</label><input type="number" name="scolarite_annuelle" value="${f.scolarite_annuelle||0}"></div>
+        <div class="fg"><label>Frais de réinscription (GNF)</label><input type="number" name="frais_reinscription" value="${f.frais_reinscription||0}"></div>
       </div>
+      <div class="fg"><label>Scolarité annuelle (GNF)</label><input type="number" name="scolarite_annuelle" value="${f.scolarite_annuelle||0}"></div>
       <div class="alert alert-info">💡 Répartition fixe : <strong>45%</strong> / <strong>40%</strong> / <strong>15%</strong> sur 3 tranches.</div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline" onclick="modalBaremes()">Retour</button>
@@ -228,6 +238,7 @@ async function modalEditBareme(id) {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(e.target));
     fd.frais_inscription = parseFloat(fd.frais_inscription)||0;
+    fd.frais_reinscription = parseFloat(fd.frais_reinscription)||0;
     fd.scolarite_annuelle = parseFloat(fd.scolarite_annuelle)||0;
     try { await apiUpdateFrais(id, fd); toast('Barème mis à jour','success'); modalBaremes(); }
     catch(err) { toast(err.message,'error'); }
