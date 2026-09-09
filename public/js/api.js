@@ -185,15 +185,36 @@ const apiCreateAbsence  = (b)       => apiFetch('/absences', {
     });
   },
 });
-const apiUpdateAbsence  = (id,b)    => apiFetch(`/absences/${id}`, { method: 'PUT', body: b });
+const apiUpdateAbsence  = (id,b)    => apiFetch(`/absences/${id}`, {
+  method: 'PUT', body: b,
+  descriptionHorsLigne: `Modification d'une absence`,
+  donneesOptimistes: { id, ...b },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/absences', (liste) => Array.isArray(liste) ? liste.map(a => a.id === id ? { ...a, ...b, _hors_ligne: true } : a) : liste);
+  },
+});
 const apiDeleteAbsence  = (id)      => apiFetch(`/absences/${id}`, { method: 'DELETE' });
 const apiStatsAbsences  = (id)      => apiFetch(`/absences/stats/${id}`);
 
 /* ── Absences du personnel (point 6) ── */
 const apiGetAbsencesPersonnel       = (q='') => apiFetch('/absences-personnel'+(q?'?'+q:''));
 const apiGetAbsencesPersonnelAujourdhui = () => apiFetch('/absences-personnel/aujourd-hui');
-const apiSignalerAbsencePersonnel   = (b)    => apiFetch('/absences-personnel', { method: 'POST', body: b });
-const apiUpdateAbsencePersonnel     = (id,b) => apiFetch(`/absences-personnel/${id}`, { method: 'PUT', body: b });
+const apiSignalerAbsencePersonnel   = (b)    => apiFetch('/absences-personnel', {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `Absence de personnel signalée`,
+  donneesOptimistes: { ...b },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/absences-personnel', (liste) => Array.isArray(liste) ? [{ ...b, id: idTemp, _hors_ligne: true }, ...liste] : liste);
+  },
+});
+const apiUpdateAbsencePersonnel     = (id,b) => apiFetch(`/absences-personnel/${id}`, {
+  method: 'PUT', body: b,
+  descriptionHorsLigne: `Modification d'une absence de personnel`,
+  donneesOptimistes: { id, ...b },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/absences-personnel', (liste) => Array.isArray(liste) ? liste.map(a => a.id === id ? { ...a, ...b, _hors_ligne: true } : a) : liste);
+  },
+});
 const apiDeleteAbsencePersonnel     = (id)   => apiFetch(`/absences-personnel/${id}`, { method: 'DELETE' });
 
 /* ── Réinscriptions ── */
@@ -266,28 +287,102 @@ const apiCreateStockMouvement = (d)     => apiFetch('/stock/mouvements', {
 // ── Logistique : Achats / Commandes ──
 const apiGetCommandes       = (q='')    => apiFetch('/commandes'+(q?'?'+q:''));
 const apiGetCommande        = (id)      => apiFetch(`/commandes/${id}`);
-const apiCreateCommande     = (d)       => apiFetch('/commandes', { method:'POST', body:d });
-const apiUpdateCommande     = (id,d)    => apiFetch(`/commandes/${id}`, { method:'PUT', body:d });
-const apiReceptionnerCommande = (id)    => apiFetch(`/commandes/${id}/receptionner`, { method:'POST' });
+const apiCreateCommande     = (d)       => apiFetch('/commandes', {
+  method:'POST', body:d,
+  descriptionHorsLigne: `Nouveau bon de commande`,
+  donneesOptimistes: { ...d, statut: d.statut || 'brouillon' },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/commandes', (liste) => Array.isArray(liste) ? [{ ...d, id: idTemp, statut: d.statut || 'brouillon', nb_lignes: (d.lignes||[]).length, _hors_ligne: true }, ...liste] : liste);
+  },
+});
+const apiUpdateCommande     = (id,d)    => apiFetch(`/commandes/${id}`, {
+  method:'PUT', body:d,
+  descriptionHorsLigne: `Modification d'un bon de commande`,
+  donneesOptimistes: { id, ...d },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/commandes', (liste) => Array.isArray(liste) ? liste.map(c => c.id === id ? { ...c, ...d, _hors_ligne: true } : c) : liste);
+  },
+});
+const apiReceptionnerCommande = (id)    => apiFetch(`/commandes/${id}/receptionner`, {
+  method:'POST',
+  descriptionHorsLigne: `Réception d'un bon de commande`,
+  donneesOptimistes: { id },
+  miseAJourCacheHorsLigne: async () => {
+    // Remarque : la réception réelle incrémente aussi le stock des produits liés
+    // (voir routes/logistique_routes.py). Cet effet n'est PAS simulé ici pour éviter
+    // toute désynchronisation entre le statut affiché et les quantités en stock —
+    // le stock ne bougera réellement qu'au moment de la synchronisation effective.
+    await offlinePatcherVariantes('/commandes', (liste) => Array.isArray(liste) ? liste.map(c => c.id === id ? { ...c, statut: 'recue', _hors_ligne: true } : c) : liste);
+  },
+});
 const apiDeleteCommande     = (id)      => apiFetch(`/commandes/${id}`, { method:'DELETE' });
 
 // ── Logistique : Maintenance ──
 const apiGetMaintenance     = (q='')    => apiFetch('/maintenance'+(q?'?'+q:''));
-const apiCreateMaintenance  = (d)       => apiFetch('/maintenance', { method:'POST', body:d });
-const apiUpdateMaintenance  = (id,d)    => apiFetch(`/maintenance/${id}`, { method:'PUT', body:d });
+const apiCreateMaintenance  = (d)       => apiFetch('/maintenance', {
+  method:'POST', body:d,
+  descriptionHorsLigne: `Signalement — ${d.titre||''}`,
+  donneesOptimistes: { ...d, statut: 'signalee' },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/maintenance', (liste) => Array.isArray(liste) ? [{ ...d, id: idTemp, statut: 'signalee', _hors_ligne: true }, ...liste] : liste);
+  },
+});
+const apiUpdateMaintenance  = (id,d)    => apiFetch(`/maintenance/${id}`, {
+  method:'PUT', body:d,
+  descriptionHorsLigne: `Modification d'une intervention`,
+  donneesOptimistes: { id, ...d },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/maintenance', (liste) => Array.isArray(liste) ? liste.map(m => m.id === id ? { ...m, ...d, _hors_ligne: true } : m) : liste);
+  },
+});
 const apiDeleteMaintenance  = (id)      => apiFetch(`/maintenance/${id}`, { method:'DELETE' });
 
 // ── Logistique : Transport scolaire ──
 const apiGetVehicules       = ()        => apiFetch('/transport/vehicules');
-const apiCreateVehicule     = (d)       => apiFetch('/transport/vehicules', { method:'POST', body:d });
-const apiUpdateVehicule     = (id,d)    => apiFetch(`/transport/vehicules/${id}`, { method:'PUT', body:d });
+const apiCreateVehicule     = (d)       => apiFetch('/transport/vehicules', {
+  method:'POST', body:d,
+  descriptionHorsLigne: `Nouveau véhicule — ${d.immatriculation||''}`,
+  donneesOptimistes: { ...d, statut: d.statut || 'actif' },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/transport/vehicules', (liste) => Array.isArray(liste) ? [{ ...d, id: idTemp, statut: d.statut || 'actif', _hors_ligne: true }, ...liste] : liste);
+  },
+});
+const apiUpdateVehicule     = (id,d)    => apiFetch(`/transport/vehicules/${id}`, {
+  method:'PUT', body:d,
+  descriptionHorsLigne: `Modification d'un véhicule`,
+  donneesOptimistes: { id, ...d },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/transport/vehicules', (liste) => Array.isArray(liste) ? liste.map(v => v.id === id ? { ...v, ...d, _hors_ligne: true } : v) : liste);
+  },
+});
 const apiDeleteVehicule     = (id)      => apiFetch(`/transport/vehicules/${id}`, { method:'DELETE' });
 const apiGetItineraires     = ()        => apiFetch('/transport/itineraires');
-const apiCreateItineraire   = (d)       => apiFetch('/transport/itineraires', { method:'POST', body:d });
-const apiUpdateItineraire   = (id,d)    => apiFetch(`/transport/itineraires/${id}`, { method:'PUT', body:d });
+const apiCreateItineraire   = (d)       => apiFetch('/transport/itineraires', {
+  method:'POST', body:d,
+  descriptionHorsLigne: `Nouvel itinéraire — ${d.nom||''}`,
+  donneesOptimistes: { ...d },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/transport/itineraires', (liste) => Array.isArray(liste) ? [{ ...d, id: idTemp, nb_eleves: 0, _hors_ligne: true }, ...liste] : liste);
+  },
+});
+const apiUpdateItineraire   = (id,d)    => apiFetch(`/transport/itineraires/${id}`, {
+  method:'PUT', body:d,
+  descriptionHorsLigne: `Modification d'un itinéraire`,
+  donneesOptimistes: { id, ...d },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/transport/itineraires', (liste) => Array.isArray(liste) ? liste.map(i => i.id === id ? { ...i, ...d, _hors_ligne: true } : i) : liste);
+  },
+});
 const apiDeleteItineraire   = (id)      => apiFetch(`/transport/itineraires/${id}`, { method:'DELETE' });
 const apiGetTransportEleves = (q='')    => apiFetch('/transport/eleves'+(q?'?'+q:''));
-const apiAssignTransportEleve = (d)     => apiFetch('/transport/eleves', { method:'POST', body:d });
+const apiAssignTransportEleve = (d)     => apiFetch('/transport/eleves', {
+  method:'POST', body:d,
+  descriptionHorsLigne: `Affectation d'un élève au transport`,
+  donneesOptimistes: { ...d },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/transport/eleves', (liste) => Array.isArray(liste) ? [{ ...d, id: idTemp, _hors_ligne: true }, ...liste] : liste);
+  },
+});
 const apiUnassignTransportEleve = (id)  => apiFetch(`/transport/eleves/${id}`, { method:'DELETE' });
 
 const apiGetTransactionsRecurrentes = () => apiFetch('/transactions-recurrentes');
@@ -363,13 +458,51 @@ const apiVersementsEleve= (id)   => apiFetch(`/versements/${id}`);
 
 /* ── Cantine ── */
 const apiGetMenus    = (q='')    => apiFetch('/cantine/menus'+(q?'?'+q:''));
-const apiCreateMenu  = (b)       => apiFetch('/cantine/menus', { method: 'POST', body: b });
-const apiUpdateMenu  = (id,b)    => apiFetch(`/cantine/menus/${id}`, { method: 'PUT', body: b });
+const apiCreateMenu  = (b)       => apiFetch('/cantine/menus', {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `Nouveau menu cantine`,
+  donneesOptimistes: { ...b },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/cantine/menus', (liste) => Array.isArray(liste) ? [{ ...b, id: idTemp, _hors_ligne: true }, ...liste] : liste);
+  },
+});
+const apiUpdateMenu  = (id,b)    => apiFetch(`/cantine/menus/${id}`, {
+  method: 'PUT', body: b,
+  descriptionHorsLigne: `Modification d'un menu cantine`,
+  donneesOptimistes: { id, ...b },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/cantine/menus', (liste) => Array.isArray(liste) ? liste.map(m => m.id === id ? { ...m, ...b, _hors_ligne: true } : m) : liste);
+  },
+});
 const apiDeleteMenu  = (id)      => apiFetch(`/cantine/menus/${id}`, { method: 'DELETE' });
 const apiGetAbons    = (q='')    => apiFetch('/cantine/abonnements'+(q?'?'+q:''));
-const apiCreateAbon  = (b)       => apiFetch('/cantine/abonnements', { method: 'POST', body: b });
-const apiUpdateAbon  = (id,b)    => apiFetch(`/cantine/abonnements/${id}`, { method: 'PUT', body: b });
-const apiPayerAbon   = (id,b)    => apiFetch(`/cantine/abonnements/${id}/payer`, { method: 'POST', body: b });
+const apiCreateAbon  = (b)       => apiFetch('/cantine/abonnements', {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `Nouvel abonnement cantine`,
+  donneesOptimistes: { ...b },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/cantine/abonnements', (liste) => Array.isArray(liste) ? [{ ...b, id: idTemp, _hors_ligne: true }, ...liste] : liste);
+  },
+});
+const apiUpdateAbon  = (id,b)    => apiFetch(`/cantine/abonnements/${id}`, {
+  method: 'PUT', body: b,
+  descriptionHorsLigne: `Modification d'un abonnement cantine`,
+  donneesOptimistes: { id, ...b },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/cantine/abonnements', (liste) => Array.isArray(liste) ? liste.map(a => a.id === id ? { ...a, ...b, _hors_ligne: true } : a) : liste);
+  },
+});
+const apiPayerAbon   = (id,b)    => apiFetch(`/cantine/abonnements/${id}/payer`, {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `Paiement d'un abonnement cantine`,
+  donneesOptimistes: { id },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/cantine/abonnements', (liste) => {
+      if (!Array.isArray(liste)) return liste;
+      return liste.map(a => a.id === id ? { ...a, montant_paye: (a.montant_paye||0) + (parseFloat(b.montant)||0), _hors_ligne: true } : a);
+    });
+  },
+});
 const apiDeleteAbon  = (id)      => apiFetch(`/cantine/abonnements/${id}`, { method: 'DELETE' });
 
 /* ── Communication ── */
@@ -428,7 +561,14 @@ const apiSaisirHeures       = (id,b) => apiFetch(`/personnel/${id}/heures`, { me
 
 /* ── Séances de cours (traçabilité + validation direction) ── */
 const apiGetSeancesCours     = (q='') => apiFetch('/seances-cours'+(q?'?'+q:''));
-const apiCreateSeanceCours   = (b)    => apiFetch('/seances-cours', { method: 'POST', body: b });
+const apiCreateSeanceCours   = (b)    => apiFetch('/seances-cours', {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `Nouvelle séance de cours de révision`,
+  donneesOptimistes: { ...b },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/seances-cours', (liste) => Array.isArray(liste) ? [{ ...b, id: idTemp, _hors_ligne: true }, ...liste] : liste);
+  },
+});
 const apiValiderSeanceCours  = (id)   => apiFetch(`/seances-cours/${id}/valider`, { method: 'PUT' });
 const apiValiderGroupeSeances= (b)    => apiFetch('/seances-cours/valider-groupe', { method: 'PUT', body: b });
 const apiRejeterSeanceCours  = (id,b) => apiFetch(`/seances-cours/${id}/rejeter`, { method: 'PUT', body: b });
@@ -541,8 +681,22 @@ const apiVerserRedistribution = (b) => apiFetch('/cours-revision/redistribution/
 /* ── Cours de révision (payants, ouverts aux externes, avec évaluation) ── */
 const apiGetCoursRevision      = (q='') => apiFetch('/cours-revision'+(q?'?'+q:''));
 const apiGetCoursRevisionOne   = (id)   => apiFetch(`/cours-revision/${id}`);
-const apiCreateCoursRevision   = (b)    => apiFetch('/cours-revision', { method: 'POST', body: b });
-const apiUpdateCoursRevision   = (id,b) => apiFetch(`/cours-revision/${id}`, { method: 'PUT', body: b });
+const apiCreateCoursRevision   = (b)    => apiFetch('/cours-revision', {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `Nouveau cours de révision — ${b.matiere||''}`,
+  donneesOptimistes: { ...b },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/cours-revision', (liste) => Array.isArray(liste) ? [{ ...b, id: idTemp, _hors_ligne: true }, ...liste] : liste);
+  },
+});
+const apiUpdateCoursRevision   = (id,b) => apiFetch(`/cours-revision/${id}`, {
+  method: 'PUT', body: b,
+  descriptionHorsLigne: `Modification d'un cours de révision`,
+  donneesOptimistes: { id, ...b },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/cours-revision', (liste) => Array.isArray(liste) ? liste.map(c => c.id === id ? { ...c, ...b, _hors_ligne: true } : c) : liste);
+  },
+});
 const apiDeleteCoursRevision   = (id)   => apiFetch(`/cours-revision/${id}`, { method: 'DELETE' });
 const apiGetRevisionParticipants = (coursId) => apiFetch(`/cours-revision/${coursId}/participants`);
 const apiAddRevisionParticipant  = (coursId,b) => apiFetch(`/cours-revision/${coursId}/participants`, { method: 'POST', body: b });
