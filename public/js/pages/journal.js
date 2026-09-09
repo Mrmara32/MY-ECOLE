@@ -18,7 +18,8 @@ async function pageJournal() {
     let curr = entries;
 
     const render = data => {
-      $('#tb-journal').innerHTML = data.length ? data.map(j => `<tr>
+      const { items, page, totalPages, total } = paginate('journal', data);
+      $('#tb-journal').innerHTML = items.length ? items.map(j => `<tr>
         <td class="text-muted" style="font-size:12px;white-space:nowrap">${fmtDate(j.created_at)} <span style="font-size:11px">${(j.created_at||'').split(' ')[1]||''}</span></td>
         <td><strong>${esc(j.user_nom||'Système')}</strong></td>
         <td><span class="badge bdg-primary">${ACTION_LABELS[j.action]||esc(j.action)}</span></td>
@@ -29,6 +30,7 @@ async function pageJournal() {
           ${j.details ? `<button class="btn btn-outline btn-xs" onclick='voirDetailsJournal(${JSON.stringify(j.details).replace(/'/g,"&#39;")})'>👁 Détails</button>` : '—'}
         </td>
       </tr>`).join('') : `<tr><td colspan="7">${emptyHtml('🗂️','Aucune entrée dans le journal')}</td></tr>`;
+      $('#pag-journal').innerHTML = paginationHtml('journal', page, totalPages, total);
     };
 
     $('#content').innerHTML = `
@@ -48,7 +50,9 @@ async function pageJournal() {
         <thead><tr id="th-journal"><th>Date / Heure</th><th>Utilisateur</th><th>Action</th><th>Entité</th><th>Référence</th><th>Motif</th><th>Détails</th></tr></thead>
         <tbody id="tb-journal"></tbody>
       </table></div>
+      <div id="pag-journal"></div>
     </div>`;
+    getPaginator('journal').onChange = () => render(curr);
     render(curr);
 
     makeSortableTable('#th-journal', () => curr, render,
@@ -62,7 +66,7 @@ async function pageJournal() {
       if (deb) qs.push(`date_debut=${deb}`);
       if (fin) qs.push(`date_fin=${fin}`);
       if (q) qs.push(`q=${encodeURIComponent(q)}`);
-      try { curr = await apiGetJournal(qs.join('&')); render(curr); }
+      try { curr = await apiGetJournal(qs.join('&')); resetPaginator('journal'); render(curr); }
       catch(e) { toast(e.message,'error'); }
     };
     ['#f-jent','#f-jact','#f-jdeb','#f-jfin'].forEach(s => $(s).addEventListener('change', refilter));

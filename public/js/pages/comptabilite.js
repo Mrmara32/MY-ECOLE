@@ -25,6 +25,7 @@ async function pageComptabilite() {
     let curr = transactions;
 
     const render = data => {
+      const { items, page, totalPages, total } = paginate('compta', data);
       // Les totaux n'incluent que les opérations effectivement comptabilisées (auto ou validées)
       const compte = t => t.statut_validation === 'auto' || t.statut_validation === 'valide';
       const r2 = data.filter(t=>t.type==='entree' && compte(t)).reduce((s,t)=>s+t.montant,0);
@@ -36,7 +37,7 @@ async function pageComptabilite() {
           <div class="stat"><div class="stat-label">Solde net</div><div class="stat-val" style="font-size:16px;color:${(r2-d2)>=0?'var(--c-ok)':'var(--c-err)'}">${fmtMoney(r2-d2)}</div></div>
           <div class="stat"><div class="stat-label">Transactions</div><div class="stat-val">${data.length}</div></div>
         </div>`;
-      $('#tb-compta').innerHTML = data.length ? data.map(t => `<tr>
+      $('#tb-compta').innerHTML = data.length ? items.map(t => `<tr>
         <td>${fmtDate(t.date_op)}</td>
         <td><span class="badge ${t.type==='entree'?'bdg-ok':'bdg-err'}">${t.type==='entree'?'➕ Recette':'➖ Dépense'}</span></td>
         <td>${JOURNAL_LABELS[t.journal]||''}</td>
@@ -54,6 +55,7 @@ async function pageComptabilite() {
           </div>
         </td>
       </tr>`).join('') : `<tr><td colspan="9">${emptyHtml('💳','Aucune transaction pour cette période')}</td></tr>`;
+      $('#pag-compta').innerHTML = paginationHtml('compta', page, totalPages, total);
     };
     window._comptaTransactionsCache = transactions;
 
@@ -96,8 +98,10 @@ async function pageComptabilite() {
         <thead><tr id="th-compta"><th>Date</th><th>Type</th><th>Journal</th><th>Description</th><th>Catégorie</th><th>Moyen</th><th class="text-right">Montant</th><th>Statut</th><th>Créé par</th><th>Lié / Actions</th></tr></thead>
         <tbody id="tb-compta"></tbody>
       </table></div>
+      <div id="pag-compta"></div>
     </div>`;
 
+    getPaginator('compta').onChange = () => render(curr);
     render(transactions);
 
     makeSortableTable('#th-compta', () => curr, render,
@@ -115,7 +119,7 @@ async function pageComptabilite() {
       if (type) qs.push(`type=${type}`);
       if (journal) qs.push(`journal=${journal}`);
       if (q) qs.push(`q=${encodeURIComponent(q)}`);
-      try { curr = await apiGetTransactions(qs.join('&')); render(curr); }
+      try { curr = await apiGetTransactions(qs.join('&')); resetPaginator('compta'); render(curr); }
       catch(e) { toast(e.message,'error'); }
     };
   } catch(e) { $('#content').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`; }

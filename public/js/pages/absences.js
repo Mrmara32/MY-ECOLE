@@ -31,7 +31,8 @@ function renderAbsEleves(absences, eleves) {
   const classes = [...new Set(eleves.map(e=>e.classe).filter(Boolean))].sort();
 
   const render = data => {
-    $('#tb-abs').innerHTML = data.length ? data.map(a => `<tr>
+    const { items, page, totalPages, total } = paginate('abs-eleves', data);
+    $('#tb-abs').innerHTML = items.length ? items.map(a => `<tr>
       <td>${fmtDate(a.date_abs)}</td>
       <td><strong>${esc(a.prenom)} ${esc(a.nom)}</strong><br><span class="text-muted" style="font-size:11px">${esc(a.matricule||'')}</span></td>
       <td><span class="badge bdg-primary">${esc(a.classe||'—')}</span></td>
@@ -44,6 +45,7 @@ function renderAbsEleves(absences, eleves) {
         ${currentUser.role !== 'enseignant' ? `<button class="btn btn-danger btn-xs" onclick="delAbs('${escJs(a.id)}')">🗑</button>` : ''}
       </div></td>
     </tr>`).join('') : `<tr><td colspan="8">${emptyHtml('📅','Aucune absence trouvée')}</td></tr>`;
+    $('#pag-abs').innerHTML = paginationHtml('abs-eleves', page, totalPages, total);
   };
 
   $('#abs-body').innerHTML = `
@@ -64,9 +66,11 @@ function renderAbsEleves(absences, eleves) {
       <thead><tr id="th-abs"><th>Date</th><th>Élève</th><th>Classe</th><th>Type</th><th>Durée</th><th>Statut</th><th>Motif</th><th>Actions</th></tr></thead>
       <tbody id="tb-abs"></tbody>
     </table></div>
+    <div id="pag-abs"></div>
   </div>`;
 
   let curr = absences;
+  getPaginator('abs-eleves').onChange = () => render(curr);
   render(curr);
 
   window.filterAbs = async () => {
@@ -84,6 +88,7 @@ function renderAbsEleves(absences, eleves) {
       if (type) data = data.filter(a=>a.type===type);
       if (q) data = data.filter(a => `${a.nom} ${a.prenom} ${a.matricule||''}`.toLowerCase().includes(q));
       curr = data;
+      resetPaginator('abs-eleves');
       render(curr);
     } catch(e) { toast(e.message,'error'); }
   };
@@ -152,7 +157,8 @@ function renderAbsPersonnel(absPersonnel, personnel) {
   const enCours = a => !a.date_fin || a.date_fin >= today();
 
   const render = data => {
-    $('#tb-abs-per').innerHTML = data.length ? data.map(a => `<tr>
+    const { items, page, totalPages, total } = paginate('abs-personnel', data);
+    $('#tb-abs-per').innerHTML = items.length ? items.map(a => `<tr>
       <td>${enCours(a)?'<span class="badge bdg-err">🔴 En cours</span>':'<span class="badge bdg-gray">Terminée</span>'}</td>
       <td><strong>${esc(a.prenom)} ${esc(a.nom)}</strong><br><span class="text-muted" style="font-size:11px">${esc(a.poste||'')}${a.matiere?' · '+esc(a.matiere):''}</span></td>
       <td>${fmtDate(a.date_debut)}</td>
@@ -164,6 +170,7 @@ function renderAbsPersonnel(absPersonnel, personnel) {
         <button class="btn btn-danger btn-xs" onclick="delAbsPersonnel('${escJs(a.id)}')">🗑</button>
       </div></td>
     </tr>`).join('') : `<tr><td colspan="7">${emptyHtml('👨‍🏫','Aucune absence de personnel enregistrée')}</td></tr>`;
+    $('#pag-abs-per').innerHTML = paginationHtml('abs-personnel', page, totalPages, total);
   };
 
   const absentsAujourdhui = absPersonnel.filter(enCours);
@@ -185,12 +192,15 @@ function renderAbsPersonnel(absPersonnel, personnel) {
       <thead><tr id="th-abs-per"><th>Statut</th><th>Personnel</th><th>Depuis le</th><th>Jusqu'au</th><th>Motif</th><th>Remplacé par</th><th>Actions</th></tr></thead>
       <tbody id="tb-abs-per"></tbody>
     </table></div>
+    <div id="pag-abs-per"></div>
   </div>`;
   let curr = absPersonnel;
+  getPaginator('abs-personnel').onChange = () => render(curr);
   render(curr);
   $('#q-absper').addEventListener('input', () => {
     const q = $('#q-absper').value.toLowerCase();
     curr = absPersonnel.filter(a => `${a.nom} ${a.prenom} ${a.poste||''}`.toLowerCase().includes(q));
+    resetPaginator('abs-personnel');
     render(curr);
   });
   makeSortableTable('#th-abs-per', () => curr, render,

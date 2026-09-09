@@ -12,7 +12,8 @@ async function pageCandidatures() {
     };
 
     const render = data => {
-      $('#tb-cand').innerHTML = data.length ? data.map(c => `<tr>
+      const { items, page, totalPages, total } = paginate('cand', data);
+      $('#tb-cand').innerHTML = items.length ? items.map(c => `<tr>
         <td><strong>${esc(c.prenom)} ${esc(c.nom)}</strong></td>
         <td>${esc(c.telephone||'—')}${c.email?'<br><span class="text-muted" style="font-size:11px">'+esc(c.email)+'</span>':''}</td>
         <td><span class="badge bdg-primary">${esc(CYCLE_LABELS[c.cycle]||c.cycle||'—')}</span></td>
@@ -28,6 +29,7 @@ async function pageCandidatures() {
           ` : `<button class="btn btn-danger btn-xs" onclick="delCandidature('${escJs(c.id)}')">🗑</button>`}
         </div></td>
       </tr>`).join('') : `<tr><td colspan="8">${emptyHtml('📋','Aucune candidature reçue')}</td></tr>`;
+      $('#pag-cand').innerHTML = paginationHtml('cand', page, totalPages, total);
     };
 
     $('#content').innerHTML = `
@@ -51,9 +53,11 @@ async function pageCandidatures() {
         <thead><tr id="th-cand"><th>Candidat</th><th>Contact</th><th>Cycle</th><th>Matières</th><th>Disponibilités</th><th>Date</th><th>Statut</th><th>Actions</th></tr></thead>
         <tbody id="tb-cand"></tbody>
       </table></div>
+      <div id="pag-cand"></div>
     </div>`;
 
     let curr = candidatures;
+    getPaginator('cand').onChange = () => render(curr);
     render(curr);
     const filter = () => {
       const q = $('#q-cand').value.toLowerCase();
@@ -62,6 +66,7 @@ async function pageCandidatures() {
         const txt = `${c.nom} ${c.prenom} ${c.matieres||''}`.toLowerCase();
         return (!q||txt.includes(q)) && (!stat||c.statut===stat);
       });
+      resetPaginator('cand');
       render(curr);
     };
     $('#q-cand').addEventListener('input', filter);

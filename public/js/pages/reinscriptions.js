@@ -12,7 +12,8 @@ async function pageReinscriptions() {
     const RLABEL = { en_attente:'En attente', validee:'Validée', refusee:'Refusée' };
 
     const render = data => {
-      $('#tb-reinsc').innerHTML = data.length ? data.map(r => `<tr>
+      const { items, page, totalPages, total } = paginate('reinsc', data);
+      $('#tb-reinsc').innerHTML = items.length ? items.map(r => `<tr>
         <td><strong>${esc(r.prenom)} ${esc(r.nom)}</strong><br><span class="text-muted" style="font-size:11px">${esc(r.matricule||'')}</span></td>
         <td><span class="badge bdg-gray">${esc(r.classe_precedente||'—')}</span></td>
         <td><span class="badge bdg-primary">${esc(r.classe_nouvelle||'—')}</span></td>
@@ -28,6 +29,7 @@ async function pageReinscriptions() {
           <button class="btn btn-danger btn-xs" onclick="delReinsc('${escJs(r.id)}')">🗑</button>
         </div></td>
       </tr>`).join('') : `<tr><td colspan="8">${emptyHtml('🔄','Aucune réinscription')}</td></tr>`;
+      $('#pag-reinsc').innerHTML = paginationHtml('reinsc', page, totalPages, total);
     };
 
     $('#content').innerHTML = `
@@ -49,8 +51,10 @@ async function pageReinscriptions() {
         <thead><tr id="th-reinsc"><th>Élève</th><th>Classe précédente</th><th>Nouvelle classe</th><th>Année</th><th>Demandé le</th><th>Statut</th><th>Validé par</th><th>Actions</th></tr></thead>
         <tbody id="tb-reinsc"></tbody>
       </table></div>
+      <div id="pag-reinsc"></div>
     </div>`;
 
+    getPaginator('reinsc').onChange = () => render(curr);
     render(curr);
     const refilter = async () => {
       const ann = $('#f-rann').value;
@@ -63,6 +67,7 @@ async function pageReinscriptions() {
         let data = await apiGetReinscriptions(qs.join('&'));
         if (q) data = data.filter(r => `${r.nom} ${r.prenom} ${r.matricule||''}`.toLowerCase().includes(q));
         curr = data;
+        resetPaginator('reinsc');
         render(curr);
       }
       catch(e) { toast(e.message,'error'); }

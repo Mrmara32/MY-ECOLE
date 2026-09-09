@@ -260,9 +260,9 @@ async function imprimerCarteAcces(personnelId) {
     .header{display:flex;align-items:center;justify-content:space-between;padding:0.18cm 0.32cm 0.02cm}
     .logo-row{display:flex;align-items:center;gap:0.14cm}
     .emblem{width:0.58cm;height:0.58cm;flex:0 0 auto}
-    .wordmark .l1{font-family:'Fraunces',serif;font-weight:800;font-size:0.225cm;color:var(--ink);line-height:1.05}
-    .wordmark .l2{font-family:'Inter',sans-serif;font-weight:700;font-size:0.105cm;letter-spacing:.06em;color:var(--gold);text-transform:uppercase;margin-top:0.03cm}
-    .badge-type{background:var(--red);color:var(--paper);font-size:0.135cm;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:0.06cm 0.18cm;border-radius:0.2cm}
+    .wordmark .l1{font-family:'Fraunces',serif;font-weight:800;font-size:0.29cm;color:var(--ink);line-height:1.05}
+    .wordmark .l2{font-family:'Inter',sans-serif;font-weight:700;font-size:0.14cm;letter-spacing:.06em;color:#8B6A1E;text-transform:uppercase;margin-top:0.03cm}
+    .badge-type{background:var(--red);color:var(--paper);font-size:0.17cm;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:0.06cm 0.18cm;border-radius:0.2cm}
     .body-row{display:flex;align-items:flex-start;gap:0.3cm;padding:0.08cm 0.32cm 0}
     .photo-frame{position:relative;width:1.95cm;height:2.35cm;background:var(--paper);border:0.045cm solid var(--ink);
       border-radius:0.14cm;padding:0.07cm;box-shadow:0.03cm 0.05cm 0 rgba(0,0,0,.12);flex:0 0 auto;margin-top:0.05cm}
@@ -270,26 +270,26 @@ async function imprimerCarteAcces(personnelId) {
     .photo-frame .inner img{width:100%;height:100%;object-fit:cover}
     .photo-frame svg{width:70%;height:70%;color:var(--ink);opacity:.35}
     .id-text{padding-top:0.04cm}
-    .id-text .nom{font-family:'Fraunces',serif;font-weight:800;font-size:0.4cm;color:var(--ink);line-height:.98}
-    .id-text .prenom{font-family:'Fraunces',serif;font-weight:600;font-size:0.27cm;color:var(--ink2);line-height:1.1;margin-top:0.02cm}
-    .id-text .fonction{font-size:0.17cm;color:var(--gold);opacity:.95;margin-top:0.08cm;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+    .id-text .nom{font-family:'Fraunces',serif;font-weight:800;font-size:0.48cm;color:var(--ink);line-height:.98}
+    .id-text .prenom{font-family:'Fraunces',serif;font-weight:600;font-size:0.33cm;color:var(--ink2);line-height:1.1;margin-top:0.02cm}
+    .id-text .fonction{font-size:0.21cm;color:#8B6A1E;opacity:1;margin-top:0.08cm;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
     .pill{display:inline-flex;align-items:center;gap:0.1cm;background:var(--ink);color:var(--paper);border-radius:0.3cm;padding:0.06cm 0.2cm;margin-top:0.1cm}
-    .pill .k{font-size:0.1cm;text-transform:uppercase;letter-spacing:.05em;color:var(--gold);font-weight:700}
-    .pill .v{font-family:'Space Mono',monospace;font-weight:700;font-size:0.175cm}
+    .pill .k{font-size:0.13cm;text-transform:uppercase;letter-spacing:.05em;color:var(--gold);font-weight:700}
+    .pill .v{font-family:'Space Mono',monospace;font-weight:700;font-size:0.21cm}
     .infos-plus{margin-top:0.09cm;display:flex;flex-direction:column;gap:0.03cm}
     .infos-plus div{display:flex;align-items:baseline;gap:0.08cm}
-    .infos-plus .k{font-size:0.095cm;text-transform:uppercase;letter-spacing:.04em;color:var(--ink);opacity:.55;font-weight:700;min-width:1.1cm}
-    .infos-plus .v{font-size:0.135cm;color:var(--ink2);font-weight:600}
+    .infos-plus .k{font-size:0.12cm;text-transform:uppercase;letter-spacing:.04em;color:var(--ink);opacity:.75;font-weight:700;min-width:1.1cm}
+    .infos-plus .v{font-size:0.17cm;color:var(--ink2);font-weight:600}
     .rooms{padding:0.14cm 0.32cm 0}
-    .rooms .label{font-size:0.11cm;letter-spacing:.08em;text-transform:uppercase;color:var(--ink);opacity:.55;font-weight:700;margin-bottom:0.06cm}
+    .rooms .label{font-size:0.14cm;letter-spacing:.08em;text-transform:uppercase;color:var(--ink);opacity:.75;font-weight:700;margin-bottom:0.06cm}
     .rooms .chips{display:flex;flex-wrap:wrap;gap:0.09cm}
-    .rooms .chip{background:rgba(27,42,74,.08);border:0.02cm solid rgba(27,42,74,.25);color:var(--ink);font-size:0.14cm;font-weight:700;padding:0.05cm 0.14cm;border-radius:0.18cm}
+    .rooms .chip{background:rgba(27,42,74,.08);border:0.02cm solid rgba(27,42,74,.25);color:var(--ink);font-size:0.17cm;font-weight:700;padding:0.05cm 0.14cm;border-radius:0.18cm}
     .qr-wrap{position:absolute;top:1cm;right:0.32cm;background:var(--paper);padding:0.05cm;border-radius:0.08cm;box-shadow:0 0.04cm 0.1cm rgba(0,0,0,.18);text-align:center}
     .qr-wrap svg{display:block;width:0.78cm;height:0.78cm}
-    .qr-wrap .cap{font-size:0.075cm;letter-spacing:.05em;text-transform:uppercase;color:var(--ink);opacity:.6;margin-top:0.03cm;font-weight:700}
+    .qr-wrap .cap{font-size:0.1cm;letter-spacing:.05em;text-transform:uppercase;color:var(--ink);opacity:.8;margin-top:0.03cm;font-weight:700}
     .footer-band{position:absolute;left:0;right:0;bottom:0;height:1.02cm;background:var(--ink);display:flex;align-items:center;justify-content:space-between;padding:0 0.32cm}
-    .footer-band .valid{color:var(--paper);opacity:.85;font-size:0.135cm;font-weight:600}
-    .footer-band .mention{color:var(--yellow);font-size:0.115cm;font-weight:700;text-transform:uppercase;letter-spacing:.01em;text-align:right;max-width:4.2cm;line-height:1.3}
+    .footer-band .valid{color:var(--paper);opacity:.95;font-size:0.16cm;font-weight:600}
+    .footer-band .mention{color:var(--yellow);font-size:0.14cm;font-weight:700;text-transform:uppercase;letter-spacing:.01em;text-align:right;max-width:4.2cm;line-height:1.3}
     @media print{
       @page{ size:10cm 6cm; margin:0; }
       body{background:#fff} .stage{padding:0;gap:0} .note{display:none}
@@ -356,7 +356,7 @@ async function imprimerCarteAcces(personnelId) {
   const win = window.open('', '_blank');
   win.document.write(html);
   win.document.close();
-  imprimerFenetre(win);
+  finaliserCarteImprimable(win, '.card', `carte_acces_${(p.matricule||p.nom||'personnel')}.png`);
 }
 window.imprimerCarteAcces = imprimerCarteAcces;
 
@@ -397,8 +397,8 @@ async function imprimerBadge(personnelId) {
     .brand img.logo{height:15px;max-width:26px;object-fit:contain}
     .brand .logo-fallback{width:15px;height:15px;border-radius:4px;background:#1E3A8A;color:#fff;
       display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:800}
-    .brand .ecole-nom{font-size:9.5px;font-weight:800;color:#111;line-height:1.15}
-    .brand .ecole-adresse{font-size:5.5px;color:#6B7280;margin-top:1px}
+    .brand .ecole-nom{font-size:11px;font-weight:800;color:#111;line-height:1.15}
+    .brand .ecole-adresse{font-size:7px;color:#52525B;margin-top:1px}
     .qr{position:absolute;top:32%;right:6%;width:23%;aspect-ratio:1/1;background:#fff;border-radius:5px;
       display:flex;align-items:center;justify-content:center;overflow:hidden}
     .qr svg{width:100%;height:100%}
@@ -412,12 +412,12 @@ async function imprimerBadge(personnelId) {
       background:linear-gradient(160deg,#312E81 0%,#1E3A8A 60%,#1E40AF 100%);
       clip-path:polygon(0% 12%, 100% 0%, 100% 100%, 0% 100%);
       padding:14% 6% 5%;color:#fff;z-index:2}
-    .nom{font-size:14.5px;font-weight:900;line-height:1.1;letter-spacing:.3px}
-    .prenom{font-size:10.5px;font-weight:700;opacity:.95;margin-bottom:6px}
-    .fonction{font-size:7.5px;opacity:.9;margin-bottom:10px;line-height:1.3}
-    .matricule-pill{display:inline-block;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);
-      border-radius:999px;padding:3px 9px;font-size:7px;font-weight:700;margin-bottom:10px}
-    .contact{font-size:6px;opacity:.9;display:flex;flex-direction:column;gap:2px;position:absolute;bottom:5%;left:6%;right:6%}
+    .nom{font-size:16.5px;font-weight:900;line-height:1.1;letter-spacing:.3px}
+    .prenom{font-size:12.5px;font-weight:700;opacity:1;margin-bottom:6px}
+    .fonction{font-size:9.5px;opacity:1;margin-bottom:10px;line-height:1.3}
+    .matricule-pill{display:inline-block;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.4);
+      border-radius:999px;padding:3px 9px;font-size:8.5px;font-weight:700;margin-bottom:10px}
+    .contact{font-size:7.5px;opacity:1;display:flex;flex-direction:column;gap:2px;position:absolute;bottom:5%;left:6%;right:6%}
     .contact div{display:flex;align-items:center;gap:4px}
     @media print{
       @page{ size:6cm 10cm; margin:0; }
@@ -453,6 +453,6 @@ async function imprimerBadge(personnelId) {
   const win = window.open('', '_blank');
   win.document.write(html);
   win.document.close();
-  imprimerFenetre(win);
+  finaliserCarteImprimable(win, '.badge', `badge_${(p.matricule||p.nom||'personnel')}.png`);
 }
 window.imprimerBadge = imprimerBadge;

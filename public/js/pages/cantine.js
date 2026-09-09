@@ -36,7 +36,8 @@ async function renderAbons(abons, eleves, classes) {
   let curr = filtMois;
 
   const render = data => {
-    $('#tb-abons').innerHTML = data.length ? data.map(a => `<tr>
+    const { items, page, totalPages, total } = paginate('abons', data);
+    $('#tb-abons').innerHTML = items.length ? items.map(a => `<tr>
       <td><strong>${esc(a.prenom)} ${esc(a.nom)}</strong></td>
       <td><span class="badge bdg-primary">${esc(a.classe||'—')}</span></td>
       <td>${esc(a.mois)}</td>
@@ -48,6 +49,7 @@ async function renderAbons(abons, eleves, classes) {
         <button class="btn btn-danger btn-xs" onclick="delAbon('${escJs(a.id)}')">🗑</button>
       </div></td>
     </tr>`).join('') : `<tr><td colspan="7">${emptyHtml('🍽️','Aucun abonnement pour ce mois')}</td></tr>`;
+    $('#pag-abons').innerHTML = paginationHtml('abons', page, totalPages, total);
   };
 
   $('#cantine-body').innerHTML = `
@@ -72,7 +74,9 @@ async function renderAbons(abons, eleves, classes) {
       <thead><tr id="th-abons"><th>Élève</th><th>Classe</th><th>Mois</th><th>Formule</th><th class="text-right">Montant</th><th>Statut</th><th>Actions</th></tr></thead>
       <tbody id="tb-abons"></tbody>
     </table></div>
+    <div id="pag-abons"></div>
   </div>`;
+  getPaginator('abons').onChange = () => render(curr);
   render(curr);
   const filter = async () => {
     const m = $('#f-mois').value;
@@ -87,6 +91,7 @@ async function renderAbons(abons, eleves, classes) {
       let data = await apiGetAbons(qs.join('&'));
       if (q) data = data.filter(a => `${a.nom} ${a.prenom}`.toLowerCase().includes(q));
       curr = data;
+      resetPaginator('abons');
       render(curr);
     }
     catch(e) { toast(e.message,'error'); }
@@ -151,7 +156,8 @@ async function delAbon(id) {
 function renderMenus(menus) {
   let curr = menus;
   const render = data => {
-    $('#tb-menus').innerHTML = data.length ? data.map(m => `<tr>
+    const { items, page, totalPages, total } = paginate('menus', data);
+    $('#tb-menus').innerHTML = items.length ? items.map(m => `<tr>
       <td>${fmtDateLong(m.date_menu)}</td>
       <td>${esc(m.entree||'—')}</td>
       <td>${esc(m.plat||'—')}</td>
@@ -161,6 +167,7 @@ function renderMenus(menus) {
         <button class="btn btn-danger btn-xs" onclick="delMenu('${escJs(m.id)}')">🗑</button>
       </div></td>
     </tr>`).join('') : `<tr><td colspan="5">${emptyHtml('📋','Aucun menu enregistré')}</td></tr>`;
+    $('#pag-menus').innerHTML = paginationHtml('menus', page, totalPages, total);
   };
 
   $('#cantine-body').innerHTML = `
@@ -176,11 +183,14 @@ function renderMenus(menus) {
       <thead><tr id="th-menus"><th>Date</th><th>Entrée</th><th>Plat principal</th><th>Dessert</th><th>Actions</th></tr></thead>
       <tbody id="tb-menus"></tbody>
     </table></div>
+    <div id="pag-menus"></div>
   </div>`;
+  getPaginator('menus').onChange = () => render(curr);
   render(curr);
   $('#q-menus').addEventListener('input', () => {
     const q = $('#q-menus').value.toLowerCase();
     curr = menus.filter(m => `${m.entree||''} ${m.plat||''} ${m.dessert||''}`.toLowerCase().includes(q));
+    resetPaginator('menus');
     render(curr);
   });
   makeSortableTable('#th-menus', () => curr, render, ['date_menu', 'entree', 'plat', 'dessert', null]);

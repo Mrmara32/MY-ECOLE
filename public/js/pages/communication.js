@@ -95,7 +95,8 @@ async function delAnnonce(id) {
 
 function renderMessages(messages) {
   const render = data => {
-    $('#tb-msg').innerHTML = data.length ? data.map(m => `<tr>
+    const { items, page, totalPages, total } = paginate('msg', data);
+    $('#tb-msg').innerHTML = items.length ? items.map(m => `<tr>
         <td>${esc(m.expediteur_nom||'Système')}</td>
         <td><span class="badge ${m.destinataire_type==='tous'||m.destinataire_type==='tous_parents'?'bdg-err':m.destinataire_type==='classe'?'bdg-primary':'bdg-gray'}">
           ${m.destinataire_type==='classe'?'Classe '+esc(m.destinataire_id||'?'):m.destinataire_type==='eleve'?'Élève':m.destinataire_type==='tous_parents'?'Tous les parents':'Tous'}
@@ -104,6 +105,7 @@ function renderMessages(messages) {
         <td style="font-size:12px;white-space:nowrap">${fmtDate(m.date_envoi)}</td>
         <td><button class="btn btn-danger btn-xs" onclick="delMsg('${escJs(m.id)}')">🗑</button></td>
       </tr>`).join('') : `<tr><td colspan="5">${emptyHtml('✉️','Aucun message envoyé')}</td></tr>`;
+    $('#pag-msg').innerHTML = paginationHtml('msg', page, totalPages, total);
   };
 
   $('#comm-body').innerHTML = `
@@ -114,13 +116,16 @@ function renderMessages(messages) {
   <div class="tbl-wrap"><table>
     <thead><tr id="th-msg"><th>De</th><th>À</th><th>Sujet</th><th>Date</th><th>Actions</th></tr></thead>
     <tbody id="tb-msg"></tbody>
-  </table></div>`;
+  </table></div>
+  <div id="pag-msg"></div>`;
 
   let curr = messages;
+  getPaginator('msg').onChange = () => render(curr);
   render(curr);
   $('#q-msg').addEventListener('input', () => {
     const q = $('#q-msg').value.toLowerCase();
     curr = messages.filter(m => `${m.sujet||''} ${m.contenu||''} ${m.expediteur_nom||''}`.toLowerCase().includes(q));
+    resetPaginator('msg');
     render(curr);
   });
   makeSortableTable('#th-msg', () => curr, render, ['expediteur_nom', 'destinataire_type', 'sujet', 'date_envoi', null]);

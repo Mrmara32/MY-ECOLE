@@ -498,6 +498,53 @@ function imprimerFenetre(win) {
   setTimeout(lancer, 2500); // filet de sécurité si l'événement ne se déclenche jamais
 }
 
+/* ── Cartes imprimables (carte scolaire, carte d'accès, badge, carte de retrait…) ──
+   Contrairement à imprimerFenetre() qui lance l'impression automatiquement (reçus,
+   bulletins…), les cartes affichent une barre d'actions permettant à l'utilisateur
+   de choisir entre Imprimer et Télécharger en PNG (via html2canvas, chargé dans la
+   fenêtre ouverte). Usage : remplacer `imprimerFenetre(win)` par
+   `finaliserCarteImprimable(win, '.carte', 'nom_du_fichier.png')` dans les fonctions
+   qui génèrent une carte. */
+function finaliserCarteImprimable(win, selector, filename) {
+  const toolbarHtml = `
+    <style>
+      .carte-toolbar{position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:9999;font-family:Arial,Helvetica,sans-serif}
+      .carte-toolbar button{padding:9px 16px;border-radius:7px;border:none;font-size:13px;font-weight:700;cursor:pointer;
+        box-shadow:0 2px 8px rgba(0,0,0,.18)}
+      .carte-toolbar .btn-print{background:#1E2A4A;color:#fff}
+      .carte-toolbar .btn-png{background:#B91C1C;color:#fff}
+      .carte-toolbar button:disabled{opacity:.6;cursor:wait}
+      @media print{.carte-toolbar{display:none !important}}
+    </style>
+    <div class="carte-toolbar">
+      <button type="button" class="btn-print" onclick="window.focus();window.print()">🖨 Imprimer</button>
+      <button type="button" class="btn-png" id="btn-dl-carte-png">📥 Télécharger en PNG</button>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
+    <script>
+      document.getElementById('btn-dl-carte-png').addEventListener('click', function() {
+        var btn = this;
+        var el = document.querySelector(${JSON.stringify(selector)});
+        if (!el || typeof html2canvas === 'undefined') { alert('Le générateur PNG n\\'a pas pu se charger. Vérifiez votre connexion internet.'); return; }
+        btn.disabled = true; btn.textContent = '⏳ Génération…';
+        html2canvas(el, { scale: 4, backgroundColor: null, useCORS: true }).then(function(canvas) {
+          var link = document.createElement('a');
+          link.download = ${JSON.stringify(filename)};
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+          btn.disabled = false; btn.textContent = '📥 Télécharger en PNG';
+        }).catch(function(err) {
+          alert('Erreur lors de la génération du PNG : ' + err.message);
+          btn.disabled = false; btn.textContent = '📥 Télécharger en PNG';
+        });
+      });
+    <\/script>`;
+  const inject = () => { try { win.document.body.insertAdjacentHTML('beforeend', toolbarHtml); } catch(_) {} };
+  if (win.document.readyState === 'complete') inject();
+  else win.addEventListener('load', inject);
+  win.focus();
+}
+
 async function imprimerRecu({ type, nom, description, montant, date, moyenPaiement, reference, recuPar }) {
   const settings = await apiGetSettings();
   const numeroRecu = reference || ('REC-' + Date.now().toString(36).toUpperCase());

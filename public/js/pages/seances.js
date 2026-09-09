@@ -15,7 +15,8 @@ async function pageSeances(mois = null) {
     const enseignants = personnelList.filter(p => p.poste === 'Enseignant' || p.type_remuneration === 'horaire');
 
     const render = data => {
-      $('#tb-seances').innerHTML = data.length ? data.map(s => `<tr>
+      const { items, page, totalPages, total } = paginate('seances', data);
+      $('#tb-seances').innerHTML = items.length ? items.map(s => `<tr>
         <td>${fmtDate(s.date_seance)}<br><span class="text-muted" style="font-size:11px">${esc(s.jour||'')}</span></td>
         <td class="mono">${esc(s.creneau||'—')}</td>
         <td><strong>${esc(s.prenom)} ${esc(s.nom)}</strong></td>
@@ -33,6 +34,7 @@ async function pageSeances(mois = null) {
           ${(currentUser.role==='admin'||currentUser.role==='directeur') && s.statut==='en_attente' ? `<button class="btn btn-outline btn-xs" onclick="delSeance('${escJs(s.id)}')" title="Supprimer">🗑</button>` : ''}
         </div></td>
       </tr>`).join('') : `<tr><td colspan="9">${emptyHtml('📋','Aucune séance déclarée pour ce mois')}</td></tr>`;
+      $('#pag-seances').innerHTML = paginationHtml('seances', page, totalPages, total);
     };
 
     // Récapitulatif des heures validées par enseignant sur le mois
@@ -82,14 +84,17 @@ async function pageSeances(mois = null) {
         <thead><tr><th>Date</th><th>Créneau</th><th>Enseignant</th><th>Classe</th><th>Salle</th><th>Matière</th><th class="text-right">Durée</th><th>Statut</th><th>Actions</th></tr></thead>
         <tbody id="tb-seances"></tbody>
       </table></div>
+      <div id="pag-seances"></div>
     </div>`;
 
     let curr = seances;
+    getPaginator('seances').onChange = () => render(curr);
     render(curr);
     const refilter = () => {
       const ensSel = $('#f-seance-ens')?.value;
       const statutSel = $('#f-seance-statut')?.value;
       curr = seances.filter(s => (!ensSel || s.personnel_id === ensSel) && (!statutSel || s.statut === statutSel));
+      resetPaginator('seances');
       render(curr);
     };
     $('#f-seance-ens')?.addEventListener('change', refilter);

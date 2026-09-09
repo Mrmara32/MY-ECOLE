@@ -6,7 +6,8 @@ async function pageDevoirs() {
     const classes = [...new Set(list.map(d=>d.classe).filter(Boolean))].sort();
 
     const render = data => {
-      $('#tb-devoirs').innerHTML = data.length ? data.map(dv => {
+      const { items, page, totalPages, total } = paginate('devoirs', data);
+      $('#tb-devoirs').innerHTML = items.length ? items.map(dv => {
         const jr = dv.date_remise ? jresteText(dv.date_remise) : null;
         const sBadge = { 'En cours':'bdg-info', 'Rendu':'bdg-ok', 'Annulé':'bdg-err' };
         return `<tr>
@@ -23,6 +24,7 @@ async function pageDevoirs() {
           </div></td>
         </tr>`;
       }).join('') : `<tr><td colspan="7">${emptyHtml('📚','Aucun devoir enregistré')}</td></tr>`;
+      $('#pag-devoirs').innerHTML = paginationHtml('devoirs', page, totalPages, total);
     };
 
     $('#content').innerHTML = `
@@ -45,9 +47,11 @@ async function pageDevoirs() {
         <thead><tr id="th-devoirs"><th>Titre</th><th>Matière</th><th>Classe</th><th>Assigné le</th><th>À rendre</th><th>Statut</th><th>Actions</th></tr></thead>
         <tbody id="tb-devoirs"></tbody>
       </table></div>
+      <div id="pag-devoirs"></div>
     </div>`;
 
     let curr = list;
+    getPaginator('devoirs').onChange = () => render(curr);
     render(curr);
     const filter = () => {
       const q = $('#q-dv').value.toLowerCase();
@@ -57,6 +61,7 @@ async function pageDevoirs() {
         const txt = `${d.titre} ${d.matiere||''} ${d.description||''}`.toLowerCase();
         return (!q||txt.includes(q)) && (!cls||d.classe===cls) && (!stat||d.statut===stat);
       });
+      resetPaginator('devoirs');
       render(curr);
     };
     ['#f-dcls','#f-dstat'].forEach(sel => $(sel).addEventListener('change', filter));

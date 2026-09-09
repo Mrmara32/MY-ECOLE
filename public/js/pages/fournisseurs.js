@@ -18,14 +18,19 @@ async function pageFournisseurs() {
         <thead><tr><th>Nom</th><th>Catégorie</th><th>Contact</th><th class="text-right">Total payé</th><th class="text-right">Opérations</th><th>Statut</th><th>Actions</th></tr></thead>
         <tbody id="tb-four">${renderLignesFournisseurs(fournisseurs)}</tbody>
       </table></div>
+      <div id="pag-four"></div>
     </div>`;
   window._fournisseursCache = fournisseurs;
+  getPaginator('four').onChange = () => { $('#tb-four').innerHTML = renderLignesFournisseurs(window._fournisseursCurr || fournisseurs); };
 }
 window.pageFournisseurs = pageFournisseurs;
 
 function renderLignesFournisseurs(liste) {
-  if (!liste.length) return `<tr><td colspan="7">${emptyHtml('🏭', 'Aucun fournisseur enregistré', 'Ajoutez vos fournisseurs pour suivre facilement ce que vous leur payez.')}</td></tr>`;
-  return liste.map(f => `<tr>
+  window._fournisseursCurr = liste;
+  const { items, page, totalPages, total } = paginate('four', liste);
+  $('#pag-four') && ($('#pag-four').innerHTML = paginationHtml('four', page, totalPages, total));
+  if (!items.length) return `<tr><td colspan="7">${emptyHtml('🏭', 'Aucun fournisseur enregistré', 'Ajoutez vos fournisseurs pour suivre facilement ce que vous leur payez.')}</td></tr>`;
+  return items.map(f => `<tr>
     <td><strong>${esc(f.nom)}</strong></td>
     <td>${f.categorie ? `<span class="badge bdg-gray">${esc(f.categorie)}</span>` : '—'}</td>
     <td class="text-muted" style="font-size:12px">${esc(f.telephone||f.email||'—')}</td>
@@ -42,6 +47,7 @@ function renderLignesFournisseurs(liste) {
 function filtrerFournisseurs() {
   const q = $('#q-four').value.trim().toLowerCase();
   const filtres = (window._fournisseursCache||[]).filter(f => f.nom.toLowerCase().includes(q));
+  resetPaginator('four');
   $('#tb-four').innerHTML = renderLignesFournisseurs(filtres);
 }
 window.filtrerFournisseurs = filtrerFournisseurs;

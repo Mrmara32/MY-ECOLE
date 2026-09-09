@@ -5,7 +5,8 @@ async function pageUsers() {
     const users = await apiGetUsers();
 
     const render = data => {
-      $('#tb-users').innerHTML = data.length ? data.map(u => `<tr>
+      const { items, page, totalPages, total } = paginate('users', data);
+      $('#tb-users').innerHTML = items.length ? items.map(u => `<tr>
             <td><strong>${esc(u.full_name)}</strong></td>
             <td class="mono">${esc(u.username)}</td>
             <td><span class="badge bdg-primary">${esc(ROLES[u.role]||u.role)}</span></td>
@@ -20,6 +21,7 @@ async function pageUsers() {
               <button class="btn btn-danger btn-xs" onclick="deleteUser(${u.id})">🗑</button>
             </div></td>
           </tr>`).join('') : `<tr><td colspan="8">${emptyHtml('👥','Aucun utilisateur')}</td></tr>`;
+      $('#pag-users').innerHTML = paginationHtml('users', page, totalPages, total);
     };
 
     $('#content').innerHTML = `
@@ -36,9 +38,11 @@ async function pageUsers() {
           <thead><tr id="th-users"><th>Nom complet</th><th>Identifiant</th><th>Rôle</th><th>Email</th><th>Téléphone</th><th>Actif</th><th>Dernière connexion</th><th>Actions</th></tr></thead>
           <tbody id="tb-users"></tbody>
         </table></div>
+        <div id="pag-users"></div>
       </div>`;
 
     let curr = users;
+    getPaginator('users').onChange = () => render(curr);
     render(curr);
     const filter = () => {
       const q = $('#q-usr').value.toLowerCase();
@@ -47,6 +51,7 @@ async function pageUsers() {
         const txt = `${u.full_name} ${u.username} ${u.email||''}`.toLowerCase();
         return (!q || txt.includes(q)) && (!role || u.role === role);
       });
+      resetPaginator('users');
       render(curr);
     };
     $('#q-usr').addEventListener('input', filter);

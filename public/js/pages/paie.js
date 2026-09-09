@@ -10,7 +10,8 @@ async function pagePaieList(mois = null) {
     window._paieValidationActuelle = validation;
 
     const render = list => {
-      $('#tb-paie').innerHTML = list.length ? list.map(p => `<tr>
+      const { items, page, totalPages, total } = paginate('paie', list);
+      $('#tb-paie').innerHTML = items.length ? items.map(p => `<tr>
         <td>${elevePhoto({photo_url:p.photo_url, prenom:p.prenom, nom:p.nom}, 32)}</td>
         <td><strong>${esc(p.prenom)} ${esc(p.nom)}</strong><br><span class="text-muted" style="font-size:11px">${esc(p.poste||'')}</span></td>
         <td><span class="badge ${p.type_remuneration==='horaire'?'bdg-info':'bdg-gray'}">${p.type_remuneration==='horaire'?'Horaire':'Mensuel'}</span></td>
@@ -25,6 +26,7 @@ async function pagePaieList(mois = null) {
             : `<button class="btn btn-ok btn-xs" onclick="modalPayerSalaire('${escJs(p.id)}','${escJs(p.prenom)} ${escJs(p.nom)}')">💰 Payer</button>`}
         </div></td>
       </tr>`).join('') : `<tr><td colspan="8">${emptyHtml('👨‍🏫','Aucun personnel')}</td></tr>`;
+      $('#pag-paie').innerHTML = paginationHtml('paie', page, totalPages, total);
     };
 
     const masseTotal = data.masse_salariale_totale;
@@ -53,13 +55,16 @@ async function pagePaieList(mois = null) {
         <thead><tr id="th-paie"><th>Photo</th><th>Nom</th><th>Type</th><th>Détail</th><th class="text-right">Prime révision</th><th class="text-right">Montant</th><th>Statut</th><th>Actions</th></tr></thead>
         <tbody id="tb-paie"></tbody>
       </table></div>
+      <div id="pag-paie"></div>
     </div>`;
 
     let curr = data.personnel;
+    getPaginator('paie').onChange = () => render(curr);
     render(curr);
     $('#q-paie').addEventListener('input', () => {
       const q = $('#q-paie').value.toLowerCase();
       curr = data.personnel.filter(p => `${p.nom} ${p.prenom}`.toLowerCase().includes(q));
+      resetPaginator('paie');
       render(curr);
     });
     makeSortableTable('#th-paie', () => curr, render,

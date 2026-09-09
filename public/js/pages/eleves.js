@@ -72,6 +72,7 @@ function renderElevesRows(list) {
     <td><div class="td-actions">
       ${e.statut==='preinscrit' && ['admin','directeur','comptable'].includes(currentUser.role) ? `<button class="btn btn-ok btn-xs" onclick="modalValiderPreinscription('${escJs(e.id)}','${escJs(e.prenom)} ${escJs(e.nom)}')" title="Valider la préinscription">✔ Valider</button>` : ''}
       <button class="btn btn-outline btn-xs" onclick="imprimerCarteScolaire('${escJs(e.id)}')" title="Carte scolaire">🪪</button>
+      ${cycleDeClasse(e.classe)==='maternelle' ? `<button class="btn btn-outline btn-xs" onclick="imprimerCarteRetrait('${escJs(e.id)}')" title="Carte de retrait">🧸</button>` : ''}
       <button class="btn btn-outline btn-xs" onclick="ficheEleve('${escJs(e.id)}')" title="Fiche complète">📋</button>
       <button class="btn btn-outline btn-xs" onclick="modalEleve('${escJs(e.id)}')" title="Modifier">✏️</button>
       <button class="btn btn-danger btn-xs" onclick="delEleve('${escJs(e.id)}')" title="Supprimer">🗑</button>
@@ -458,34 +459,34 @@ async function imprimerCarteScolaire(eleveId) {
     .flag-bar{height:4.5%;display:flex;flex-shrink:0}
     .flag-bar div{flex:1}
     .header{text-align:center;padding:5% 6% 3%;border-bottom:1px solid #B91C1C;flex-shrink:0}
-    .header .pays{font-family:'Playfair Display',serif;font-size:12.5px;font-weight:700;color:#1E2A4A;letter-spacing:.02em}
-    .header .devise{font-family:'Playfair Display',serif;font-style:italic;font-size:8px;color:#9A6B1F;margin-top:1px}
-    .header .ministere{font-size:7.5px;font-weight:700;color:#4B4B4B;margin-top:5px;letter-spacing:.03em}
+    .header .pays{font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:#1E2A4A;letter-spacing:.02em}
+    .header .devise{font-family:'Playfair Display',serif;font-style:italic;font-size:9.5px;color:#7A5416;margin-top:1px}
+    .header .ministere{font-size:9px;font-weight:700;color:#3A3A3A;margin-top:5px;letter-spacing:.03em}
     .titre-carte-wrap{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:8px}
     .titre-carte-wrap .ln{height:1px;width:22px;background:#B91C1C}
-    .header .titre-carte{font-size:11px;font-weight:800;color:#B91C1C;letter-spacing:.18em}
-    .header .ecole-nom{font-family:'Playfair Display',serif;font-size:11.5px;font-weight:700;color:#1E2A4A;margin-top:8px;line-height:1.25}
-    .header .ecole-lieu{font-size:7px;color:#6B6558;margin-top:2px;letter-spacing:.03em}
-    .header .ecole-tel{font-size:6.6px;color:#6B6558;margin-top:1px;letter-spacing:.03em}
+    .header .titre-carte{font-size:12.5px;font-weight:800;color:#B91C1C;letter-spacing:.18em}
+    .header .ecole-nom{font-family:'Playfair Display',serif;font-size:13px;font-weight:700;color:#1E2A4A;margin-top:8px;line-height:1.25}
+    .header .ecole-lieu{font-size:9px;color:#52493A;margin-top:2px;letter-spacing:.03em}
+    .header .ecole-tel{font-size:8.5px;color:#52493A;margin-top:1px;letter-spacing:.03em}
     .corps{padding:6% 6% 2%;display:flex;gap:8px;flex:1;position:relative}
     .photo-frame{width:38%;aspect-ratio:3/3.7;background:#fff;border:1.5px solid #1E2A4A;border-radius:3px;
       display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;position:relative}
     .photo-frame img{width:100%;height:100%;object-fit:cover}
     .photo-frame .no-photo{color:#D1D5DB;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
-    .infos{flex:1;display:flex;flex-direction:column;justify-content:center;gap:7px;padding-top:2%}
-    .infos .lbl{font-size:7px;color:#9A6B1F;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
-    .infos .val{font-family:'Playfair Display',serif;font-weight:700;font-size:11px;color:#1E2A4A;margin-top:1px}
+    .infos{flex:1;display:flex;flex-direction:column;justify-content:center;gap:8px;padding-top:2%}
+    .infos .lbl{font-size:8.5px;color:#7A5416;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+    .infos .val{font-family:'Playfair Display',serif;font-weight:700;font-size:13.5px;color:#1E2A4A;margin-top:1px}
     .sig-line{position:absolute;left:6%;bottom:3%;width:38%;border-top:1px solid #B8AF95}
     .matricule-bar{background:#1E2A4A;color:#fff;display:flex;align-items:center;justify-content:space-between;
       padding:2.5% 6%;flex-shrink:0;margin-top:auto}
-    .matricule-bar .lbl{font-size:7.5px;letter-spacing:.08em;font-weight:600;color:#C9D2E3}
-    .matricule-bar .val{font-family:'DM Mono',monospace;font-size:13px;letter-spacing:.06em}
-    .footer-info{padding:4% 6%;font-size:7.5px;color:#3A3A3A;flex-shrink:0}
-    .footer-info .lbl{font-size:6.3px;color:#8A8370;text-transform:uppercase;font-weight:700;letter-spacing:.04em}
-    .footer-info .fval{font-weight:700;margin-bottom:5px}
+    .matricule-bar .lbl{font-size:9px;letter-spacing:.08em;font-weight:600;color:#DCE4F2}
+    .matricule-bar .val{font-family:'DM Mono',monospace;font-size:15px;letter-spacing:.06em}
+    .footer-info{padding:4% 6%;font-size:9px;color:#2E2E2E;flex-shrink:0}
+    .footer-info .lbl{font-size:7.5px;color:#5A5039;text-transform:uppercase;font-weight:700;letter-spacing:.04em}
+    .footer-info .fval{font-weight:700;margin-bottom:5px;font-size:9.5px}
     .mention{padding:0 6% 3%;display:flex;justify-content:space-between;align-items:flex-end;gap:6px;flex-shrink:0}
-    .mention .txt{font-size:5.6px;color:#8A8370;line-height:1.35;font-style:italic}
-    .mention .directeur{text-align:center;font-size:6px;color:#4B4B4B;flex-shrink:0}
+    .mention .txt{font-size:6.8px;color:#5A5039;line-height:1.4;font-style:italic}
+    .mention .directeur{text-align:center;font-size:7.5px;color:#3A3A3A;flex-shrink:0}
     .mention .directeur .cachet-img{max-height:24px;max-width:38px;display:block;margin:0 auto 1px}
     .mention .directeur .signature-img{max-height:14px;max-width:38px;display:block;margin:0 auto 1px}
     .mention .directeur .ln{border-top:1px solid #B8AF95;width:26px;margin:0 auto 3px}
@@ -538,9 +539,102 @@ async function imprimerCarteScolaire(eleveId) {
   const win = window.open('', '_blank');
   win.document.write(html);
   win.document.close();
-  imprimerFenetre(win);
+  finaliserCarteImprimable(win, '.carte', `carte_scolaire_${(e.matricule||e.nom||'eleve')}.png`);
 }
 window.imprimerCarteScolaire = imprimerCarteScolaire;
+
+/* ── Carte de retrait (maternelle) : identifie les personnes autorisées à venir
+   chercher l'enfant à la sortie des classes. Basée sur les contacts déjà
+   enregistrés (père, mère, tuteur, contact d'urgence). ── */
+async function imprimerCarteRetrait(eleveId) {
+  const e = await apiGetEleve(eleveId);
+  const settings = await apiGetSettings();
+  const ecoleNomAffiche = "Groupe Scolaire Privé El.M.Djély";
+
+  const personnes = [
+    e.pere_nom ? { role: 'Père', nom: e.pere_nom, tel: e.pere_telephone } : null,
+    e.mere_nom ? { role: 'Mère', nom: e.mere_nom, tel: e.mere_telephone } : null,
+    e.tuteur_nom ? { role: 'Tuteur/Tutrice', nom: e.tuteur_nom, tel: e.tuteur_telephone } : null,
+    e.contact_urgence_nom ? { role: "Contact d'urgence", nom: e.contact_urgence_nom, tel: e.contact_urgence_telephone } : null,
+  ].filter(Boolean);
+
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Carte de retrait — ${e.prenom} ${e.nom}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:'Nunito Sans',Arial,sans-serif;margin:0;padding:24px;background:#E8E4DC;display:flex;justify-content:center;align-items:flex-start}
+    .carte{width:9cm;height:13.5cm;background:#FFF9EC;position:relative;overflow:hidden;border-radius:0.4cm;
+      box-shadow:0 0.3cm 0.7cm rgba(30,25,15,.3);border:2px solid #F5A623;display:flex;flex-direction:column}
+    .banniere{background:#F5A623;color:#fff;text-align:center;padding:14px 10px 10px;flex-shrink:0}
+    .banniere .titre{font-family:'Playfair Display',serif;font-size:20px;font-weight:700;letter-spacing:.02em}
+    .banniere .soustitre{font-size:12px;font-weight:600;margin-top:3px;opacity:.95}
+    .ecole{text-align:center;padding:12px 14px 6px;border-bottom:2px dashed #E8C27A;flex-shrink:0}
+    .ecole .nom{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:#8A4B00}
+    .ecole .lieu{font-size:11px;color:#7A6A50;margin-top:2px}
+    .corps{display:flex;gap:14px;padding:16px 16px 8px;flex-shrink:0}
+    .photo-frame{width:2.6cm;height:3.1cm;background:#fff;border:2px solid #F5A623;border-radius:6px;
+      display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0}
+    .photo-frame img{width:100%;height:100%;object-fit:cover}
+    .photo-frame .no-photo{color:#E8C27A;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+    .infos{flex:1;display:flex;flex-direction:column;justify-content:center;gap:8px}
+    .infos .lbl{font-size:10px;color:#B8860B;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+    .infos .val{font-family:'Playfair Display',serif;font-weight:700;font-size:16px;color:#4A3A20;margin-top:1px}
+    .section-titre{background:#4A3A20;color:#FFF3D6;font-size:12.5px;font-weight:800;letter-spacing:.06em;
+      text-transform:uppercase;padding:8px 16px;margin-top:6px;flex-shrink:0}
+    .personnes{padding:10px 16px;flex:1;overflow:hidden}
+    .personne{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #EEDFC0}
+    .personne:last-child{border-bottom:none}
+    .personne .role{font-size:11.5px;color:#B8860B;font-weight:800;text-transform:uppercase;letter-spacing:.03em;min-width:2.6cm}
+    .personne .nom{font-size:14px;font-weight:700;color:#3A2E18;flex:1}
+    .personne .tel{font-family:'DM Mono',monospace;font-size:12px;color:#4A3A20;font-weight:600}
+    .aucune{font-size:12px;color:#A9835A;font-style:italic;padding:10px 0}
+    .avertissement{background:#FFF3D6;margin:8px 16px;padding:10px 12px;border-radius:8px;border:1.5px solid #F5A623;
+      font-size:11px;color:#6B4A00;font-weight:700;text-align:center;line-height:1.4;flex-shrink:0}
+    .footer{padding:8px 16px 14px;font-size:9.5px;color:#8A7A5A;text-align:center;flex-shrink:0}
+    @media print{
+      @page{ size:9cm 13.5cm; margin:0; }
+      body{background:#fff;padding:0;align-items:stretch}
+      .carte{box-shadow:none;border-radius:0}
+    }
+  </style></head><body>
+  <div class="carte">
+    <div class="banniere">
+      <div class="titre">🧸 CARTE DE RETRAIT</div>
+      <div class="soustitre">Section Maternelle</div>
+    </div>
+    <div class="ecole">
+      <div class="nom">${esc(ecoleNomAffiche)}</div>
+      <div class="lieu">${esc(settings.ecole_adresse || 'Yattaya · Commune de Ratoma')}</div>
+    </div>
+    <div class="corps">
+      <div class="photo-frame">
+        ${e.photo_url?`<img src="${esc(e.photo_url)}">`:'<div class="no-photo"><svg viewBox="0 0 24 24" fill="currentColor" width="60%" height="60%"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4.4 0-9 2.2-9 5v2h18v-2c0-2.8-4.6-5-9-5z"/></svg></div>'}
+      </div>
+      <div class="infos">
+        <div><div class="lbl">Enfant</div><div class="val">${esc(e.prenom)} ${esc((e.nom||'').toUpperCase())}</div></div>
+        <div><div class="lbl">Classe</div><div class="val">${esc(e.classe||'—')}</div></div>
+      </div>
+    </div>
+    <div class="section-titre">Personnes autorisées à récupérer l'enfant</div>
+    <div class="personnes">
+      ${personnes.length ? personnes.map(p=>`<div class="personne">
+        <span class="role">${esc(p.role)}</span>
+        <span class="nom">${esc(p.nom)}</span>
+        <span class="tel">${esc(p.tel||'—')}</span>
+      </div>`).join('') : '<div class="aucune">Aucune personne enregistrée — veuillez compléter le dossier de l\'élève.</div>'}
+    </div>
+    <div class="avertissement">⚠ Cette carte doit être présentée à chaque sortie.<br>Aucun enfant ne sera remis à une personne non listée ci-dessus sans autorisation écrite.</div>
+    <div class="footer">Valable pour l'année scolaire ${esc(settings.annee_scolaire||'en cours')} — ${esc(ecoleNomAffiche)}</div>
+  </div>
+  </body></html>`;
+
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+  finaliserCarteImprimable(win, '.carte', `carte_retrait_${(e.matricule||e.nom||'eleve')}.png`);
+}
+window.imprimerCarteRetrait = imprimerCarteRetrait;
 
 /* ── Validation de la préinscription (point 7 : par le comptable après paiement) ── */
 function modalValiderPreinscription(eleveId, nom) {
