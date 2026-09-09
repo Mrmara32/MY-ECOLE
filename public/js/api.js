@@ -181,6 +181,7 @@ const apiSaveBudget = (d) => apiFetch('/budgets', { method:'POST', body:d });
 const apiDeleteBudget = (id) => apiFetch(`/budgets/${id}`, { method:'DELETE' });
 const apiComparaisonBudget = (mois) => apiFetch('/budgets/comparaison?mois='+mois);
 const apiAnalyseComptable = (mois) => apiFetch('/analyse-comptable?mois='+mois);
+const apiGetBalance = (dateDebut, dateFin) => apiFetch(`/balance?date_debut=${dateDebut}&date_fin=${dateFin}`);
 
 function apiAnalyserRapprochement(fichier) {
   const fd = new FormData();

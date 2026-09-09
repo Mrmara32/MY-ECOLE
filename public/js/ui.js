@@ -506,6 +506,7 @@ function imprimerFenetre(win) {
    `finaliserCarteImprimable(win, '.carte', 'nom_du_fichier.png')` dans les fonctions
    qui génèrent une carte. */
 function finaliserCarteImprimable(win, selector, filename) {
+  const filenameJpeg = filename.replace(/\.png$/i, '.jpg');
   const toolbarHtml = `
     <style>
       .carte-toolbar{position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:9999;font-family:Arial,Helvetica,sans-serif}
@@ -513,44 +514,58 @@ function finaliserCarteImprimable(win, selector, filename) {
         box-shadow:0 2px 8px rgba(0,0,0,.18)}
       .carte-toolbar .btn-print{background:#1E2A4A;color:#fff}
       .carte-toolbar .btn-png{background:#B91C1C;color:#fff}
+      .carte-toolbar .btn-jpeg{background:#8A4B00;color:#fff}
       .carte-toolbar button:disabled{opacity:.6;cursor:wait}
       @media print{.carte-toolbar{display:none !important}}
     </style>
     <div class="carte-toolbar">
       <button type="button" class="btn-print" onclick="window.focus();window.print()">🖨 Imprimer</button>
-      <button type="button" class="btn-png" id="btn-dl-carte-png" disabled>⏳ Chargement du générateur…</button>
+      <button type="button" class="btn-png" id="btn-dl-carte-png" disabled>⏳ Chargement…</button>
+      <button type="button" class="btn-jpeg" id="btn-dl-carte-jpeg" disabled>⏳ Chargement…</button>
     </div>`;
   const inject = () => {
     try {
       win.document.body.insertAdjacentHTML('beforeend', toolbarHtml);
-      const btn = win.document.getElementById('btn-dl-carte-png');
+      const btnPng = win.document.getElementById('btn-dl-carte-png');
+      const btnJpeg = win.document.getElementById('btn-dl-carte-jpeg');
       // IMPORTANT : une balise <script> insérée via innerHTML/insertAdjacentHTML ne
       // s'exécute JAMAIS dans un navigateur (comportement standard du DOM). Il faut
       // la créer via createElement + appendChild pour qu'elle soit réellement chargée.
       const script = win.document.createElement('script');
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-      script.onload = () => { btn.disabled = false; btn.textContent = '📥 Télécharger en PNG'; };
-      script.onerror = () => { btn.textContent = '⚠ Générateur indisponible (hors ligne ?)'; };
+      script.onload = () => {
+        btnPng.disabled = false; btnPng.textContent = '📥 Télécharger en PNG';
+        btnJpeg.disabled = false; btnJpeg.textContent = '📷 Télécharger en JPEG';
+      };
+      script.onerror = () => {
+        btnPng.textContent = '⚠ Indisponible (hors ligne ?)';
+        btnJpeg.textContent = '⚠ Indisponible (hors ligne ?)';
+      };
       win.document.head.appendChild(script);
 
-      btn.addEventListener('click', () => {
+      const genererEtTelecharger = (btn, format, fname, options) => {
         const el = win.document.querySelector(selector);
         if (!el || typeof win.html2canvas === 'undefined') {
-          win.alert("Le générateur PNG n'a pas pu se charger. Vérifiez votre connexion internet puis réessayez.");
+          win.alert("Le générateur d'image n'a pas pu se charger. Vérifiez votre connexion internet puis réessayez.");
           return;
         }
+        const texteOriginal = btn.textContent;
         btn.disabled = true; btn.textContent = '⏳ Génération…';
-        win.html2canvas(el, { scale: 4, backgroundColor: null, useCORS: true }).then((canvas) => {
+        win.html2canvas(el, options).then((canvas) => {
           const link = win.document.createElement('a');
-          link.download = filename;
-          link.href = canvas.toDataURL('image/png');
+          link.download = fname;
+          link.href = canvas.toDataURL(format === 'jpeg' ? 'image/jpeg' : 'image/png', format === 'jpeg' ? 0.95 : undefined);
           link.click();
-          btn.disabled = false; btn.textContent = '📥 Télécharger en PNG';
+          btn.disabled = false; btn.textContent = texteOriginal;
         }).catch((err) => {
-          win.alert('Erreur lors de la génération du PNG : ' + err.message);
-          btn.disabled = false; btn.textContent = '📥 Télécharger en PNG';
+          win.alert("Erreur lors de la génération de l'image : " + err.message);
+          btn.disabled = false; btn.textContent = texteOriginal;
         });
-      });
+      };
+
+      btnPng.addEventListener('click', () => genererEtTelecharger(btnPng, 'png', filename, { scale: 4, backgroundColor: null, useCORS: true }));
+      // Le JPEG ne gère pas la transparence : on force un fond blanc pour éviter un rendu noir.
+      btnJpeg.addEventListener('click', () => genererEtTelecharger(btnJpeg, 'jpeg', filenameJpeg, { scale: 4, backgroundColor: '#ffffff', useCORS: true }));
     } catch(e) { console.error('finaliserCarteImprimable', e); }
   };
   if (win.document.readyState === 'complete') inject();

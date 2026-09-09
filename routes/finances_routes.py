@@ -981,6 +981,63 @@ def analyse_comptable():
     })
 
 
+@bp.route('/balance', methods=['GET'])
+@require_auth
+@require_role('admin', 'directeur', 'comptable')
+def balance_generale():
+    """Balance générale par catégorie : pour chaque catégorie utilisée en recette ou
+    en dépense, calcule le solde reporté avant la période (report à nouveau), les
+    mouvements débit/crédit de la période choisie, puis le solde final. Permet de
+    vérifier la situation comptable catégorie par catégorie sur n'importe quelle
+    période, comme un vrai relevé de balance."""
+    date_debut = request.args.get('date_debut') or f"{datetime.now().year}-01-01"
+    date_fin = request.args.get('date_fin') or datetime.now().strftime('%Y-%m-%d')
+
+    avant = {r['categorie']: r for r in db.execute(
+        """SELECT COALESCE(categorie,'Sans catégorie') as categorie,
+           SUM(CASE WHEN type='entree' THEN montant ELSE 0 END) as credit_avant,
+           SUM(CASE WHEN type='sortie' THEN montant ELSE 0 END) as debit_avant
+           FROM transactions WHERE ecole_id=? AND date_op < ? AND statut_validation IN ('auto','valide')
+           GROUP BY COALESCE(categorie,'Sans catégorie')""",
+        (g.user['ecole_id'], date_debut),
+    ).fetchall()}
+
+    periode = {r['categorie']: r for r in db.execute(
+        """SELECT COALESCE(categorie,'Sans catégorie') as categorie,
+           SUM(CASE WHEN type='entree' THEN montant ELSE 0 END) as credit_periode,
+           SUM(CASE WHEN type='sortie' THEN montant ELSE 0 END) as debit_periode
+           FROM transactions WHERE ecole_id=? AND date_op BETWEEN ? AND ? AND statut_validation IN ('auto','valide')
+           GROUP BY COALESCE(categorie,'Sans catégorie')""",
+        (g.user['ecole_id'], date_debut, date_fin),
+    ).fetchall()}
+
+    categories = sorted(set(avant.keys()) | set(periode.keys()))
+    lignes = []
+    tot = {'solde_initial': 0, 'debit_periode': 0, 'credit_periode': 0, 'solde_final': 0}
+    for cat in categories:
+        a = avant.get(cat)
+        p = periode.get(cat)
+        credit_avant = (a['credit_avant'] if a else 0) or 0
+        debit_avant = (a['debit_avant'] if a else 0) or 0
+        credit_periode = (p['credit_periode'] if p else 0) or 0
+        debit_periode = (p['debit_periode'] if p else 0) or 0
+        solde_initial = credit_avant - debit_avant
+        solde_final = solde_initial + credit_periode - debit_periode
+        if solde_initial == 0 and credit_periode == 0 and debit_periode == 0:
+            continue  # catégorie sans aucun mouvement ni report : inutile de l'afficher
+        lignes.append({
+            'categorie': cat, 'solde_initial': solde_initial, 'debit_periode': debit_periode,
+            'credit_periode': credit_periode, 'solde_final': solde_final,
+        })
+        tot['solde_initial'] += solde_initial
+        tot['debit_periode'] += debit_periode
+        tot['credit_periode'] += credit_periode
+        tot['solde_final'] += solde_final
+
+    lignes.sort(key=lambda l: (0 if l['credit_periode'] >= l['debit_periode'] else 1, l['categorie']))
+    return jsonify({'date_debut': date_debut, 'date_fin': date_fin, 'lignes': lignes, 'totaux': tot})
+
+
 # ─────────────────────────────────────────────────────────────
 # RAPPROCHEMENT BANCAIRE
 # ─────────────────────────────────────────────────────────────
