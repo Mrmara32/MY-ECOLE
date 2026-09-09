@@ -709,6 +709,26 @@ async function pageAnalyseComptable(mois) {
 window.pageAnalyseComptable = pageAnalyseComptable;
 
 /* ===================== BALANCE GÉNÉRALE ===================== */
+function _synthesesCategoriesHtml(lignes) {
+  const trouve = (nom) => lignes.find(l => l.categorie === nom);
+  const inscription = trouve("Frais d'inscription");
+  const reinscription = trouve('Frais de réinscription');
+  const scolarite = trouve('Frais de scolarité');
+  const totalRecettes = lignes.reduce((s, l) => s + (l.credit_periode || 0), 0);
+  const totalDepenses = lignes.reduce((s, l) => s + (l.debit_periode || 0), 0);
+  const carte = (label, montant, cls = '') => `<div class="stat">
+    <div class="stat-label">${esc(label)}</div>
+    <div class="stat-val ${cls}" style="font-size:18px">${fmtMoney(montant || 0)}</div>
+  </div>`;
+  return `<div class="stats-grid">
+    ${carte("Frais d'inscription (période)", inscription ? inscription.credit_periode : 0)}
+    ${carte('Frais de réinscription (période)', reinscription ? reinscription.credit_periode : 0)}
+    ${carte('Frais de scolarité (période)', scolarite ? scolarite.credit_periode : 0)}
+    ${carte('Total recettes (période)', totalRecettes, 'text-ok')}
+    ${carte('Total dépenses (période)', totalDepenses, 'text-err')}
+  </div>`;
+}
+
 async function pageBalance(dateDebut, dateFin) {
   dateDebut = dateDebut || `${new Date().getFullYear()}-01-01`;
   dateFin = dateFin || today();
@@ -731,6 +751,7 @@ async function pageBalance(dateDebut, dateFin) {
         <button class="btn btn-outline btn-sm" style="align-self:flex-end" onclick="pageBalance($('#f-baldeb').value,$('#f-balfin').value)">🔍 Actualiser</button>
       </div>
       <div class="alert alert-info">💡 Le <strong>solde initial</strong> reprend l'ensemble des opérations comptabilisées avant le ${fmtDate(dateDebut)} pour chaque catégorie (report à nouveau). Le <strong>solde final</strong> = solde initial + crédit (recettes) − débit (dépenses) de la période.</div>
+      ${_synthesesCategoriesHtml(data.lignes)}
       <div class="tbl-wrap"><table>
         <thead><tr>
           <th>Catégorie</th>
@@ -760,6 +781,22 @@ async function pageBalance(dateDebut, dateFin) {
   } catch(e) { $('#content').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`; }
 }
 window.pageBalance = pageBalance;
+
+function _syntheseImprimeeHtml(lignes) {
+  const trouve = (nom) => lignes.find(l => l.categorie === nom);
+  const inscription = trouve("Frais d'inscription");
+  const reinscription = trouve('Frais de réinscription');
+  const scolarite = trouve('Frais de scolarité');
+  const bloc = (label, montant) => `<div style="flex:1;text-align:center;padding:10px;border:1px solid #E5E7EB;border-radius:4px">
+    <div style="font-size:9px;color:#6B7280;text-transform:uppercase;letter-spacing:.03em">${esc(label)}</div>
+    <div style="font-size:15px;font-weight:800;color:#111827;margin-top:3px">${Number((montant||0)).toLocaleString('fr-FR')} GNF</div>
+  </div>`;
+  return `<div style="display:flex;gap:10px;margin-bottom:18px">
+    ${bloc("Frais d'inscription", inscription?inscription.credit_periode:0)}
+    ${bloc('Frais de réinscription', reinscription?reinscription.credit_periode:0)}
+    ${bloc('Frais de scolarité', scolarite?scolarite.credit_periode:0)}
+  </div>`;
+}
 
 async function imprimerBalance(dateDebut, dateFin) {
   const data = await apiGetBalance(dateDebut, dateFin);
@@ -820,6 +857,7 @@ async function imprimerBalance(dateDebut, dateFin) {
         <h2>BALANCE GÉNÉRALE</h2>
         <p>Période du ${fmtDate(dateDebut)} au ${fmtDate(dateFin)}</p>
       </div>
+      ${_syntheseImprimeeHtml(data.lignes)}
       <table>
         <thead><tr><th>Catégorie</th><th class="text-right">Solde initial</th><th class="text-right">Débit</th><th class="text-right">Crédit</th><th class="text-right">Solde final</th></tr></thead>
         <tbody>
@@ -978,9 +1016,9 @@ async function pageReleves() {
 
     <div id="rel-bloc-eleves" class="fg">
       <label>Élève(s)*</label>
-      <input type="text" id="rel-eleves-recherche" placeholder="Rechercher un élève par nom…" oninput="filtrerRelEleves()">
+      <input type="text" id="rel-eleves-recherche" placeholder="Rechercher un élève par nom ou matricule…" oninput="filtrerRelEleves()">
       <select id="rel-eleves" multiple size="8" style="margin-top:6px">
-        ${eleves.map(e => `<option value="${esc(e.id)}" data-txt="${esc((e.prenom+' '+e.nom).toLowerCase())}">${esc(e.prenom)} ${esc(e.nom)} — ${esc(e.classe||'?')} (${esc(e.matricule||'—')})</option>`).join('')}
+        ${eleves.map(e => `<option value="${esc(e.id)}" data-txt="${esc((e.prenom+' '+e.nom+' '+(e.matricule||'')).toLowerCase())}">${esc(e.prenom)} ${esc(e.nom)} — ${esc(e.classe||'?')} (${esc(e.matricule||'—')})</option>`).join('')}
       </select>
       <div class="text-muted" style="font-size:11.5px;margin-top:4px">Maintenez Ctrl (ou Cmd sur Mac) pour sélectionner plusieurs élèves.</div>
     </div>
@@ -996,14 +1034,14 @@ async function pageReleves() {
     <div id="rel-bloc-periode">
       <div class="fg"><label>Période</label>
         <select id="rel-periode" onchange="majPeriodeReleve()">
-          <option value="tout">Toute la période (depuis toujours)</option>
-          <option value="mois">Un mois précis</option>
+          <option value="mois" selected>Un mois précis</option>
           <option value="annee">Une année précise</option>
           <option value="libre">Dates personnalisées</option>
+          <option value="tout">Toute la période (depuis toujours)</option>
         </select>
       </div>
-      <div id="rel-periode-mois" class="form-2" style="display:none">
-        <div class="fg"><label>Mois</label><select id="rel-mois">${['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'].map((m,i)=>`<option value="${i+1}">${m}</option>`).join('')}</select></div>
+      <div id="rel-periode-mois" class="form-2">
+        <div class="fg"><label>Mois</label><select id="rel-mois">${['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'].map((m,i)=>`<option value="${i+1}" ${i+1===new Date().getMonth()+1?'selected':''}>${m}</option>`).join('')}</select></div>
         <div class="fg"><label>Année</label><input type="number" id="rel-annee-mois" value="${anneeCourante}"></div>
       </div>
       <div id="rel-periode-annee" class="fg" style="display:none">
