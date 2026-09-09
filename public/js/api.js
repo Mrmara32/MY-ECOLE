@@ -98,14 +98,28 @@ const apiChangePwd   = (o,n)  => apiFetch('/auth/change-password', { method: 'PO
 
 /* ── Personnel ── */
 const apiGetPersonnel    = ()     => apiFetch('/personnel');
-const apiCreatePersonnel = (b)    => apiFetch('/personnel', { method: 'POST', body: b });
+const apiCreatePersonnel = (b)    => apiFetch('/personnel', {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `Nouveau personnel — ${b.prenom||''} ${b.nom||''}`,
+  donneesOptimistes: { ...b },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/personnel', (liste) => Array.isArray(liste) ? [{ ...b, id: idTemp, _hors_ligne: true }, ...liste] : liste);
+  },
+});
 const apiUpdatePersonnel = (id,b) => apiFetch(`/personnel/${id}`, { method: 'PUT', body: b });
 const apiDeletePersonnel = (id)   => apiFetch(`/personnel/${id}`, { method: 'DELETE' });
 
 /* ── Élèves ── */
 const apiGetEleves    = (q='')    => apiFetch('/eleves' + (q?'?'+q:''));
 const apiGetEleve     = (id)      => apiFetch(`/eleves/${id}`);
-const apiCreateEleve  = (b)       => apiFetch('/eleves', { method: 'POST', body: b });
+const apiCreateEleve  = (b)       => apiFetch('/eleves', {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `Nouvel élève — ${b.prenom||''} ${b.nom||''}`,
+  donneesOptimistes: { ...b, statut: b.statut || 'actif' },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/eleves', (liste) => Array.isArray(liste) ? [{ ...b, id: idTemp, statut: b.statut || 'actif', _hors_ligne: true }, ...liste] : liste);
+  },
+});
 const apiUpdateEleve  = (id,b)    => apiFetch(`/eleves/${id}`, { method: 'PUT', body: b });
 const apiDeleteEleve  = (id)      => apiFetch(`/eleves/${id}`, { method: 'DELETE' });
 const apiUploadPhoto  = (id,fd)   => apiUpload(`/eleves/${id}/photo`, fd);
@@ -114,8 +128,22 @@ const apiGetClasses   = ()        => apiFetch('/eleves/meta/classes');
 
 /* ── Notes ── */
 const apiGetNotes    = (q='')    => apiFetch('/notes'+(q?'?'+q:''));
-const apiCreateNote  = (b)       => apiFetch('/notes', { method: 'POST', body: b });
-const apiUpdateNote  = (id,b)    => apiFetch(`/notes/${id}`, { method: 'PUT', body: b });
+const apiCreateNote  = (b)       => apiFetch('/notes', {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `Nouvelle note — ${b.matiere||''}`,
+  donneesOptimistes: { ...b },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/notes', (liste) => Array.isArray(liste) ? [{ ...b, id: idTemp, _hors_ligne: true }, ...liste] : liste);
+  },
+});
+const apiUpdateNote  = (id,b)    => apiFetch(`/notes/${id}`, {
+  method: 'PUT', body: b,
+  descriptionHorsLigne: `Modification de note`,
+  donneesOptimistes: { id, ...b },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/notes', (liste) => Array.isArray(liste) ? liste.map(n => n.id === id ? { ...n, ...b, _hors_ligne: true } : n) : liste);
+  },
+});
 const apiDeleteNote  = (id)      => apiFetch(`/notes/${id}`, { method: 'DELETE' });
 
 /* ── Devoirs ── */
@@ -126,8 +154,22 @@ const apiDeleteDevoir  = (id)      => apiFetch(`/devoirs/${id}`, { method: 'DELE
 
 /* ── Emploi du temps ── */
 const apiGetEdt    = (q='')    => apiFetch('/emploi-du-temps'+(q?'?'+q:''));
-const apiCreateEdt = (b)       => apiFetch('/emploi-du-temps', { method: 'POST', body: b });
-const apiUpdateEdt = (id,b)    => apiFetch(`/emploi-du-temps/${id}`, { method: 'PUT', body: b });
+const apiCreateEdt = (b)       => apiFetch('/emploi-du-temps', {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `Nouveau créneau d'emploi du temps`,
+  donneesOptimistes: { ...b },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/emploi-du-temps', (liste) => Array.isArray(liste) ? [{ ...b, id: idTemp, _hors_ligne: true }, ...liste] : liste);
+  },
+});
+const apiUpdateEdt = (id,b)    => apiFetch(`/emploi-du-temps/${id}`, {
+  method: 'PUT', body: b,
+  descriptionHorsLigne: `Modification d'un créneau d'emploi du temps`,
+  donneesOptimistes: { id, ...b },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/emploi-du-temps', (liste) => Array.isArray(liste) ? liste.map(c => c.id === id ? { ...c, ...b, _hors_ligne: true } : c) : liste);
+  },
+});
 const apiDeleteEdt = (id)      => apiFetch(`/emploi-du-temps/${id}`, { method: 'DELETE' });
 
 /* ── Absences ── */
@@ -156,8 +198,26 @@ const apiDeleteAbsencePersonnel     = (id)   => apiFetch(`/absences-personnel/${
 
 /* ── Réinscriptions ── */
 const apiGetReinscriptions   = (q='')    => apiFetch('/reinscriptions'+(q?'?'+q:''));
-const apiCreateReinscription = (b)       => apiFetch('/reinscriptions', { method: 'POST', body: b });
-const apiValiderReinscription= (id,b)    => apiFetch(`/reinscriptions/${id}/valider`, { method: 'PUT', body: b });
+const apiCreateReinscription = (b)       => apiFetch('/reinscriptions', {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `Nouvelle demande de réinscription`,
+  donneesOptimistes: { ...b, statut: 'en_attente' },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/reinscriptions', (liste) => Array.isArray(liste) ? [{ ...b, id: idTemp, statut: 'en_attente', _hors_ligne: true }, ...liste] : liste);
+  },
+});
+const apiValiderReinscription= (id,b)    => apiFetch(`/reinscriptions/${id}/valider`, {
+  method: 'PUT', body: b,
+  descriptionHorsLigne: `Validation de réinscription`,
+  donneesOptimistes: { id, ...b },
+  miseAJourCacheHorsLigne: async () => {
+    // Remarque : en ligne, valider une réinscription génère aussi automatiquement le
+    // paiement des frais de réinscription (voir routes/scolarite_routes.py). Cet effet
+    // de bord serveur ne peut pas être simulé hors ligne — il aura bien lieu, mais
+    // seulement une fois la synchronisation réellement effectuée.
+    await offlinePatcherVariantes('/reinscriptions', (liste) => Array.isArray(liste) ? liste.map(r => r.id === id ? { ...r, statut: b.statut || 'validee', _hors_ligne: true } : r) : liste);
+  },
+});
 const apiDeleteReinscription = (id)      => apiFetch(`/reinscriptions/${id}`, { method: 'DELETE' });
 
 /* ── Transactions ── */
@@ -176,7 +236,18 @@ const apiCreateStockProduit = (d)       => apiFetch('/stock/produits', { method:
 const apiUpdateStockProduit = (id,d)    => apiFetch(`/stock/produits/${id}`, { method:'PUT', body:d });
 const apiDeleteStockProduit = (id)      => apiFetch(`/stock/produits/${id}`, { method:'DELETE' });
 const apiGetStockMouvements = (q='')    => apiFetch('/stock/mouvements'+(q?'?'+q:''));
-const apiCreateStockMouvement = (d)     => apiFetch('/stock/mouvements', { method:'POST', body:d });
+const apiCreateStockMouvement = (d)     => apiFetch('/stock/mouvements', {
+  method:'POST', body:d,
+  descriptionHorsLigne: `Mouvement de stock (${d.type==='sortie'?'sortie':'entrée'})`,
+  donneesOptimistes: { id: d.produit_id },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/stock/produits', (liste) => {
+      if (!Array.isArray(liste)) return liste;
+      const delta = (d.type === 'entree' ? 1 : -1) * (parseFloat(d.quantite)||0);
+      return liste.map(p => p.id === d.produit_id ? { ...p, quantite: (p.quantite||0) + delta, _hors_ligne: true } : p);
+    });
+  },
+});
 
 // ── Logistique : Achats / Commandes ──
 const apiGetCommandes       = (q='')    => apiFetch('/commandes'+(q?'?'+q:''));
@@ -240,7 +311,14 @@ function apiExportTransactionsExcel(q='') {
     })
     .catch(err => toast(err.message, 'error'));
 }
-const apiCreateTransaction  = (b)       => apiFetch('/transactions', { method: 'POST', body: b });
+const apiCreateTransaction  = (b)       => apiFetch('/transactions', {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `${b.type==='sortie'?'Décaissement':'Encaissement'} — ${b.description||b.categorie||''}`,
+  donneesOptimistes: { ...b, statut_validation: 'auto' },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/transactions', (liste) => Array.isArray(liste) ? [{ ...b, id: idTemp, statut_validation: 'auto', _hors_ligne: true }, ...liste] : liste);
+  },
+});
 const apiDeleteTransaction  = (id)      => apiFetch(`/transactions/${id}`, { method: 'DELETE' });
 
 /* ── Frais ── */

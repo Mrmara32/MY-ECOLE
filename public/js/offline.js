@@ -24,7 +24,8 @@ const STORE_QUEUE = 'file_attente';
 // Endpoints dont la dernière réponse GET connue est gardée pour consultation
 // hors ligne. Volontairement limité aux données les plus utiles au quotidien
 // (pas tout : ça reste un cache, pas une base complète dupliquée).
-const ENDPOINTS_CACHABLES = ['/eleves', '/personnel', '/classes', '/salles', '/paiements', '/absences', '/frais', '/settings', '/auth/me'];
+const ENDPOINTS_CACHABLES = ['/eleves', '/personnel', '/classes', '/salles', '/paiements', '/absences', '/frais', '/settings', '/auth/me',
+  '/notes', '/reinscriptions', '/emploi-du-temps', '/transactions', '/stock/produits'];
 
 let _offlineDbPromise = null;
 function _ouvrirDB() {
