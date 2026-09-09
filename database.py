@@ -1282,6 +1282,27 @@ def run_migrations():
             db.execute("PRAGMA foreign_keys=ON")
             db.execute("PRAGMA legacy_alter_table = OFF")
 
+    # Rattrapage : les paiements de réinscription réglés avant l'introduction de la
+    # catégorie dédiée "Frais de réinscription" avaient été enregistrés sous le
+    # libellé générique "Frais de scolarité", les rendant invisibles dans la Balance
+    # générale sous leur propre ligne. On les retrouve via le versement (qui référence
+    # le paiement) et on corrige rétroactivement la catégorie de la transaction liée.
+    if {'transactions', 'versements', 'paiements'} <= tables_existantes:
+        try:
+            a_corriger = db.execute(
+                """SELECT t.id as transaction_id FROM transactions t
+                   JOIN versements v ON v.eleve_id = t.eleve_id AND v.date_vers = t.date_op AND v.montant = t.montant
+                   JOIN paiements p ON p.id = v.paiement_id
+                   WHERE p.type_frais = 'reinscription' AND t.categorie = 'Frais de scolarité'"""
+            ).fetchall()
+            if a_corriger:
+                ids = [r['transaction_id'] for r in a_corriger]
+                db.executemany("UPDATE transactions SET categorie='Frais de réinscription' WHERE id=?", [(i,) for i in ids])
+                db.commit()
+                print(f"[migration] {len(ids)} transaction(s) de réinscription reclassée(s) sous 'Frais de réinscription'")
+        except Exception as e:
+            print(f"[migration] Erreur lors du rattrapage des catégories de réinscription : {e}")
+
 
 def init_db():
     db.executescript(SCHEMA)

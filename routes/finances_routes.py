@@ -641,12 +641,19 @@ def verser_paiement(p_id):
 
     eleve = db.execute("SELECT nom,prenom,matricule FROM eleves WHERE id=?", (pai['eleve_id'],)).fetchone()
     tid = gen_id('t')
+    # Catégorie comptable alignée sur le type réel du paiement (l'ancienne version
+    # regroupait à tort "réinscription" et les tranches de scolarité sous le même
+    # libellé générique "Frais de scolarité", les rendant invisibles dans la Balance).
+    CATEGORIES_FRAIS = {
+        'inscription': "Frais d'inscription",
+        'reinscription': 'Frais de réinscription',
+    }
+    categorie_frais = CATEGORIES_FRAIS.get(pai['type_frais'], 'Frais de scolarité')
     db.execute(
         "INSERT INTO transactions (id,ecole_id,type,date_op,description,categorie,moyen_paiement,montant,reference,eleve_id) "
         "VALUES (?,?,?,?,?,?,?,?,?,?)",
         (tid, g.user['ecole_id'], 'entree', date_vers, f"{pai['libelle']} — {eleve['prenom']} {eleve['nom']} ({eleve['matricule']})",
-         "Frais d'inscription" if pai['type_frais'] == 'inscription' else 'Frais de scolarité',
-         moyen_paiement, montant, body.get('reference') or f"REC-{vid}", pai['eleve_id']),
+         categorie_frais, moyen_paiement, montant, body.get('reference') or f"REC-{vid}", pai['eleve_id']),
     )
     db.commit()
 
@@ -1159,3 +1166,121 @@ def etat_rapprochement():
         'non_rapprochees': len(toutes) - len(rapprochees),
         'transactions': toutes,
     })
+
+
+# ─────────────────────────────────────────────────────────────
+# RELEVÉS (élève(s), transaction unique, ou période libre)
+# ─────────────────────────────────────────────────────────────
+@bp.route('/releve', methods=['GET'])
+@require_auth
+@require_role('admin', 'directeur', 'comptable', 'secretaire')
+def releve():
+    """Relevé filtrable par élève(s), par transaction précise, ou par simple période
+    (mois, année, ou dates libres — l'absence totale de dates couvre 'depuis toujours').
+    Trois modes, selon les paramètres fournis :
+      - transaction_id=XXX             → détail d'une transaction unique
+      - eleve_ids=id1,id2,...          → relevé de paiements + transactions par élève
+      - (aucun des deux)               → relevé général de toutes les transactions
+    Toujours combinable avec date_debut / date_fin."""
+    ecole_id = g.user['ecole_id']
+    transaction_id = request.args.get('transaction_id')
+    eleve_ids = [e for e in (request.args.get('eleve_ids') or '').split(',') if e]
+    date_debut = request.args.get('date_debut')
+    date_fin = request.args.get('date_fin')
+
+    # ── Mode 1 : une transaction précise ──
+    if transaction_id:
+        t = db.execute("SELECT * FROM transactions WHERE id=? AND ecole_id=?", (transaction_id, ecole_id)).fetchone()
+        if not t:
+            return jsonify({'error': 'Transaction introuvable'}), 404
+        d = row_to_dict(t)
+        if t['eleve_id']:
+            e = db.execute("SELECT nom,prenom,matricule,classe FROM eleves WHERE id=?", (t['eleve_id'],)).fetchone()
+            d['eleve'] = row_to_dict(e) if e else None
+        if t['fournisseur_id']:
+            f = db.execute("SELECT nom FROM fournisseurs WHERE id=?", (t['fournisseur_id'],)).fetchone()
+            d['fournisseur_nom'] = f['nom'] if f else None
+        return jsonify({'mode': 'transaction', 'transaction': d})
+
+    def _filtre_periode(sql, params, colonne='date_op'):
+        if date_debut: sql += f" AND {colonne}>=?"; params.append(date_debut)
+        if date_fin: sql += f" AND {colonne}<=?"; params.append(date_fin)
+        return sql, params
+
+    # ── Mode 2 : un ou plusieurs élèves ──
+    if eleve_ids:
+        resultats = []
+        for eid in eleve_ids:
+            e = db.execute("SELECT * FROM eleves WHERE id=? AND ecole_id=?", (eid, ecole_id)).fetchone()
+            if not e:
+                continue
+            sql, params = "SELECT * FROM paiements WHERE eleve_id=? AND ecole_id=?", [eid, ecole_id]
+            sql, params = _filtre_periode(sql, params, 'date_echeance')
+            sql += " ORDER BY date_echeance"
+            paiements = rows_to_list(db.execute(sql, params).fetchall())
+            for p in paiements:
+                p['versements'] = rows_to_list(db.execute(
+                    "SELECT * FROM versements WHERE paiement_id=? ORDER BY date_vers", (p['id'],)
+                ).fetchall())
+
+            sql2, params2 = "SELECT * FROM transactions WHERE eleve_id=? AND ecole_id=? AND statut_validation IN ('auto','valide')", [eid, ecole_id]
+            sql2, params2 = _filtre_periode(sql2, params2, 'date_op')
+            sql2 += " ORDER BY date_op"
+            transactions = rows_to_list(db.execute(sql2, params2).fetchall())
+
+            total_du = sum(p['montant_du'] for p in paiements)
+            total_paye = sum(p['montant_paye'] for p in paiements)
+            resultats.append({
+                'eleve': row_to_dict(e), 'paiements': paiements, 'transactions': transactions,
+                'totaux': {'total_du': total_du, 'total_paye': total_paye, 'solde_restant': total_du - total_paye},
+            })
+        return jsonify({'mode': 'eleves', 'date_debut': date_debut, 'date_fin': date_fin, 'resultats': resultats})
+
+    # ── Mode 3 : relevé général (toutes transactions de la période) ──
+    sql, params = "SELECT * FROM transactions WHERE ecole_id=? AND statut_validation IN ('auto','valide')", [ecole_id]
+    sql, params = _filtre_periode(sql, params, 'date_op')
+    sql += " ORDER BY date_op"
+    transactions = rows_to_list(db.execute(sql, params).fetchall())
+    for t in transactions:
+        if t.get('eleve_id'):
+            e = db.execute("SELECT nom,prenom,matricule FROM eleves WHERE id=?", (t['eleve_id'],)).fetchone()
+            t['eleve_nom'] = f"{e['prenom']} {e['nom']}" if e else None
+    total_entrees = sum(t['montant'] for t in transactions if t['type'] == 'entree')
+    total_sorties = sum(t['montant'] for t in transactions if t['type'] == 'sortie')
+    return jsonify({
+        'mode': 'general', 'date_debut': date_debut, 'date_fin': date_fin, 'transactions': transactions,
+        'totaux': {'entrees': total_entrees, 'sorties': total_sorties, 'solde': total_entrees - total_sorties},
+    })
+
+
+@bp.route('/releve/envoyer-email', methods=['POST'])
+@require_auth
+@require_role('admin', 'directeur', 'comptable', 'secretaire')
+def envoyer_releve_email():
+    """Envoie un document déjà généré côté client (relevé, balance…) par e-mail, en
+    pièce jointe PDF. Le PDF est produit dans le navigateur (html2canvas + jsPDF) et
+    transmis ici encodé en base64 — le serveur ne fait que router l'envoi SMTP."""
+    from email_service import envoyer_email
+    body = request.get_json(silent=True) or {}
+    destinataire = (body.get('destinataire') or '').strip()
+    pdf_base64 = body.get('pdf_base64')
+    nom_fichier = body.get('nom_fichier') or 'document.pdf'
+    sujet = body.get('sujet') or 'Document — ' + (get_settings(g.user['ecole_id']).get('ecole_nom') or 'École')
+    message = body.get('message') or 'Veuillez trouver ci-joint le document demandé.'
+
+    if not destinataire or '@' not in destinataire:
+        return jsonify({'error': 'Adresse e-mail invalide'}), 400
+    if not pdf_base64:
+        return jsonify({'error': 'Aucun document à envoyer (PDF manquant)'}), 400
+
+    corps_html = f"""<div style="font-family:Arial,sans-serif;font-size:14px;color:#111827;line-height:1.6">
+      <p>{message}</p>
+      <p style="color:#6B7280;font-size:12px;margin-top:24px">Document généré automatiquement par l'application de gestion scolaire.</p>
+    </div>"""
+    ok = envoyer_email(destinataire, sujet, corps_html, piece_jointe={
+        'nom_fichier': nom_fichier, 'contenu_base64': pdf_base64, 'type_mime': 'application/pdf',
+    })
+    if not ok:
+        return jsonify({'error': "L'envoi a échoué. Vérifiez que la configuration e-mail de l'application est bien active."}), 502
+    log_action(g.user, 'envoi_releve_email', 'releve', None, {'destinataire': destinataire})
+    return jsonify({'success': True})

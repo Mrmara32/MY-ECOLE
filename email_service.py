@@ -19,10 +19,13 @@ message dans les logs) plutôt que de faire planter l'application — un e-mail 
 envoyé ne doit jamais empêcher une inscription de fonctionner.
 """
 import os
+import base64
 import smtplib
 import secrets
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 
 
 def _config_disponible():
@@ -38,9 +41,13 @@ def url_application():
     return os.environ.get('URL_APPLICATION', 'http://localhost:3000').rstrip('/')
 
 
-def envoyer_email(destinataire, sujet, corps_html):
+def envoyer_email(destinataire, sujet, corps_html, piece_jointe=None):
     """Envoie un e-mail. Ne lève jamais d'exception vers l'appelant — retourne
-    True/False — pour ne jamais bloquer une inscription à cause d'un souci d'envoi."""
+    True/False — pour ne jamais bloquer une inscription à cause d'un souci d'envoi.
+
+    piece_jointe (optionnel) : dict {'nom_fichier': str, 'contenu_base64': str,
+    'type_mime': str (ex: 'application/pdf')} — pour joindre un document (relevé,
+    reçu…) généré côté client et transmis encodé en base64."""
     if not _config_disponible():
         print(f"[email] Configuration absente (EMAIL_ADRESSE / EMAIL_MOT_DE_PASSE) — e-mail à {destinataire} non envoyé")
         return False
@@ -50,11 +57,22 @@ def envoyer_email(destinataire, sujet, corps_html):
         host = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
         port = int(os.environ.get('EMAIL_PORT', '587'))
 
-        msg = MIMEMultipart('alternative')
+        msg = MIMEMultipart('mixed' if piece_jointe else 'alternative')
         msg['Subject'] = sujet
         msg['From'] = adresse
         msg['To'] = destinataire
-        msg.attach(MIMEText(corps_html, 'html', 'utf-8'))
+
+        corps = MIMEMultipart('alternative')
+        corps.attach(MIMEText(corps_html, 'html', 'utf-8'))
+        msg.attach(corps)
+
+        if piece_jointe:
+            donnees = base64.b64decode(piece_jointe['contenu_base64'])
+            piece = MIMEBase(*piece_jointe.get('type_mime', 'application/pdf').split('/', 1))
+            piece.set_payload(donnees)
+            encoders.encode_base64(piece)
+            piece.add_header('Content-Disposition', 'attachment', filename=piece_jointe['nom_fichier'])
+            msg.attach(piece)
 
         with smtplib.SMTP(host, port, timeout=15) as serveur:
             serveur.starttls()

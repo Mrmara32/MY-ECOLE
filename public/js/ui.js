@@ -573,6 +573,155 @@ function finaliserCarteImprimable(win, selector, filename) {
   win.focus();
 }
 
+/* ── Documents partageables (relevés, balance…) : impression + PDF + partage ──
+   Contrairement aux cartes (format fixe, image simple), ces documents sont des
+   rapports A4 pouvant être longs — on génère un vrai PDF (html2canvas + jsPDF)
+   plutôt qu'une simple image, et on ajoute le partage WhatsApp / e-mail.
+   options: { filenameBase (sans extension), sujetEmail, messageEmail, destinataireDefaut } */
+function finaliserDocumentPartageable(win, selector, options = {}) {
+  const filenameBase = options.filenameBase || 'document';
+  const sujetEmail = options.sujetEmail || 'Document';
+  const messageEmail = options.messageEmail || 'Veuillez trouver ci-joint le document demandé.';
+  const destinataireDefaut = options.destinataireDefaut || '';
+
+  const toolbarHtml = `
+    <style>
+      .doc-toolbar{position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:9999;font-family:Arial,Helvetica,sans-serif;flex-wrap:wrap;max-width:260px;justify-content:flex-end}
+      .doc-toolbar button{padding:9px 14px;border-radius:7px;border:none;font-size:12.5px;font-weight:700;cursor:pointer;
+        box-shadow:0 2px 8px rgba(0,0,0,.18);white-space:nowrap}
+      .doc-toolbar .btn-print{background:#1E2A4A;color:#fff}
+      .doc-toolbar .btn-pdf{background:#B91C1C;color:#fff}
+      .doc-toolbar .btn-wa{background:#25D366;color:#fff}
+      .doc-toolbar .btn-mail{background:#4B5563;color:#fff}
+      .doc-toolbar button:disabled{opacity:.6;cursor:wait}
+      @media print{.doc-toolbar{display:none !important}}
+    </style>
+    <div class="doc-toolbar">
+      <button type="button" class="btn-print" onclick="window.focus();window.print()">🖨 Imprimer</button>
+      <button type="button" class="btn-pdf" id="btn-dl-doc-pdf" disabled>⏳ Chargement…</button>
+      <button type="button" class="btn-wa" id="btn-share-wa" disabled>💬 WhatsApp</button>
+      <button type="button" class="btn-mail" id="btn-share-mail" disabled>✉️ E-mail</button>
+    </div>`;
+
+  const inject = () => {
+    try {
+      win.document.body.insertAdjacentHTML('beforeend', toolbarHtml);
+      const btnPdf = win.document.getElementById('btn-dl-doc-pdf');
+      const btnWa = win.document.getElementById('btn-share-wa');
+      const btnMail = win.document.getElementById('btn-share-mail');
+
+      let chargements = 0;
+      const surChargement = () => { chargements++; if (chargements === 2) {
+        btnPdf.disabled = false; btnPdf.textContent = '📄 Télécharger PDF';
+        btnWa.disabled = false; btnMail.disabled = false;
+      }};
+      // Deux scripts externes nécessaires : html2canvas (rendu image) + jsPDF (mise en
+      // page PDF). Créés via createElement (jamais via innerHTML, qui n'exécute pas les
+      // <script> insérés — piège classique déjà rencontré sur les cartes).
+      const s1 = win.document.createElement('script');
+      s1.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      s1.onload = surChargement;
+      s1.onerror = () => { btnPdf.textContent = '⚠ Indisponible'; };
+      win.document.head.appendChild(s1);
+      const s2 = win.document.createElement('script');
+      s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      s2.onload = surChargement;
+      s2.onerror = () => { btnPdf.textContent = '⚠ Indisponible'; };
+      win.document.head.appendChild(s2);
+
+      // Génère le PDF (A4, une ou plusieurs pages selon la hauteur du document) et
+      // renvoie { doc, blob, base64, nomFichier } sans le télécharger.
+      const genererPdf = async () => {
+        const el = win.document.querySelector(selector);
+        const canvas = await win.html2canvas(el, { scale: 2.5, backgroundColor: '#ffffff', useCORS: true });
+        const { jsPDF } = win.jspdf;
+        const pageLargeurMm = 210, pageHauteurMm = 297;
+        const imgLargeurMm = pageLargeurMm;
+        const imgHauteurMm = (canvas.height * imgLargeurMm) / canvas.width;
+        const doc = new jsPDF('p', 'mm', 'a4');
+        let hauteurRestante = imgHauteurMm, positionY = 0;
+        const imgData = canvas.toDataURL('image/jpeg', 0.92);
+        doc.addImage(imgData, 'JPEG', 0, positionY, imgLargeurMm, imgHauteurMm);
+        hauteurRestante -= pageHauteurMm;
+        while (hauteurRestante > 0) {
+          positionY = hauteurRestante - imgHauteurMm;
+          doc.addPage();
+          doc.addImage(imgData, 'JPEG', 0, positionY, imgLargeurMm, imgHauteurMm);
+          hauteurRestante -= pageHauteurMm;
+        }
+        const nomFichier = `${filenameBase}.pdf`;
+        const blob = doc.output('blob');
+        const base64 = doc.output('datauristring').split(',')[1];
+        return { blob, base64, nomFichier };
+      };
+
+      btnPdf.addEventListener('click', async () => {
+        if (typeof win.html2canvas === 'undefined' || typeof win.jspdf === 'undefined') {
+          win.alert("Le générateur PDF n'a pas pu se charger. Vérifiez votre connexion internet."); return;
+        }
+        const texte = btnPdf.textContent;
+        btnPdf.disabled = true; btnPdf.textContent = '⏳ Génération…';
+        try {
+          const { blob, nomFichier } = await genererPdf();
+          const url = win.URL.createObjectURL(blob);
+          const link = win.document.createElement('a');
+          link.href = url; link.download = nomFichier; link.click();
+          win.URL.revokeObjectURL(url);
+        } catch (err) { win.alert('Erreur lors de la génération du PDF : ' + err.message); }
+        btnPdf.disabled = false; btnPdf.textContent = texte;
+      });
+
+      btnWa.addEventListener('click', async () => {
+        if (typeof win.html2canvas === 'undefined' || typeof win.jspdf === 'undefined') {
+          win.alert("Le générateur PDF n'a pas pu se charger. Vérifiez votre connexion internet."); return;
+        }
+        const texte = btnWa.textContent;
+        btnWa.disabled = true; btnWa.textContent = '⏳ Préparation…';
+        try {
+          const { blob, nomFichier } = await genererPdf();
+          const fichier = new win.File([blob], nomFichier, { type: 'application/pdf' });
+          // Web Share API avec fichier : fonctionne sur Chrome mobile/desktop récents et
+          // affiche directement WhatsApp comme destination possible. Si indisponible
+          // (ex: Firefox, Safari desktop), on retombe sur un lien WhatsApp texte + le PDF
+          // téléchargé séparément, à joindre manuellement.
+          if (win.navigator.canShare && win.navigator.canShare({ files: [fichier] })) {
+            await win.navigator.share({ files: [fichier], title: sujetEmail, text: messageEmail });
+          } else {
+            const url = win.URL.createObjectURL(blob);
+            const link = win.document.createElement('a');
+            link.href = url; link.download = nomFichier; link.click();
+            win.URL.revokeObjectURL(url);
+            win.alert("Votre navigateur ne permet pas d'envoyer directement un fichier vers WhatsApp. Le PDF a été téléchargé : ouvrez WhatsApp puis joignez-le manuellement.");
+            win.open(`https://wa.me/?text=${encodeURIComponent(messageEmail)}`, '_blank');
+          }
+        } catch (err) {
+          if (err.name !== 'AbortError') win.alert('Erreur lors du partage : ' + err.message);
+        }
+        btnWa.disabled = false; btnWa.textContent = texte;
+      });
+
+      btnMail.addEventListener('click', async () => {
+        if (typeof win.html2canvas === 'undefined' || typeof win.jspdf === 'undefined') {
+          win.alert("Le générateur PDF n'a pas pu se charger. Vérifiez votre connexion internet."); return;
+        }
+        const destinataire = win.prompt("Adresse e-mail du destinataire :", destinataireDefaut);
+        if (!destinataire) return;
+        const texte = btnMail.textContent;
+        btnMail.disabled = true; btnMail.textContent = '⏳ Envoi…';
+        try {
+          const { base64, nomFichier } = await genererPdf();
+          await apiEnvoyerReleveEmail({ destinataire, pdf_base64: base64, nom_fichier: nomFichier, sujet: sujetEmail, message: messageEmail });
+          win.alert('✅ Document envoyé par e-mail à ' + destinataire);
+        } catch (err) { win.alert("Erreur lors de l'envoi : " + err.message); }
+        btnMail.disabled = false; btnMail.textContent = texte;
+      });
+    } catch (e) { console.error('finaliserDocumentPartageable', e); }
+  };
+  if (win.document.readyState === 'complete') inject();
+  else win.addEventListener('load', inject);
+  win.focus();
+}
+
 async function imprimerRecu({ type, nom, description, montant, date, moyenPaiement, reference, recuPar }) {
   const settings = await apiGetSettings();
   const numeroRecu = reference || ('REC-' + Date.now().toString(36).toUpperCase());

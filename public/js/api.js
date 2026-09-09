@@ -182,6 +182,8 @@ const apiDeleteBudget = (id) => apiFetch(`/budgets/${id}`, { method:'DELETE' });
 const apiComparaisonBudget = (mois) => apiFetch('/budgets/comparaison?mois='+mois);
 const apiAnalyseComptable = (mois) => apiFetch('/analyse-comptable?mois='+mois);
 const apiGetBalance = (dateDebut, dateFin) => apiFetch(`/balance?date_debut=${dateDebut}&date_fin=${dateFin}`);
+const apiGetReleve = (params) => apiFetch(`/releve?${new URLSearchParams(params).toString()}`);
+const apiEnvoyerReleveEmail = (b) => apiFetch('/releve/envoyer-email', { method: 'POST', body: b });
 
 function apiAnalyserRapprochement(fichier) {
   const fd = new FormData();
