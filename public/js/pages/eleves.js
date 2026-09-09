@@ -452,7 +452,7 @@ async function imprimerCarteScolaire(eleveId) {
   <style>
     *{box-sizing:border-box}
     body{font-family:'Nunito Sans',Arial,sans-serif;margin:0;padding:24px;background:#E8E4DC;display:flex;justify-content:center;align-items:flex-start}
-    .carte{width:6cm;height:10cm;background:#F4EFE2;position:relative;overflow:hidden;border-radius:0.28cm;
+    .carte{width:7cm;min-height:12cm;background:#F4EFE2;position:relative;overflow:hidden;border-radius:0.28cm;
       box-shadow:0 0.3cm 0.7cm rgba(30,25,15,.3);border:1px solid #D8D0BC;
       background-image:radial-gradient(#DCD5C2 0.4px, transparent 0.4px);background-size:8px 8px;
       display:flex;flex-direction:column}
@@ -466,24 +466,24 @@ async function imprimerCarteScolaire(eleveId) {
     .titre-carte-wrap .ln{height:1px;width:22px;background:#B91C1C}
     .header .titre-carte{font-size:12.5px;font-weight:800;color:#B91C1C;letter-spacing:.18em}
     .header .ecole-nom{font-family:'Playfair Display',serif;font-size:13px;font-weight:700;color:#1E2A4A;margin-top:8px;line-height:1.25}
-    .header .ecole-lieu{font-size:9px;color:#52493A;margin-top:2px;letter-spacing:.03em}
-    .header .ecole-tel{font-size:8.5px;color:#52493A;margin-top:1px;letter-spacing:.03em}
-    .corps{padding:6% 6% 2%;display:flex;gap:8px;flex:1;position:relative}
-    .photo-frame{width:38%;aspect-ratio:3/3.7;background:#fff;border:1.5px solid #1E2A4A;border-radius:3px;
+    .header .ecole-lieu{font-size:9px;color:#000;font-weight:600;margin-top:2px;letter-spacing:.03em}
+    .header .ecole-tel{font-size:8.5px;color:#000;font-weight:600;margin-top:1px;letter-spacing:.03em}
+    .corps{padding:6% 6% 2%;display:flex;gap:10px;flex:1;position:relative}
+    .photo-frame{width:42%;aspect-ratio:3/3.8;background:#fff;border:1.5px solid #1E2A4A;border-radius:3px;
       display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;position:relative}
-    .photo-frame img{width:100%;height:100%;object-fit:cover}
+    .photo-frame img{width:100%;height:100%;object-fit:cover;object-position:center top}
     .photo-frame .no-photo{color:#D1D5DB;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
-    .infos{flex:1;display:flex;flex-direction:column;justify-content:center;gap:8px;padding-top:2%}
+    .infos{flex:1;display:flex;flex-direction:column;justify-content:center;gap:9px;padding-top:2%}
     .infos .lbl{font-size:8.5px;color:#7A5416;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
-    .infos .val{font-family:'Playfair Display',serif;font-weight:700;font-size:13.5px;color:#1E2A4A;margin-top:1px}
+    .infos .val{font-family:'Playfair Display',serif;font-weight:700;font-size:14px;color:#1E2A4A;margin-top:1px}
     .sig-line{position:absolute;left:6%;bottom:3%;width:38%;border-top:1px solid #B8AF95}
     .matricule-bar{background:#1E2A4A;color:#fff;display:flex;align-items:center;justify-content:space-between;
       padding:2.5% 6%;flex-shrink:0;margin-top:auto}
     .matricule-bar .lbl{font-size:9px;letter-spacing:.08em;font-weight:600;color:#DCE4F2}
     .matricule-bar .val{font-family:'DM Mono',monospace;font-size:15px;letter-spacing:.06em}
-    .footer-info{padding:4% 6%;font-size:9px;color:#2E2E2E;flex-shrink:0}
-    .footer-info .lbl{font-size:7.5px;color:#5A5039;text-transform:uppercase;font-weight:700;letter-spacing:.04em}
-    .footer-info .fval{font-weight:700;margin-bottom:5px;font-size:9.5px}
+    .footer-info{padding:4% 6%;font-size:9px;color:#000;flex-shrink:0}
+    .footer-info .lbl{font-size:7.5px;color:#000;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+    .footer-info .fval{font-weight:700;margin-bottom:5px;font-size:9.5px;color:#000}
     .mention{padding:0 6% 3%;display:flex;justify-content:space-between;align-items:flex-end;gap:6px;flex-shrink:0}
     .mention .txt{font-size:6.8px;color:#5A5039;line-height:1.4;font-style:italic}
     .mention .directeur{text-align:center;font-size:7.5px;color:#3A3A3A;flex-shrink:0}
@@ -491,7 +491,7 @@ async function imprimerCarteScolaire(eleveId) {
     .mention .directeur .signature-img{max-height:14px;max-width:38px;display:block;margin:0 auto 1px}
     .mention .directeur .ln{border-top:1px solid #B8AF95;width:26px;margin:0 auto 3px}
     @media print{
-      @page{ size:6cm 10cm; margin:0; }
+      @page{ size:7cm 12cm; margin:0; }
       body{background:#fff;padding:0;align-items:stretch}
       .carte{box-shadow:none;border:none;border-radius:0}
     }
@@ -564,7 +564,7 @@ async function imprimerCarteRetrait(eleveId) {
   <style>
     *{box-sizing:border-box}
     body{font-family:'Nunito Sans',Arial,sans-serif;margin:0;padding:24px;background:#E8E4DC;display:flex;justify-content:center;align-items:flex-start}
-    .carte{width:9cm;height:13.5cm;background:#FFF9EC;position:relative;overflow:hidden;border-radius:0.4cm;
+    .carte{width:9cm;min-height:13.5cm;background:#FFF9EC;position:relative;overflow:hidden;border-radius:0.4cm;
       box-shadow:0 0.3cm 0.7cm rgba(30,25,15,.3);border:2px solid #F5A623;display:flex;flex-direction:column}
     .banniere{background:#F5A623;color:#fff;text-align:center;padding:14px 10px 10px;flex-shrink:0}
     .banniere .titre{font-family:'Playfair Display',serif;font-size:20px;font-weight:700;letter-spacing:.02em}

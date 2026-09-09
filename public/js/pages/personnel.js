@@ -390,7 +390,7 @@ async function imprimerBadge(personnelId) {
   <style>
     *{box-sizing:border-box}
     body{font-family:Arial,'Segoe UI',sans-serif;margin:0;padding:20px;background:#E5E7EB;display:flex;justify-content:center}
-    .badge{width:6cm;height:10cm;background:#fff;border-radius:0.3cm;position:relative;overflow:hidden;
+    .badge{width:6cm;min-height:10cm;background:#fff;border-radius:0.3cm;position:relative;overflow:hidden;
       box-shadow:0 10px 30px rgba(0,0,0,.25)}
     .badge-top{position:relative;height:42%;padding:6% 6% 0}
     .brand{display:flex;align-items:center;gap:6px}

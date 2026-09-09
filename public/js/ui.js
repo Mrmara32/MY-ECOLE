@@ -518,28 +518,41 @@ function finaliserCarteImprimable(win, selector, filename) {
     </style>
     <div class="carte-toolbar">
       <button type="button" class="btn-print" onclick="window.focus();window.print()">🖨 Imprimer</button>
-      <button type="button" class="btn-png" id="btn-dl-carte-png">📥 Télécharger en PNG</button>
-    </div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
-    <script>
-      document.getElementById('btn-dl-carte-png').addEventListener('click', function() {
-        var btn = this;
-        var el = document.querySelector(${JSON.stringify(selector)});
-        if (!el || typeof html2canvas === 'undefined') { alert('Le générateur PNG n\\'a pas pu se charger. Vérifiez votre connexion internet.'); return; }
+      <button type="button" class="btn-png" id="btn-dl-carte-png" disabled>⏳ Chargement du générateur…</button>
+    </div>`;
+  const inject = () => {
+    try {
+      win.document.body.insertAdjacentHTML('beforeend', toolbarHtml);
+      const btn = win.document.getElementById('btn-dl-carte-png');
+      // IMPORTANT : une balise <script> insérée via innerHTML/insertAdjacentHTML ne
+      // s'exécute JAMAIS dans un navigateur (comportement standard du DOM). Il faut
+      // la créer via createElement + appendChild pour qu'elle soit réellement chargée.
+      const script = win.document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      script.onload = () => { btn.disabled = false; btn.textContent = '📥 Télécharger en PNG'; };
+      script.onerror = () => { btn.textContent = '⚠ Générateur indisponible (hors ligne ?)'; };
+      win.document.head.appendChild(script);
+
+      btn.addEventListener('click', () => {
+        const el = win.document.querySelector(selector);
+        if (!el || typeof win.html2canvas === 'undefined') {
+          win.alert("Le générateur PNG n'a pas pu se charger. Vérifiez votre connexion internet puis réessayez.");
+          return;
+        }
         btn.disabled = true; btn.textContent = '⏳ Génération…';
-        html2canvas(el, { scale: 4, backgroundColor: null, useCORS: true }).then(function(canvas) {
-          var link = document.createElement('a');
-          link.download = ${JSON.stringify(filename)};
+        win.html2canvas(el, { scale: 4, backgroundColor: null, useCORS: true }).then((canvas) => {
+          const link = win.document.createElement('a');
+          link.download = filename;
           link.href = canvas.toDataURL('image/png');
           link.click();
           btn.disabled = false; btn.textContent = '📥 Télécharger en PNG';
-        }).catch(function(err) {
-          alert('Erreur lors de la génération du PNG : ' + err.message);
+        }).catch((err) => {
+          win.alert('Erreur lors de la génération du PNG : ' + err.message);
           btn.disabled = false; btn.textContent = '📥 Télécharger en PNG';
         });
       });
-    <\/script>`;
-  const inject = () => { try { win.document.body.insertAdjacentHTML('beforeend', toolbarHtml); } catch(_) {} };
+    } catch(e) { console.error('finaliserCarteImprimable', e); }
+  };
   if (win.document.readyState === 'complete') inject();
   else win.addEventListener('load', inject);
   win.focus();
