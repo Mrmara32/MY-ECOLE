@@ -10,10 +10,34 @@ async function apiFetch(path, opts = {}) {
     headers: { 'Content-Type': 'application/json', ...(_token ? { Authorization: 'Bearer ' + _token } : {}) },
   };
   if (opts.body !== undefined) init.body = typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body);
-  const res = await fetch(API_BASE + path, init);
+  const estLecture = init.method === 'GET';
+
+  let res;
+  try {
+    res = await fetch(API_BASE + path, init);
+  } catch (erreurReseau) {
+    // fetch() ne lève cette exception qu'en cas d'échec réseau réel (pas de
+    // connexion, DNS, etc.) — jamais pour une erreur métier renvoyée par le
+    // serveur (celle-ci arrive normalement avec un res.ok=false plus bas).
+    if (estLecture) {
+      const cache = await offlineLireCache(path);
+      if (cache !== undefined) return cache;
+      throw new Error('Aucune donnée disponible hors ligne pour cette page. Connectez-vous au moins une fois pour la mettre en cache.');
+    }
+    const idTemp = offlineIdTemporaire();
+    await offlineAjouterFile({ method: init.method, path, body: init.body, description: opts.descriptionHorsLigne || path });
+    if (opts.miseAJourCacheHorsLigne) {
+      try { await opts.miseAJourCacheHorsLigne({ offlineLireCache, offlineSauverCache, idTemp }); }
+      catch (e) { console.warn('miseAJourCacheHorsLigne', e); }
+    }
+    if (typeof offlineMajIndicateur === 'function') offlineMajIndicateur();
+    return { id: idTemp, ...(opts.donneesOptimistes || {}), _hors_ligne: true };
+  }
+
   if (res.status === 401) { authLogout(); throw new Error('Session expirée'); }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((data.error || `Erreur ${res.status}`) + (data.detail ? '\n\n' + data.detail : ''));
+  if (estLecture && typeof offlineSauverCache === 'function') offlineSauverCache(path, data);
   return data;
 }
 
@@ -108,7 +132,17 @@ const apiDeleteEdt = (id)      => apiFetch(`/emploi-du-temps/${id}`, { method: '
 
 /* ── Absences ── */
 const apiGetAbsences    = (q='')    => apiFetch('/absences'+(q?'?'+q:''));
-const apiCreateAbsence  = (b)       => apiFetch('/absences', { method: 'POST', body: b });
+const apiCreateAbsence  = (b)       => apiFetch('/absences', {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `Absence/retard — ${b.date_abs || ''}`,
+  donneesOptimistes: { ...b, statut: 'a_synchroniser' },
+  miseAJourCacheHorsLigne: async ({ offlineLireCache, idTemp }) => {
+    await offlinePatcherVariantes('/absences', (liste) => {
+      if (!Array.isArray(liste)) return liste;
+      return [{ ...b, id: idTemp, _hors_ligne: true }, ...liste];
+    });
+  },
+});
 const apiUpdateAbsence  = (id,b)    => apiFetch(`/absences/${id}`, { method: 'PUT', body: b });
 const apiDeleteAbsence  = (id)      => apiFetch(`/absences/${id}`, { method: 'DELETE' });
 const apiStatsAbsences  = (id)      => apiFetch(`/absences/stats/${id}`);
@@ -220,7 +254,17 @@ const apiGetPaiements  = (q='')  => apiFetch('/paiements'+(q?'?'+q:''));
 const apiGenPaiements  = (b)     => apiFetch('/paiements/generer', { method: 'POST', body: b });
 const apiCreatePaiement= (b)     => apiFetch('/paiements', { method: 'POST', body: b });
 const apiDeletePaiement= (id)    => apiFetch(`/paiements/${id}`, { method: 'DELETE' });
-const apiVerserPaiement= (id,b)  => apiFetch(`/paiements/${id}/verser`, { method: 'POST', body: b });
+const apiVerserPaiement= (id,b)  => apiFetch(`/paiements/${id}/verser`, {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `Versement de ${b.montant||0} GNF`,
+  donneesOptimistes: { id },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/paiements', (liste) => {
+      if (!Array.isArray(liste)) return liste;
+      return liste.map(p => p.id === id ? { ...p, montant_paye: (p.montant_paye||0) + (parseFloat(b.montant)||0), _hors_ligne: true } : p);
+    });
+  },
+});
 const apiSoldePaiements= (id)    => apiFetch(`/paiements/solde/${id}`);
 const apiSoldesTous    = ()      => apiFetch('/paiements/soldes');
 const apiVersementsEleve= (id)   => apiFetch(`/versements/${id}`);

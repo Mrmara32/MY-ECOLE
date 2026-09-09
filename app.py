@@ -61,6 +61,15 @@ def create_app():
     def serve_js(filename):
         return send_from_directory(os.path.join(PUBLIC_DIR, 'js'), filename)
 
+    @app.route('/sw.js')
+    def serve_service_worker():
+        # Servi depuis la racine (et non /js/) pour que son "scope" par défaut
+        # couvre bien TOUTE l'application (nécessaire pour intercepter /, /css/…
+        # et pas seulement les fichiers sous /js/).
+        response = send_from_directory(PUBLIC_DIR, 'sw.js')
+        response.headers['Service-Worker-Allowed'] = '/'
+        return response
+
     # ── Page publique de candidature enseignant (accessible sans connexion) ──
     @app.route('/postuler.html')
     @app.route('/postuler')
