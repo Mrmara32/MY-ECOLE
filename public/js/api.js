@@ -226,8 +226,22 @@ const apiGetTransactions    = (q='')    => apiFetch('/transactions'+(q?'?'+q:'')
 /* ── Fournisseurs ── */
 const apiGetFournisseurs    = (q='')    => apiFetch('/fournisseurs'+(q?'?'+q:''));
 const apiGetFournisseur     = (id)      => apiFetch(`/fournisseurs/${id}`);
-const apiCreateFournisseur  = (d)       => apiFetch('/fournisseurs', { method:'POST', body:d });
-const apiUpdateFournisseur  = (id,d)    => apiFetch(`/fournisseurs/${id}`, { method:'PUT', body:d });
+const apiCreateFournisseur  = (d)       => apiFetch('/fournisseurs', {
+  method:'POST', body:d,
+  descriptionHorsLigne: `Nouveau fournisseur — ${d.nom||''}`,
+  donneesOptimistes: { ...d },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/fournisseurs', (liste) => Array.isArray(liste) ? [{ ...d, id: idTemp, _hors_ligne: true }, ...liste] : liste);
+  },
+});
+const apiUpdateFournisseur  = (id,d)    => apiFetch(`/fournisseurs/${id}`, {
+  method:'PUT', body:d,
+  descriptionHorsLigne: `Modification de fournisseur`,
+  donneesOptimistes: { id, ...d },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/fournisseurs', (liste) => Array.isArray(liste) ? liste.map(f => f.id === id ? { ...f, ...d, _hors_ligne: true } : f) : liste);
+  },
+});
 const apiDeleteFournisseur  = (id)      => apiFetch(`/fournisseurs/${id}`, { method:'DELETE' });
 
 // ── Logistique : Stock / Fournitures ──
@@ -372,15 +386,36 @@ const apiGetDashboard = () => apiFetch('/dashboard');
 
 /* ── Classes ── */
 const apiGetClassesFull = (q='') => apiFetch('/classes'+(q?'?'+q:''));
-const apiCreateClasse   = (b)    => apiFetch('/classes', { method: 'POST', body: b });
-const apiUpdateClasse   = (id,b) => apiFetch(`/classes/${id}`, { method: 'PUT', body: b });
+const apiCreateClasse   = (b)    => apiFetch('/classes', {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `Nouvelle classe — ${b.nom||''}`,
+  donneesOptimistes: { ...b },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/classes', (liste) => Array.isArray(liste) ? [{ ...b, id: idTemp, _hors_ligne: true }, ...liste] : liste);
+  },
+});
+const apiUpdateClasse   = (id,b) => apiFetch(`/classes/${id}`, {
+  method: 'PUT', body: b,
+  descriptionHorsLigne: `Modification de classe`,
+  donneesOptimistes: { id, ...b },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/classes', (liste) => Array.isArray(liste) ? liste.map(c => c.id === id ? { ...c, ...b, _hors_ligne: true } : c) : liste);
+  },
+});
 const apiDeleteClasse   = (id)   => apiFetch(`/classes/${id}`, { method: 'DELETE' });
 
 /* ── Approbation comptable ── */
 const apiTransactionsEnAttente = () => apiFetch('/transactions/en-attente');
 const apiApprouverTransaction  = (id)   => apiFetch(`/transactions/${id}/approuver`, { method: 'PUT' });
 const apiRejeterTransaction    = (id,b) => apiFetch(`/transactions/${id}/rejeter`, { method: 'PUT', body: b });
-const apiUpdateTransaction     = (id,b) => apiFetch(`/transactions/${id}`, { method: 'PUT', body: b });
+const apiUpdateTransaction     = (id,b) => apiFetch(`/transactions/${id}`, {
+  method: 'PUT', body: b,
+  descriptionHorsLigne: `Modification d'une transaction`,
+  donneesOptimistes: { id, ...b },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/transactions', (liste) => Array.isArray(liste) ? liste.map(t => t.id === id ? { ...t, ...b, _hors_ligne: true } : t) : liste);
+  },
+});
 const apiUpdateSeuils          = (b)    => apiFetch('/settings/seuils-approbation', { method: 'PUT', body: b });
 
 /* ── Journal d'audit ── */
@@ -419,14 +454,38 @@ const apiDeleteEleveDuMois    = (id) => apiFetch(`/eleve-du-mois/${id}`, { metho
 
 /* ── Salles ── */
 const apiGetSalles    = (q='') => apiFetch('/salles'+(q?'?'+q:''));
-const apiCreateSalle  = (b)    => apiFetch('/salles', { method: 'POST', body: b });
-const apiUpdateSalle  = (id,b) => apiFetch(`/salles/${id}`, { method: 'PUT', body: b });
+const apiCreateSalle  = (b)    => apiFetch('/salles', {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `Nouvelle salle — ${b.nom||''}`,
+  donneesOptimistes: { ...b },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    await offlinePatcherVariantes('/salles', (liste) => Array.isArray(liste) ? [{ ...b, id: idTemp, _hors_ligne: true }, ...liste] : liste);
+  },
+});
+const apiUpdateSalle  = (id,b) => apiFetch(`/salles/${id}`, {
+  method: 'PUT', body: b,
+  descriptionHorsLigne: `Modification de salle`,
+  donneesOptimistes: { id, ...b },
+  miseAJourCacheHorsLigne: async () => {
+    await offlinePatcherVariantes('/salles', (liste) => Array.isArray(liste) ? liste.map(s => s.id === id ? { ...s, ...b, _hors_ligne: true } : s) : liste);
+  },
+});
 const apiDeleteSalle  = (id)   => apiFetch(`/salles/${id}`, { method: 'DELETE' });
 
 /* ── Paie / bulletins de salaire ── */
 const apiCalculPaie      = (personnelId, mois) => apiFetch(`/paie/calcul/${personnelId}?mois=${mois}`);
 const apiListePaie       = (mois) => apiFetch(`/paie/liste?mois=${mois}`);
-const apiGenererBulletin = (b)    => apiFetch('/paie/bulletins', { method: 'POST', body: b });
+const apiGenererBulletin = (b)    => apiFetch('/paie/bulletins', {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `Génération de bulletin de salaire`,
+  donneesOptimistes: { en_attente_generation: true },
+  // Volontairement PAS de mise à jour optimiste du cache ici : un bulletin de
+  // salaire résulte d'un calcul serveur complexe (primes, avances en cours,
+  // absences...) qu'on ne peut pas reproduire fidèlement côté client. Mieux
+  // vaut ne rien afficher tant que la vraie génération n'a pas eu lieu, plutôt
+  // que de risquer d'afficher un montant de salaire incorrect à un employé.
+  // L'action reste bien mise en file et sera générée dès la reconnexion.
+});
 const apiGetBulletins    = (q='') => apiFetch('/paie/bulletins'+(q?'?'+q:''));
 const apiGetBulletin     = (id)   => apiFetch(`/paie/bulletins/${id}`);
 const apiDeleteBulletin  = (id)   => apiFetch(`/paie/bulletins/${id}`, { method: 'DELETE' });
@@ -440,7 +499,19 @@ const apiDeleteTypePrime   = (id)   => apiFetch(`/paie/types-primes/${id}`, { me
 /* ── Avances sur salaire (plafond 40%) ── */
 const apiGetAvances        = (q='') => apiFetch('/paie/avances'+(q?'?'+q:''));
 const apiPlafondAvance     = (personnelId) => apiFetch(`/paie/avances/plafond/${personnelId}`);
-const apiCreateAvance      = (b)    => apiFetch('/paie/avances', { method: 'POST', body: b });
+const apiCreateAvance      = (b)    => apiFetch('/paie/avances', {
+  method: 'POST', body: b,
+  descriptionHorsLigne: `Avance sur salaire — ${b.montant||0} GNF`,
+  donneesOptimistes: { ...b, statut: 'en_cours' },
+  miseAJourCacheHorsLigne: async ({ idTemp }) => {
+    // Remarque : le serveur applique un plafond (calculé à partir du salaire de
+    // référence et des avances déjà en cours) que l'on ne peut pas vérifier de
+    // façon fiable hors ligne. Si le plafond est dépassé, la synchronisation
+    // rejettera proprement l'avance et préviendra l'utilisateur — elle n'est
+    // jamais validée silencieusement à tort.
+    await offlinePatcherVariantes('/paie/avances', (liste) => Array.isArray(liste) ? [{ ...b, id: idTemp, statut: 'en_cours', _hors_ligne: true }, ...liste] : liste);
+  },
+});
 const apiAnnulerAvance     = (id)   => apiFetch(`/paie/avances/${id}/annuler`, { method: 'PUT' });
 
 /* ── Validation de la masse salariale (comptable → directeur → admin) ── */
