@@ -7,6 +7,7 @@ from datetime import datetime
 
 from database import db, gen_id, rows_to_list, row_to_dict, log_action
 from auth import require_auth, require_role
+from offline_sync import idempotent
 
 bp = Blueprint('logistique_routes', __name__, url_prefix='/api')
 
@@ -106,6 +107,7 @@ def list_stock_mouvements():
 @bp.route('/stock/mouvements', methods=['POST'])
 @require_auth
 @require_role(*LOG_ROLES)
+@idempotent('create_stock_mouvement')
 def create_stock_mouvement():
     body = request.get_json(silent=True) or {}
     produit_id = body.get('produit_id')
@@ -186,6 +188,7 @@ def get_commande(c_id):
 @bp.route('/commandes', methods=['POST'])
 @require_auth
 @require_role(*ACHAT_ROLES)
+@idempotent('create_commande')
 def create_commande():
     body = request.get_json(silent=True) or {}
     lignes = body.get('lignes') or []
@@ -245,6 +248,7 @@ def update_commande(c_id):
 @bp.route('/commandes/<c_id>/receptionner', methods=['POST'])
 @require_auth
 @require_role(*ACHAT_ROLES)
+@idempotent('receptionner_commande')
 def receptionner_commande(c_id):
     """Marque la commande comme reçue et incrémente automatiquement le stock
     pour chaque ligne reliée à un produit de l'inventaire."""
@@ -313,6 +317,7 @@ def list_maintenance():
 @bp.route('/maintenance', methods=['POST'])
 @require_auth
 @require_role(*LOG_ROLES)
+@idempotent('create_maintenance')
 def create_maintenance():
     body = request.get_json(silent=True) or {}
     titre = (body.get('titre') or '').strip()
@@ -390,6 +395,7 @@ def list_vehicules():
 @bp.route('/transport/vehicules', methods=['POST'])
 @require_auth
 @require_role(*LOG_ROLES)
+@idempotent('create_vehicule')
 def create_vehicule():
     body = request.get_json(silent=True) or {}
     immat = (body.get('immatriculation') or '').strip()
@@ -460,6 +466,7 @@ def list_itineraires():
 @bp.route('/transport/itineraires', methods=['POST'])
 @require_auth
 @require_role(*LOG_ROLES)
+@idempotent('create_itineraire')
 def create_itineraire():
     body = request.get_json(silent=True) or {}
     nom = (body.get('nom') or '').strip()
@@ -520,6 +527,7 @@ def list_transport_eleves():
 @bp.route('/transport/eleves', methods=['POST'])
 @require_auth
 @require_role(*LOG_ROLES)
+@idempotent('assign_transport_eleve')
 def assign_transport_eleve():
     body = request.get_json(silent=True) or {}
     eleve_id, itineraire_id = body.get('eleve_id'), body.get('itineraire_id')

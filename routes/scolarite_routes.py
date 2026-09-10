@@ -5,6 +5,8 @@ from flask import Blueprint, request, jsonify, g, current_app
 
 from database import db, gen_id, rows_to_list, row_to_dict, log_action, get_classes_enseignant, next_matricule_personnel, matricule_lock
 from auth import require_auth, require_role
+from permissions import require_permission
+from offline_sync import idempotent
 
 bp = Blueprint('scolarite_routes', __name__, url_prefix='/api')
 
@@ -53,6 +55,7 @@ def list_notes():
 @bp.route('/notes', methods=['POST'])
 @require_auth
 @require_role('admin', 'directeur', 'enseignant')
+@idempotent('create_note')
 def create_note():
     body = request.get_json(silent=True) or {}
     eleve_id, matiere, trimestre = body.get('eleve_id'), body.get('matiere'), body.get('trimestre')
@@ -192,6 +195,7 @@ def list_edt():
 @bp.route('/emploi-du-temps', methods=['POST'])
 @require_auth
 @require_role('admin', 'directeur')
+@idempotent('create_edt')
 def create_edt():
     body = request.get_json(silent=True) or {}
     jour, creneau, classe = body.get('jour'), body.get('creneau'), body.get('classe')
@@ -301,6 +305,7 @@ def stats_absences(eleve_id):
 @bp.route('/absences', methods=['POST'])
 @require_auth
 @require_role('admin', 'directeur', 'enseignant', 'secretaire')
+@idempotent('create_absence')
 def create_absence():
     body = request.get_json(silent=True) or {}
     eleve_id, date_abs = body.get('eleve_id'), body.get('date_abs')
@@ -371,6 +376,7 @@ def list_reinscriptions():
 @bp.route('/reinscriptions', methods=['POST'])
 @require_auth
 @require_role('admin', 'directeur', 'secretaire')
+@idempotent('create_reinscription')
 def create_reinscription():
     body = request.get_json(silent=True) or {}
     eleve_id, annee_scolaire = body.get('eleve_id'), body.get('annee_scolaire')
@@ -396,6 +402,7 @@ def create_reinscription():
 @bp.route('/reinscriptions/<r_id>/valider', methods=['PUT'])
 @require_auth
 @require_role('admin', 'directeur')
+@idempotent('valider_reinscription')
 def valider_reinscription(r_id):
     body = request.get_json(silent=True) or {}
     r = db.execute("SELECT * FROM reinscriptions WHERE id=? AND ecole_id=?", (r_id, g.user['ecole_id'])).fetchone()
@@ -452,6 +459,7 @@ def delete_reinscription(r_id):
 # ─────────────────────────────────────────────────────────────
 @bp.route('/personnel', methods=['GET'])
 @require_auth
+@require_permission('personnel', 'peut_voir')
 def list_personnel():
     mois = request.args.get('mois') or __import__('datetime').datetime.now().strftime('%Y-%m')
     rows = db.execute("SELECT * FROM personnel WHERE ecole_id=? ORDER BY nom, prenom", (g.user['ecole_id'],)).fetchall()
@@ -471,6 +479,8 @@ def list_personnel():
 @bp.route('/personnel', methods=['POST'])
 @require_auth
 @require_role('admin', 'directeur', 'secretaire', 'comptable')
+@require_permission('personnel', 'peut_creer')
+@idempotent('create_personnel')
 def create_personnel():
     body = request.get_json(silent=True) or {}
     pid = gen_id('p')
@@ -513,6 +523,7 @@ def create_personnel():
 @bp.route('/personnel/<p_id>', methods=['PUT'])
 @require_auth
 @require_role('admin', 'directeur', 'secretaire', 'comptable')
+@require_permission('personnel', 'peut_modifier')
 def update_personnel(p_id):
     body = request.get_json(silent=True) or {}
     db.execute(
@@ -537,6 +548,7 @@ def update_personnel(p_id):
 @bp.route('/personnel/<p_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin', 'directeur', 'secretaire')
+@require_permission('personnel', 'peut_supprimer')
 def delete_personnel(p_id):
     db.execute("DELETE FROM personnel WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id']))
     db.commit()
@@ -813,6 +825,7 @@ def absences_personnel_aujourdhui():
 @bp.route('/absences-personnel', methods=['POST'])
 @require_auth
 @require_role('admin', 'directeur', 'secretaire')
+@idempotent('signaler_absence_personnel')
 def signaler_absence_personnel():
     body = request.get_json(silent=True) or {}
     personnel_id, date_debut = body.get('personnel_id'), body.get('date_debut')

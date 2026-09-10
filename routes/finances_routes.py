@@ -4,6 +4,8 @@ from flask import Blueprint, request, jsonify, g
 
 from database import db, gen_id, rows_to_list, row_to_dict, log_action, get_settings
 from auth import require_auth, require_role
+from permissions import require_permission
+from offline_sync import idempotent
 
 bp = Blueprint('finances_routes', __name__, url_prefix='/api')
 
@@ -72,6 +74,7 @@ def generer_transactions_recurrentes_dues(ecole_id):
 
 @bp.route('/transactions', methods=['GET'])
 @require_auth
+@require_permission('comptabilite', 'peut_voir')
 def list_transactions():
     generer_transactions_recurrentes_dues(g.user['ecole_id'])
     type_ = request.args.get('type')
@@ -287,6 +290,8 @@ def transactions_en_attente():
 @bp.route('/transactions', methods=['POST'])
 @require_auth
 @require_role(*FIN_CREATE_ROLES)
+@require_permission('comptabilite', 'peut_creer')
+@idempotent('create_transaction')
 def create_transaction():
     body = request.get_json(silent=True) or {}
     type_, date_op = body.get('type'), body.get('date_op')
@@ -373,6 +378,7 @@ def rejeter_transaction(t_id):
 @bp.route('/transactions/<t_id>', methods=['PUT'])
 @require_auth
 @require_role('admin')
+@require_permission('comptabilite', 'peut_modifier')
 def update_transaction(t_id):
     """Toute modification d'une transaction existante est réservée à l'administrateur (point 3)."""
     body = request.get_json(silent=True) or {}
@@ -395,6 +401,7 @@ def update_transaction(t_id):
 @bp.route('/transactions/<t_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin')
+@require_permission('comptabilite', 'peut_supprimer')
 def delete_transaction(t_id):
     existing = db.execute("SELECT * FROM transactions WHERE id=? AND ecole_id=?", (t_id, g.user['ecole_id'])).fetchone()
     if not existing:
@@ -607,6 +614,7 @@ def delete_paiement(p_id):
 @bp.route('/paiements/<p_id>/verser', methods=['POST'])
 @require_auth
 @require_role(*FIN_CREATE_ROLES)
+@idempotent('verser_paiement')
 def verser_paiement(p_id):
     body = request.get_json(silent=True) or {}
     try:
@@ -727,6 +735,7 @@ def list_menus():
 @bp.route('/cantine/menus', methods=['POST'])
 @require_auth
 @require_role(*FIN_ROLES)
+@idempotent('create_menu')
 def create_menu():
     body = request.get_json(silent=True) or {}
     if not body.get('date_menu'):
@@ -791,6 +800,7 @@ def list_abonnements():
 @bp.route('/cantine/abonnements', methods=['POST'])
 @require_auth
 @require_role(*FIN_ROLES)
+@idempotent('create_abonnement')
 def create_abonnement():
     body = request.get_json(silent=True) or {}
     eleve_id, mois = body.get('eleve_id'), body.get('mois')
@@ -829,6 +839,7 @@ def update_abonnement(a_id):
 @bp.route('/cantine/abonnements/<a_id>/payer', methods=['POST'])
 @require_auth
 @require_role(*FIN_CREATE_ROLES)
+@idempotent('payer_abonnement')
 def payer_abonnement(a_id):
     body = request.get_json(silent=True) or {}
     abo = db.execute(

@@ -25,7 +25,22 @@ async function apiFetch(path, opts = {}) {
       throw new Error('Aucune donnée disponible hors ligne pour cette page. Connectez-vous au moins une fois pour la mettre en cache.');
     }
     const idTemp = offlineIdTemporaire();
-    await offlineAjouterFile({ method: init.method, path, body: init.body, description: opts.descriptionHorsLigne || path });
+    // Génère une clé d'idempotence unique et l'injecte dans le corps AVANT de le
+    // mettre en file : elle sera ainsi renvoyée à l'identique à chaque tentative
+    // de synchronisation (même si la file est rejouée plusieurs fois), ce qui
+    // permet au serveur (@idempotent) de détecter et ignorer un doublon si une
+    // première tentative avait en réalité déjà réussi.
+    let bodyAvecCle = init.body;
+    if (init.method !== 'GET' && bodyAvecCle) {
+      try {
+        const corpsAnalyse = JSON.parse(bodyAvecCle);
+        if (!corpsAnalyse.client_op_id) {
+          corpsAnalyse.client_op_id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : idTemp;
+        }
+        bodyAvecCle = JSON.stringify(corpsAnalyse);
+      } catch (_) { /* corps non-JSON : laissé tel quel, pas de clé d'idempotence possible */ }
+    }
+    await offlineAjouterFile({ method: init.method, path, body: bodyAvecCle, description: opts.descriptionHorsLigne || path });
     if (opts.miseAJourCacheHorsLigne) {
       try { await opts.miseAJourCacheHorsLigne({ offlineLireCache, offlineSauverCache, idTemp }); }
       catch (e) { console.warn('miseAJourCacheHorsLigne', e); }
@@ -90,6 +105,9 @@ const apiSaveSettings = (b) => apiFetch('/settings', { method: 'PUT', body: b })
 
 /* ── Users ── */
 const apiGetUsers    = ()     => apiFetch('/users');
+const apiGetPermissionsModules = () => apiFetch('/permissions/modules');
+const apiGetPermissionsUtilisateur = (id) => apiFetch(`/permissions/utilisateur/${id}`);
+const apiDefinirPermissions = (id, permissions) => apiFetch(`/permissions/utilisateur/${id}`, { method:'PUT', body:{ permissions } });
 const apiCreateUser  = (b)    => apiFetch('/users', { method: 'POST', body: b });
 const apiUpdateUser  = (id,b) => apiFetch(`/users/${id}`, { method: 'PUT', body: b });
 const apiDeleteUser  = (id)   => apiFetch(`/users/${id}`, { method: 'DELETE' });

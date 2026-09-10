@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify, g
 
 from database import db, gen_id, rows_to_list, row_to_dict, log_action
 from auth import require_auth, require_role
+from offline_sync import idempotent
 
 bp = Blueprint('paie_routes', __name__, url_prefix='/api/paie')
 
@@ -353,6 +354,7 @@ def plafond_avance(personnel_id):
 @bp.route('/avances', methods=['POST'])
 @require_auth
 @require_role('admin', 'comptable')
+@idempotent('create_avance')
 def create_avance():
     body = request.get_json(silent=True) or {}
     personnel_id = body.get('personnel_id')
@@ -427,6 +429,7 @@ def annuler_avance(a_id):
 @bp.route('/bulletins', methods=['POST'])
 @require_auth
 @require_role(*PAIE_ROLES)
+@idempotent('generer_bulletin')
 def generer_bulletin():
     body = request.get_json(silent=True) or {}
     personnel_id = body.get('personnel_id')

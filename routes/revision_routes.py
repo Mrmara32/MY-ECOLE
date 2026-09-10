@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify, g
 
 from database import db, gen_id, rows_to_list, row_to_dict, log_action
 from auth import require_auth, require_role
+from offline_sync import idempotent
 
 bp = Blueprint('revision_routes', __name__, url_prefix='/api/cours-revision')
 
@@ -79,6 +80,7 @@ def get_cours(c_id):
 @bp.route('', methods=['POST'])
 @require_auth
 @require_role(*GESTION_SANS_ENSEIGNANT)
+@idempotent('create_cours_revision')
 def create_cours():
     body = request.get_json(silent=True) or {}
     titre = body.get('titre')
@@ -206,6 +208,7 @@ def delete_participant(p_id):
 @bp.route('/participants/<p_id>/payer', methods=['POST'])
 @require_auth
 @require_role('admin', 'comptable')
+@idempotent('payer_participant')
 def payer_participant(p_id):
     body = request.get_json(silent=True) or {}
     try:
@@ -367,6 +370,7 @@ def list_seances(c_id):
 @bp.route('/<c_id>/seances', methods=['POST'])
 @require_auth
 @require_role(*GESTION_SANS_ENSEIGNANT)
+@idempotent('enregistrer_seance')
 def enregistrer_seance(c_id):
     body = request.get_json(silent=True) or {}
     personnel_id = body.get('personnel_id')
@@ -450,6 +454,7 @@ def calculer_redistribution():
 @bp.route('/redistribution/verser', methods=['POST'])
 @require_auth
 @require_role('admin', 'directeur', 'comptable')
+@idempotent('verser_redistribution')
 def verser_redistribution():
     """Marque la redistribution du mois comme versée pour un enseignant donné :
     crée la transaction de dépense correspondante et marque les séances comme redistribuées."""

@@ -780,6 +780,39 @@ CREATE INDEX IF NOT EXISTS idx_stockmvt_produit ON stock_mouvements(produit_id);
 CREATE INDEX IF NOT EXISTS idx_cmdlignes_cmd    ON commande_lignes(commande_id);
 CREATE INDEX IF NOT EXISTS idx_maint_statut     ON maintenance_interventions(statut);
 CREATE INDEX IF NOT EXISTS idx_transp_eleve     ON transport_eleves(eleve_id);
+
+-- Clés d'idempotence : protège contre le double-traitement d'une action rejouée
+-- par la synchronisation hors ligne (ex: la connexion tombe juste après un
+-- versement traité mais avant que la confirmation n'arrive au navigateur — sans
+-- cette protection, la resynchronisation encaisserait le même versement deux fois).
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+  client_op_id   TEXT PRIMARY KEY,
+  ecole_id       INTEGER NOT NULL,
+  endpoint       TEXT NOT NULL,
+  response_body  TEXT NOT NULL,
+  response_status INTEGER NOT NULL,
+  created_at     TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Permissions personnalisees par utilisateur, module par module. Ce systeme est
+-- ADDITIF : tant qu'aucune ligne n'existe pour un (utilisateur, module) donne,
+-- le comportement habituel base sur le role (@require_role) s'applique sans
+-- aucun changement. Des qu'une ligne existe, elle fait autorite pour ce module
+-- precis et cet utilisateur precis, independamment de son role. Un admin (ou
+-- super-administrateur) n'est jamais restreint par ce systeme.
+CREATE TABLE IF NOT EXISTS permissions_utilisateur (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  ecole_id       INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  module         TEXT NOT NULL,
+  peut_voir      INTEGER NOT NULL DEFAULT 1,
+  peut_creer     INTEGER NOT NULL DEFAULT 0,
+  peut_modifier  INTEGER NOT NULL DEFAULT 0,
+  peut_supprimer INTEGER NOT NULL DEFAULT 0,
+  modifie_par    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  modifie_le     TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, module)
+);
 """
 
 

@@ -16,6 +16,7 @@ async function pageUsers() {
             <td class="text-muted" style="font-size:12px">${u.last_login?fmtDate(u.last_login):'Jamais'}</td>
             <td><div class="td-actions">
               <button class="btn btn-outline btn-xs" onclick="modalEditUser(${u.id})">✏️</button>
+              ${u.role!=='admin'?`<button class="btn btn-outline btn-xs" onclick="modalPermissions(${u.id}, '${escJs(u.full_name)}')" title="Gérer les permissions par module">🔐</button>`:''}
               ${u.role==='parent'?`<button class="btn btn-outline btn-xs" onclick="modalEnfantsParent(${u.id}, '${escJs(u.full_name)}')" title="Gérer les enfants liés">👨‍👩‍👧</button>`:''}
               <button class="btn btn-outline btn-xs" onclick="modalResetPwd(${u.id}, '${escJs(u.username)}')">🔑</button>
               <button class="btn btn-danger btn-xs" onclick="deleteUser(${u.id})">🗑</button>
@@ -233,3 +234,77 @@ async function retirerEnfantParent(userId, eleveId, nomParent) {
   } catch(err) { toast(err.message, 'error'); }
 }
 window.retirerEnfantParent = retirerEnfantParent;
+
+/* ── Gestion des permissions personnalisées par module ── */
+async function modalPermissions(userId, nomComplet) {
+  openModal(`🔐 Permissions — ${esc(nomComplet)}`, `<div id="perm-body">${loadingHtml}</div>`, { wide: true });
+
+  const [modules, donnees] = await Promise.all([
+    apiGetPermissionsModules(),
+    apiGetPermissionsUtilisateur(userId),
+  ]);
+  const permissions = donnees.permissions;
+
+  $('#perm-body').innerHTML = `
+    <p class="text-muted" style="font-size:13px;margin-bottom:14px">
+      Par défaut, cet utilisateur suit les droits habituels de son rôle. Activez « Personnaliser »
+      sur un module pour définir précisément ce qu'il peut y faire, indépendamment de son rôle.
+    </p>
+    <table class="perm-table" style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="text-align:left;padding:8px">Module</th>
+        <th style="padding:8px">Personnaliser</th>
+        <th style="padding:8px">Voir</th>
+        <th style="padding:8px">Créer</th>
+        <th style="padding:8px">Modifier</th>
+        <th style="padding:8px">Supprimer</th>
+      </tr></thead>
+      <tbody>
+        ${modules.map(({ module, label }) => {
+          const custom = permissions[module]; // null si pas de personnalisation
+          const actif = !!custom;
+          const val = (action, defaut) => custom ? !!custom[action] : defaut;
+          return `<tr data-module="${module}" style="border-top:1px solid #E5E7EB">
+            <td style="padding:8px"><strong>${esc(label)}</strong></td>
+            <td style="text-align:center;padding:8px">
+              <input type="checkbox" class="perm-toggle" data-module="${module}" ${actif?'checked':''} onchange="permToggle(this)">
+            </td>
+            ${['peut_voir','peut_creer','peut_modifier','peut_supprimer'].map(action => `
+            <td style="text-align:center;padding:8px">
+              <input type="checkbox" class="perm-action" data-module="${module}" data-action="${action}"
+                ${val(action, action==='peut_voir')?'checked':''} ${actif?'':'disabled'}>
+            </td>`).join('')}
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    <div class="modal-footer" style="margin-top:16px">
+      <button type="button" class="btn btn-outline" onclick="closeModal()">Annuler</button>
+      <button type="button" class="btn btn-primary" onclick="enregistrerPermissions(${userId})">💾 Enregistrer</button>
+    </div>
+  `;
+}
+window.modalPermissions = modalPermissions;
+
+function permToggle(checkbox) {
+  const module = checkbox.dataset.module;
+  $$(`.perm-action[data-module="${module}"]`).forEach(c => c.disabled = !checkbox.checked);
+}
+window.permToggle = permToggle;
+
+async function enregistrerPermissions(userId) {
+  const permissions = {};
+  $$('.perm-toggle').forEach(toggle => {
+    const module = toggle.dataset.module;
+    if (!toggle.checked) { permissions[module] = null; return; }
+    const valeurs = {};
+    $$(`.perm-action[data-module="${module}"]`).forEach(c => { valeurs[c.dataset.action] = c.checked; });
+    permissions[module] = valeurs;
+  });
+  try {
+    await apiDefinirPermissions(userId, permissions);
+    toast('Permissions mises à jour', 'success');
+    closeModal();
+  } catch (err) { toast(err.message, 'error'); }
+}
+window.enregistrerPermissions = enregistrerPermissions;

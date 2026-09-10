@@ -2,6 +2,8 @@ from flask import Blueprint, request, jsonify, g
 
 from database import db, gen_id, rows_to_list, row_to_dict, log_action
 from auth import require_auth, require_role
+from permissions import require_permission
+from offline_sync import idempotent
 
 bp = Blueprint('fournisseurs_routes', __name__, url_prefix='/api/fournisseurs')
 
@@ -10,6 +12,7 @@ FIN_ROLES = ('admin', 'directeur', 'comptable')
 
 @bp.route('', methods=['GET'])
 @require_auth
+@require_permission('fournisseurs', 'peut_voir')
 def list_fournisseurs():
     actifs_only = request.args.get('actifs') == '1'
     q = request.args.get('q', '').strip()
@@ -38,6 +41,7 @@ def list_fournisseurs():
 
 @bp.route('/<f_id>', methods=['GET'])
 @require_auth
+@require_permission('fournisseurs', 'peut_voir')
 def get_fournisseur(f_id):
     row = db.execute("SELECT * FROM fournisseurs WHERE id=? AND ecole_id=?", (f_id, g.user['ecole_id'])).fetchone()
     if not row:
@@ -55,6 +59,8 @@ def get_fournisseur(f_id):
 @bp.route('', methods=['POST'])
 @require_auth
 @require_role(*FIN_ROLES)
+@require_permission('fournisseurs', 'peut_creer')
+@idempotent('create_fournisseur')
 def create_fournisseur():
     body = request.get_json(silent=True) or {}
     nom = (body.get('nom') or '').strip()
@@ -77,6 +83,7 @@ def create_fournisseur():
 @bp.route('/<f_id>', methods=['PUT'])
 @require_auth
 @require_role(*FIN_ROLES)
+@require_permission('fournisseurs', 'peut_modifier')
 def update_fournisseur(f_id):
     body = request.get_json(silent=True) or {}
     if not db.execute("SELECT id FROM fournisseurs WHERE id=? AND ecole_id=?", (f_id, g.user['ecole_id'])).fetchone():
@@ -99,6 +106,7 @@ def update_fournisseur(f_id):
 @bp.route('/<f_id>', methods=['DELETE'])
 @require_auth
 @require_role(*FIN_ROLES)
+@require_permission('fournisseurs', 'peut_supprimer')
 def delete_fournisseur(f_id):
     if not db.execute("SELECT id FROM fournisseurs WHERE id=? AND ecole_id=?", (f_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Introuvable'}), 404

@@ -5,6 +5,8 @@ from flask import Blueprint, request, jsonify, current_app, g
 
 from database import db, gen_id, rows_to_list, row_to_dict, log_action, get_classes_enseignant, matricule_lock, next_sequence, ecole_id_depuis_code
 from auth import require_auth, require_role
+from permissions import require_permission
+from offline_sync import idempotent
 
 bp = Blueprint('eleves_routes', __name__, url_prefix='/api/eleves')
 
@@ -26,6 +28,7 @@ def next_matricule():
 
 @bp.route('', methods=['GET'])
 @require_auth
+@require_permission('eleves', 'peut_voir')
 def list_eleves():
     classe = request.args.get('classe')
     statut = request.args.get('statut')
@@ -71,6 +74,7 @@ def meta_classes():
 
 @bp.route('/<eleve_id>', methods=['GET'])
 @require_auth
+@require_permission('eleves', 'peut_voir')
 def get_eleve(eleve_id):
     row = db.execute("SELECT * FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id'])).fetchone()
     if not row:
@@ -127,6 +131,8 @@ def preinscription_publique():
 
 @bp.route('', methods=['POST'])
 @require_auth
+@require_permission('eleves', 'peut_creer')
+@idempotent('create_eleve')
 def create_eleve():
     body = request.get_json(silent=True) or {}
     eid = gen_id('e')
@@ -216,6 +222,7 @@ def valider_preinscription(eleve_id):
 @bp.route('/<eleve_id>', methods=['PUT'])
 @require_auth
 @require_role('admin', 'directeur', 'secretaire', 'comptable')
+@require_permission('eleves', 'peut_modifier')
 def update_eleve(eleve_id):
     body = request.get_json(silent=True) or {}
     if not db.execute("SELECT id FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id'])).fetchone():
@@ -265,6 +272,7 @@ def upload_photo(eleve_id):
 @bp.route('/<eleve_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin', 'directeur', 'secretaire')
+@require_permission('eleves', 'peut_supprimer')
 def delete_eleve(eleve_id):
     existing = db.execute("SELECT * FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id'])).fetchone()
     if not existing:

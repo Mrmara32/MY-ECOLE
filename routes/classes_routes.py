@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, g
 
 from database import db, gen_id, rows_to_list, row_to_dict, log_action
 from auth import require_auth, require_role
+from offline_sync import idempotent
 
 bp = Blueprint('classes_routes', __name__, url_prefix='/api/classes')
 
@@ -22,6 +23,7 @@ def list_classes():
 @bp.route('', methods=['POST'])
 @require_auth
 @require_role('admin', 'directeur')
+@idempotent('create_classe')
 def create_classe():
     body = request.get_json(silent=True) or {}
     nom, cycle = body.get('nom'), body.get('cycle')
