@@ -1045,7 +1045,9 @@ async function pageReleves() {
         <div class="fg"><label>Année</label><input type="number" id="rel-annee-mois" value="${anneeCourante}"></div>
       </div>
       <div id="rel-periode-annee" class="fg" style="display:none">
-        <label>Année</label><input type="number" id="rel-annee" value="${anneeCourante}">
+        <label>Année scolaire</label>
+        <select id="rel-annee">${anneesScolairesOptions()}</select>
+        <div class="text-muted" style="font-size:11.5px;margin-top:4px">💡 Couvre toute l'année scolaire (ex : de septembre 2026 à juillet 2027), y compris les tranches à cheval sur deux années civiles.</div>
       </div>
       <div id="rel-periode-libre" class="form-2" style="display:none">
         <div class="fg"><label>Du</label><input type="date" id="rel-date-debut"></div>
@@ -1110,19 +1112,33 @@ function choisirTransactionReleve(id, description, date, montant) {
 }
 window.choisirTransactionReleve = choisirTransactionReleve;
 
+function anneesScolairesOptions() {
+  const maintenant = new Date();
+  const anneeDebutCourante = maintenant.getMonth() >= 8 ? maintenant.getFullYear() : maintenant.getFullYear() - 1; // rentrée en septembre (mois index 8)
+  const options = [];
+  for (let decalage = 1; decalage >= -2; decalage--) {
+    const debut = anneeDebutCourante + decalage;
+    options.push(`${debut}-${debut+1}`);
+  }
+  return options.map(a => `<option value="${a}" ${a === `${anneeDebutCourante}-${anneeDebutCourante+1}` ? 'selected' : ''}>${a}</option>`).join('');
+}
+
 function _periodeReleveActuelle() {
   const p = $('#rel-periode')?.value;
-  if (!p || p === 'tout') return { date_debut: '', date_fin: '' };
+  if (!p || p === 'tout') return { date_debut: '', date_fin: '', annee_scolaire: '' };
   if (p === 'mois') {
     const mois = parseInt($('#rel-mois').value), annee = parseInt($('#rel-annee-mois').value);
     const dernierJour = new Date(annee, mois, 0).getDate();
-    return { date_debut: `${annee}-${String(mois).padStart(2,'0')}-01`, date_fin: `${annee}-${String(mois).padStart(2,'0')}-${dernierJour}` };
+    return { date_debut: `${annee}-${String(mois).padStart(2,'0')}-01`, date_fin: `${annee}-${String(mois).padStart(2,'0')}-${dernierJour}`, annee_scolaire: '' };
   }
   if (p === 'annee') {
-    const annee = $('#rel-annee').value;
-    return { date_debut: `${annee}-01-01`, date_fin: `${annee}-12-31` };
+    const anneeScolaire = $('#rel-annee').value; // ex: "2026-2027"
+    const debut = parseInt(anneeScolaire.split('-')[0]);
+    // Date range de secours pour le relevé général (qui filtre par date réelle de
+    // transaction, sans notion d'année scolaire) : du 1er septembre au 31 août suivant.
+    return { date_debut: `${debut}-09-01`, date_fin: `${debut+1}-08-31`, annee_scolaire: anneeScolaire };
   }
-  return { date_debut: $('#rel-date-debut').value, date_fin: $('#rel-date-fin').value };
+  return { date_debut: $('#rel-date-debut').value, date_fin: $('#rel-date-fin').value, annee_scolaire: '' };
 }
 
 async function genererReleve() {
@@ -1137,14 +1153,16 @@ async function genererReleve() {
     return;
   }
 
-  const { date_debut, date_fin } = _periodeReleveActuelle();
+  const { date_debut, date_fin, annee_scolaire } = _periodeReleveActuelle();
 
   if (type === 'eleves') {
     const ids = $$('#rel-eleves option:checked').map(o => o.value);
     if (!ids.length) { toast('Sélectionnez au moins un élève', 'error'); return; }
     const params = { eleve_ids: ids.join(',') };
-    if (date_debut) params.date_debut = date_debut;
-    if (date_fin) params.date_fin = date_fin;
+    // Priorité à l'année scolaire (couvre les tranches à cheval sur deux années
+    // civiles) — sinon on retombe sur une plage de dates classique.
+    if (annee_scolaire) params.annee_scolaire = annee_scolaire;
+    else { if (date_debut) params.date_debut = date_debut; if (date_fin) params.date_fin = date_fin; }
     const data = await apiGetReleve(params);
     imprimerReleveEleves(data, settings);
     return;
@@ -1220,7 +1238,8 @@ function _piedSignaturesHtml(settings) {
     </div>`;
 }
 
-function _libellePeriode(dateDebut, dateFin) {
+function _libellePeriode(dateDebut, dateFin, anneeScolaire) {
+  if (anneeScolaire) return `Année scolaire ${anneeScolaire}`;
   if (!dateDebut && !dateFin) return 'Toute la période';
   return `Période du ${fmtDate(dateDebut)} au ${fmtDate(dateFin)}`;
 }
@@ -1254,7 +1273,7 @@ function imprimerReleveEleves(data, settings) {
   const nbEleves = data.resultats.length;
   const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Relevé élève(s)</title>
   <style>${RELEVE_DOC_STYLE}</style></head><body><div class="doc">
-    ${_enteteReleveHtml(settings, 'RELEVÉ DE COMPTE', `${nbEleves} élève${nbEleves>1?'s':''} — ${_libellePeriode(data.date_debut, data.date_fin)}`)}
+    ${_enteteReleveHtml(settings, 'RELEVÉ DE COMPTE', `${nbEleves} élève${nbEleves>1?'s':''} — ${_libellePeriode(data.date_debut, data.date_fin, data.annee_scolaire)}`)}
     ${blocs}
     ${_piedSignaturesHtml(settings)}
   </body></html>`;

@@ -1187,6 +1187,7 @@ def releve():
     eleve_ids = [e for e in (request.args.get('eleve_ids') or '').split(',') if e]
     date_debut = request.args.get('date_debut')
     date_fin = request.args.get('date_fin')
+    annee_scolaire = request.args.get('annee_scolaire')
 
     # ── Mode 1 : une transaction précise ──
     if transaction_id:
@@ -1215,7 +1216,15 @@ def releve():
             if not e:
                 continue
             sql, params = "SELECT * FROM paiements WHERE eleve_id=? AND ecole_id=?", [eid, ecole_id]
-            sql, params = _filtre_periode(sql, params, 'date_echeance')
+            if annee_scolaire:
+                # Filtre par année scolaire (ex: "2026-2027") plutôt que par date civile :
+                # une année scolaire déborde sur l'année civile suivante (ex: tranche de
+                # mars 2027 pour l'année scolaire 2026-2027), un filtre par date_debut/
+                # date_fin calé sur l'année civile l'exclurait à tort.
+                sql += " AND annee_scolaire=?"
+                params.append(annee_scolaire)
+            else:
+                sql, params = _filtre_periode(sql, params, 'date_echeance')
             sql += " ORDER BY date_echeance"
             paiements = rows_to_list(db.execute(sql, params).fetchall())
             for p in paiements:
@@ -1234,7 +1243,7 @@ def releve():
                 'eleve': row_to_dict(e), 'paiements': paiements, 'transactions': transactions,
                 'totaux': {'total_du': total_du, 'total_paye': total_paye, 'solde_restant': total_du - total_paye},
             })
-        return jsonify({'mode': 'eleves', 'date_debut': date_debut, 'date_fin': date_fin, 'resultats': resultats})
+        return jsonify({'mode': 'eleves', 'date_debut': date_debut, 'date_fin': date_fin, 'annee_scolaire': annee_scolaire, 'resultats': resultats})
 
     # ── Mode 3 : relevé général (toutes transactions de la période) ──
     sql, params = "SELECT * FROM transactions WHERE ecole_id=? AND statut_validation IN ('auto','valide')", [ecole_id]

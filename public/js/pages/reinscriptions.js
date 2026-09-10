@@ -1,10 +1,12 @@
 /* ===================== RÉINSCRIPTIONS ===================== */
 let _reinscEleves = [];
+let _reinscListe = [];
 async function pageReinscriptions() {
   $('#content').innerHTML = loadingHtml;
   try {
     const [reinscriptions, eleves] = await Promise.all([apiGetReinscriptions(), apiGetEleves()]);
     _reinscEleves = eleves;
+    _reinscListe = reinscriptions;
     const en_attente = reinscriptions.filter(r=>r.statut==='en_attente').length;
     let curr = reinscriptions;
 
@@ -67,6 +69,7 @@ async function pageReinscriptions() {
         let data = await apiGetReinscriptions(qs.join('&'));
         if (q) data = data.filter(r => `${r.nom} ${r.prenom} ${r.matricule||''}`.toLowerCase().includes(q));
         curr = data;
+        _reinscListe = data;
         resetPaginator('reinsc');
         render(curr);
       }
@@ -112,21 +115,50 @@ function modalReinscription() {
 }
 
 async function validerReinsc(id, statut) {
-  let classe_nouvelle = null;
   if (statut === 'validee') {
-    classe_nouvelle = prompt('Classe assignée pour la nouvelle année (laisser vide pour conserver) :');
-    if (classe_nouvelle === null) return;
+    modalValiderReinsc(id);
+    return;
   }
   try {
-    const r = await apiValiderReinscription(id, { statut, classe_nouvelle: classe_nouvelle || undefined });
-    if (statut === 'validee' && r.avertissement_paiement) {
-      toast(`Réinscription validée, mais paiement non généré : ${r.avertissement_paiement}`, 'warning');
-    } else {
-      toast(statut === 'validee' ? 'Réinscription validée ✅ (frais de réinscription générés)' : 'Réinscription refusée', statut === 'validee' ? 'success' : 'warning');
-    }
+    const r = await apiValiderReinscription(id, { statut });
+    toast(statut === 'refusee' ? 'Réinscription refusée' : 'Réinscription réinitialisée', 'warning');
     pageReinscriptions();
   } catch(e) { toast(e.message,'error'); }
 }
+
+function modalValiderReinsc(id) {
+  const r = _reinscListe.find(x => x.id === id);
+  if (!r) { toast('Introuvable', 'error'); return; }
+  const classeParDefaut = r.classe_nouvelle || r.classe_precedente || '';
+  openModal('Valider la réinscription', `
+    <div class="alert alert-info" style="margin-bottom:14px">
+      <strong>${esc(r.prenom)} ${esc(r.nom)}</strong> — actuellement en <strong>${esc(r.classe_precedente||'—')}</strong>
+    </div>
+    <form id="f-valider-reinsc" style="display:flex;flex-direction:column;gap:14px">
+      <div class="fg"><label>Classe pour la nouvelle année*</label>
+        <select name="classe_nouvelle" required>${optionsHtml(CLASSES, classeParDefaut)}</select>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal()">Annuler</button>
+        <button type="submit" class="btn btn-ok">✔ Valider la réinscription</button>
+      </div>
+    </form>`, { narrow: true });
+  $('#f-valider-reinsc').onsubmit = async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target));
+    try {
+      const res = await apiValiderReinscription(id, { statut: 'validee', classe_nouvelle: fd.classe_nouvelle });
+      closeModal();
+      if (res.avertissement_paiement) {
+        toast(`Réinscription validée, mais paiement non généré : ${res.avertissement_paiement}`, 'warning');
+      } else {
+        toast(`Réinscription validée ✅ — ${fd.classe_nouvelle}`, 'success');
+      }
+      pageReinscriptions();
+    } catch(err) { toast(err.message,'error'); }
+  };
+}
+window.modalValiderReinsc = modalValiderReinsc;
 
 async function delReinsc(id) {
   if (!confirmDel()) return;
