@@ -3,12 +3,14 @@ from flask import Blueprint, request, jsonify, g
 from database import db, gen_id, rows_to_list, row_to_dict, log_action
 from auth import require_auth, require_role
 from offline_sync import idempotent
+from permissions import require_permission
 
 bp = Blueprint('salles_routes', __name__, url_prefix='/api/salles')
 
 
 @bp.route('', methods=['GET'])
 @require_auth
+@require_permission('salles', 'peut_voir')
 def list_salles():
     actives_only = request.args.get('actives') != '0'
     sql = "SELECT * FROM salles WHERE ecole_id=?"
@@ -24,6 +26,7 @@ def list_salles():
 @require_auth
 @require_role('admin', 'directeur', 'secretaire')
 @idempotent('create_salle')
+@require_permission('salles', 'peut_creer')
 def create_salle():
     body = request.get_json(silent=True) or {}
     nom = body.get('nom')
@@ -43,6 +46,7 @@ def create_salle():
 @bp.route('/<s_id>', methods=['PUT'])
 @require_auth
 @require_role('admin', 'directeur', 'secretaire')
+@require_permission('salles', 'peut_modifier')
 def update_salle(s_id):
     body = request.get_json(silent=True) or {}
     if not db.execute("SELECT id FROM salles WHERE id=? AND ecole_id=?", (s_id, g.user['ecole_id'])).fetchone():
@@ -61,6 +65,7 @@ def update_salle(s_id):
 @bp.route('/<s_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin', 'directeur')
+@require_permission('salles', 'peut_supprimer')
 def delete_salle(s_id):
     if not db.execute("SELECT id FROM salles WHERE id=? AND ecole_id=?", (s_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Introuvable'}), 404

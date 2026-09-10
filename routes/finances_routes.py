@@ -721,6 +721,7 @@ def versements_eleve(eleve_id):
 # ─────────────────────────────────────────────────────────────
 @bp.route('/cantine/menus', methods=['GET'])
 @require_auth
+@require_permission('cantine', 'peut_voir')
 def list_menus():
     debut, fin = request.args.get('debut'), request.args.get('fin')
     sql = "SELECT * FROM cantine_menus WHERE ecole_id=?"
@@ -736,6 +737,7 @@ def list_menus():
 @require_auth
 @require_role(*FIN_ROLES)
 @idempotent('create_menu')
+@require_permission('cantine', 'peut_creer')
 def create_menu():
     body = request.get_json(silent=True) or {}
     if not body.get('date_menu'):
@@ -756,6 +758,7 @@ def create_menu():
 @bp.route('/cantine/menus/<m_id>', methods=['PUT'])
 @require_auth
 @require_role(*FIN_ROLES)
+@require_permission('cantine', 'peut_modifier')
 def update_menu(m_id):
     body = request.get_json(silent=True) or {}
     db.execute(
@@ -772,6 +775,7 @@ def update_menu(m_id):
 @bp.route('/cantine/menus/<m_id>', methods=['DELETE'])
 @require_auth
 @require_role(*FIN_ROLES)
+@require_permission('cantine', 'peut_supprimer')
 def delete_menu(m_id):
     db.execute("DELETE FROM cantine_menus WHERE id=? AND ecole_id=?", (m_id, g.user['ecole_id']))
     db.commit()
@@ -780,6 +784,7 @@ def delete_menu(m_id):
 
 @bp.route('/cantine/abonnements', methods=['GET'])
 @require_auth
+@require_permission('cantine', 'peut_voir')
 def list_abonnements():
     mois = request.args.get('mois')
     classe = request.args.get('classe')
@@ -801,6 +806,7 @@ def list_abonnements():
 @require_auth
 @require_role(*FIN_ROLES)
 @idempotent('create_abonnement')
+@require_permission('cantine', 'peut_creer')
 def create_abonnement():
     body = request.get_json(silent=True) or {}
     eleve_id, mois = body.get('eleve_id'), body.get('mois')
@@ -822,6 +828,7 @@ def create_abonnement():
 @bp.route('/cantine/abonnements/<a_id>', methods=['PUT'])
 @require_auth
 @require_role(*FIN_ROLES)
+@require_permission('cantine', 'peut_modifier')
 def update_abonnement(a_id):
     body = request.get_json(silent=True) or {}
     db.execute(
@@ -840,6 +847,7 @@ def update_abonnement(a_id):
 @require_auth
 @require_role(*FIN_CREATE_ROLES)
 @idempotent('payer_abonnement')
+@require_permission('cantine', 'peut_modifier')
 def payer_abonnement(a_id):
     body = request.get_json(silent=True) or {}
     abo = db.execute(
@@ -868,6 +876,7 @@ def payer_abonnement(a_id):
 @bp.route('/cantine/abonnements/<a_id>', methods=['DELETE'])
 @require_auth
 @require_role(*FIN_ROLES)
+@require_permission('cantine', 'peut_supprimer')
 def delete_abonnement(a_id):
     db.execute("DELETE FROM cantine_abonnements WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id']))
     db.commit()

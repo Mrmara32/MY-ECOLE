@@ -4,6 +4,7 @@ from flask import Blueprint, request, jsonify, g
 from database import db, gen_id, rows_to_list, row_to_dict, log_action
 from auth import require_auth, require_role
 from offline_sync import idempotent
+from permissions import require_permission
 
 bp = Blueprint('revision_routes', __name__, url_prefix='/api/cours-revision')
 
@@ -38,6 +39,7 @@ def _cours_with_stats(cours_id, ecole_id):
 # ─────────────────────────────────────────────────────────────
 @bp.route('', methods=['GET'])
 @require_auth
+@require_permission('revision', 'peut_voir')
 def list_cours():
     statut = request.args.get('statut')
     sql = "SELECT * FROM cours_revision WHERE ecole_id=?"
@@ -67,6 +69,7 @@ def list_cours():
 
 @bp.route('/<c_id>', methods=['GET'])
 @require_auth
+@require_permission('revision', 'peut_voir')
 def get_cours(c_id):
     c = _cours_with_stats(c_id, g.user['ecole_id'])
     if not c:
@@ -81,6 +84,7 @@ def get_cours(c_id):
 @require_auth
 @require_role(*GESTION_SANS_ENSEIGNANT)
 @idempotent('create_cours_revision')
+@require_permission('revision', 'peut_creer')
 def create_cours():
     body = request.get_json(silent=True) or {}
     titre = body.get('titre')
@@ -102,6 +106,7 @@ def create_cours():
 @bp.route('/<c_id>', methods=['PUT'])
 @require_auth
 @require_role(*GESTION_SANS_ENSEIGNANT)
+@require_permission('revision', 'peut_modifier')
 def update_cours(c_id):
     body = request.get_json(silent=True) or {}
     if not db.execute("SELECT id FROM cours_revision WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone():
@@ -125,6 +130,7 @@ def update_cours(c_id):
 @bp.route('/<c_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin', 'directeur')
+@require_permission('revision', 'peut_supprimer')
 def delete_cours(c_id):
     c = db.execute("SELECT * FROM cours_revision WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone()
     if not c:
@@ -140,6 +146,7 @@ def delete_cours(c_id):
 # ─────────────────────────────────────────────────────────────
 @bp.route('/<c_id>/participants', methods=['GET'])
 @require_auth
+@require_permission('revision', 'peut_voir')
 def list_participants(c_id):
     if not db.execute("SELECT id FROM cours_revision WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Cours introuvable'}), 404
@@ -154,6 +161,7 @@ def list_participants(c_id):
 @bp.route('/<c_id>/participants', methods=['POST'])
 @require_auth
 @require_role(*GESTION_ROLES)
+@require_permission('revision', 'peut_creer')
 def add_participant(c_id):
     body = request.get_json(silent=True) or {}
     cours = db.execute("SELECT * FROM cours_revision WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone()
@@ -199,6 +207,7 @@ def add_participant(c_id):
 @bp.route('/participants/<p_id>', methods=['DELETE'])
 @require_auth
 @require_role(*GESTION_SANS_ENSEIGNANT)
+@require_permission('revision', 'peut_supprimer')
 def delete_participant(p_id):
     db.execute("DELETE FROM revision_participants WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id']))
     db.commit()
@@ -209,6 +218,7 @@ def delete_participant(p_id):
 @require_auth
 @require_role('admin', 'comptable')
 @idempotent('payer_participant')
+@require_permission('revision', 'peut_modifier')
 def payer_participant(p_id):
     body = request.get_json(silent=True) or {}
     try:
@@ -255,6 +265,7 @@ def payer_participant(p_id):
 # ─────────────────────────────────────────────────────────────
 @bp.route('/participants/<p_id>/evaluations', methods=['GET'])
 @require_auth
+@require_permission('revision', 'peut_voir')
 def list_evaluations(p_id):
     if not db.execute("SELECT id FROM revision_participants WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Participant introuvable'}), 404
@@ -269,6 +280,7 @@ def list_evaluations(p_id):
 @bp.route('/participants/<p_id>/evaluations', methods=['POST'])
 @require_auth
 @require_role('admin', 'directeur', 'enseignant')
+@require_permission('revision', 'peut_creer')
 def create_evaluation(p_id):
     body = request.get_json(silent=True) or {}
     p = db.execute("SELECT * FROM revision_participants WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id'])).fetchone()
@@ -291,6 +303,7 @@ def create_evaluation(p_id):
 @bp.route('/evaluations/<e_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin', 'directeur', 'enseignant')
+@require_permission('revision', 'peut_supprimer')
 def delete_evaluation(e_id):
     db.execute("DELETE FROM revision_evaluations WHERE id=? AND ecole_id=?", (e_id, g.user['ecole_id']))
     db.commit()
@@ -302,6 +315,7 @@ def delete_evaluation(e_id):
 # ─────────────────────────────────────────────────────────────
 @bp.route('/<c_id>/enseignants', methods=['GET'])
 @require_auth
+@require_permission('revision', 'peut_voir')
 def list_enseignants_cours(c_id):
     if not db.execute("SELECT id FROM cours_revision WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Cours introuvable'}), 404
@@ -315,6 +329,7 @@ def list_enseignants_cours(c_id):
 @bp.route('/<c_id>/enseignants', methods=['POST'])
 @require_auth
 @require_role(*GESTION_SANS_ENSEIGNANT)
+@require_permission('revision', 'peut_creer')
 def assigner_enseignant(c_id):
     body = request.get_json(silent=True) or {}
     personnel_id = body.get('personnel_id')
@@ -346,6 +361,7 @@ def assigner_enseignant(c_id):
 @bp.route('/enseignants/<ce_id>', methods=['DELETE'])
 @require_auth
 @require_role(*GESTION_SANS_ENSEIGNANT)
+@require_permission('revision', 'peut_supprimer')
 def retirer_enseignant(ce_id):
     db.execute("DELETE FROM cours_revision_enseignants WHERE id=? AND ecole_id=?", (ce_id, g.user['ecole_id']))
     db.commit()
@@ -357,6 +373,7 @@ def retirer_enseignant(ce_id):
 # ─────────────────────────────────────────────────────────────
 @bp.route('/<c_id>/seances', methods=['GET'])
 @require_auth
+@require_permission('revision', 'peut_voir')
 def list_seances(c_id):
     if not db.execute("SELECT id FROM cours_revision WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Cours introuvable'}), 404
@@ -371,6 +388,7 @@ def list_seances(c_id):
 @require_auth
 @require_role(*GESTION_SANS_ENSEIGNANT)
 @idempotent('enregistrer_seance')
+@require_permission('revision', 'peut_creer')
 def enregistrer_seance(c_id):
     body = request.get_json(silent=True) or {}
     personnel_id = body.get('personnel_id')
@@ -399,6 +417,7 @@ def enregistrer_seance(c_id):
 @bp.route('/seances/<s_id>', methods=['DELETE'])
 @require_auth
 @require_role(*GESTION_SANS_ENSEIGNANT)
+@require_permission('revision', 'peut_supprimer')
 def delete_seance(s_id):
     db.execute("DELETE FROM revision_seances WHERE id=? AND ecole_id=?", (s_id, g.user['ecole_id']))
     db.commit()
@@ -455,6 +474,7 @@ def calculer_redistribution():
 @require_auth
 @require_role('admin', 'directeur', 'comptable')
 @idempotent('verser_redistribution')
+@require_permission('revision', 'peut_modifier')
 def verser_redistribution():
     """Marque la redistribution du mois comme versée pour un enseignant donné :
     crée la transaction de dépense correspondante et marque les séances comme redistribuées."""

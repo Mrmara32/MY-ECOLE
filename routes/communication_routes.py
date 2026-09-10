@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, g
 
 from database import db, gen_id, rows_to_list, row_to_dict
 from auth import require_auth, require_role
+from permissions import require_permission
 
 bp = Blueprint('communication_routes', __name__, url_prefix='/api')
 
@@ -11,6 +12,7 @@ bp = Blueprint('communication_routes', __name__, url_prefix='/api')
 # ─────────────────────────────────────────────────────────────
 @bp.route('/annonces', methods=['GET'])
 @require_auth
+@require_permission('communication', 'peut_voir')
 def list_annonces():
     rows = db.execute(
         "SELECT a.*, u.full_name as auteur_nom FROM annonces a LEFT JOIN users u ON u.id=a.auteur_id "
@@ -22,6 +24,7 @@ def list_annonces():
 @bp.route('/annonces', methods=['POST'])
 @require_auth
 @require_role('admin', 'directeur', 'secretaire', 'charge_communication')
+@require_permission('communication', 'peut_creer')
 def create_annonce():
     body = request.get_json(silent=True) or {}
     titre, contenu = body.get('titre'), body.get('contenu')
@@ -43,6 +46,7 @@ def create_annonce():
 @bp.route('/annonces/<a_id>', methods=['PUT'])
 @require_auth
 @require_role('admin', 'directeur', 'secretaire', 'charge_communication')
+@require_permission('communication', 'peut_modifier')
 def update_annonce(a_id):
     body = request.get_json(silent=True) or {}
     a = db.execute("SELECT * FROM annonces WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id'])).fetchone()
@@ -62,6 +66,7 @@ def update_annonce(a_id):
 @bp.route('/annonces/<a_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin', 'directeur', 'secretaire', 'charge_communication')
+@require_permission('communication', 'peut_supprimer')
 def delete_annonce(a_id):
     a = db.execute("SELECT * FROM annonces WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id'])).fetchone()
     if not a:
@@ -78,6 +83,7 @@ def delete_annonce(a_id):
 # ─────────────────────────────────────────────────────────────
 @bp.route('/messages', methods=['GET'])
 @require_auth
+@require_permission('communication', 'peut_voir')
 def list_messages():
     destinataire_type = request.args.get('destinataire_type')
     destinataire_id = request.args.get('destinataire_id')
@@ -93,6 +99,7 @@ def list_messages():
 @bp.route('/messages', methods=['POST'])
 @require_auth
 @require_role('admin', 'directeur', 'secretaire', 'charge_communication')
+@require_permission('communication', 'peut_creer')
 def create_message():
     body = request.get_json(silent=True) or {}
     destinataire_type, contenu = body.get('destinataire_type'), body.get('contenu')
@@ -114,6 +121,7 @@ def create_message():
 @bp.route('/messages/<m_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin', 'directeur', 'secretaire', 'charge_communication')
+@require_permission('communication', 'peut_supprimer')
 def delete_message(m_id):
     db.execute("DELETE FROM messages WHERE id=? AND ecole_id=?", (m_id, g.user['ecole_id']))
     db.commit()

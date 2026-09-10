@@ -3,12 +3,14 @@ from flask import Blueprint, request, jsonify, g
 from database import db, gen_id, rows_to_list, row_to_dict, log_action
 from auth import require_auth, require_role
 from offline_sync import idempotent
+from permissions import require_permission
 
 bp = Blueprint('classes_routes', __name__, url_prefix='/api/classes')
 
 
 @bp.route('', methods=['GET'])
 @require_auth
+@require_permission('classes', 'peut_voir')
 def list_classes():
     actives_only = request.args.get('actives') != '0'
     sql = "SELECT * FROM classes WHERE ecole_id=?"
@@ -24,6 +26,7 @@ def list_classes():
 @require_auth
 @require_role('admin', 'directeur')
 @idempotent('create_classe')
+@require_permission('classes', 'peut_creer')
 def create_classe():
     body = request.get_json(silent=True) or {}
     nom, cycle = body.get('nom'), body.get('cycle')
@@ -46,6 +49,7 @@ def create_classe():
 @bp.route('/<c_id>', methods=['PUT'])
 @require_auth
 @require_role('admin', 'directeur')
+@require_permission('classes', 'peut_modifier')
 def update_classe(c_id):
     body = request.get_json(silent=True) or {}
     existing = db.execute("SELECT * FROM classes WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone()
@@ -72,6 +76,7 @@ def update_classe(c_id):
 @bp.route('/<c_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin', 'directeur')
+@require_permission('classes', 'peut_supprimer')
 def delete_classe(c_id):
     existing = db.execute("SELECT * FROM classes WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone()
     if not existing:

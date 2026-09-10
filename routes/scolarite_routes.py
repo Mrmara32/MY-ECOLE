@@ -15,6 +15,7 @@ bp = Blueprint('scolarite_routes', __name__, url_prefix='/api')
 # ─────────────────────────────────────────────────────────────
 @bp.route('/notes', methods=['GET'])
 @require_auth
+@require_permission('notes', 'peut_voir')
 def list_notes():
     eleve_id = request.args.get('eleve_id')
     classe = request.args.get('classe')
@@ -56,6 +57,7 @@ def list_notes():
 @require_auth
 @require_role('admin', 'directeur', 'enseignant')
 @idempotent('create_note')
+@require_permission('notes', 'peut_creer')
 def create_note():
     body = request.get_json(silent=True) or {}
     eleve_id, matiere, trimestre = body.get('eleve_id'), body.get('matiere'), body.get('trimestre')
@@ -75,6 +77,7 @@ def create_note():
 @bp.route('/notes/<note_id>', methods=['PUT'])
 @require_auth
 @require_role('admin', 'directeur', 'enseignant')
+@require_permission('notes', 'peut_modifier')
 def update_note(note_id):
     body = request.get_json(silent=True) or {}
     db.execute(
@@ -90,6 +93,7 @@ def update_note(note_id):
 @bp.route('/notes/<note_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin', 'directeur', 'enseignant')
+@require_permission('notes', 'peut_supprimer')
 def delete_note(note_id):
     db.execute("DELETE FROM notes WHERE id=? AND ecole_id=?", (note_id, g.user['ecole_id']))
     db.commit()
@@ -180,6 +184,7 @@ def delete_devoir(devoir_id):
 # ─────────────────────────────────────────────────────────────
 @bp.route('/emploi-du-temps', methods=['GET'])
 @require_auth
+@require_permission('emploi_du_temps', 'peut_voir')
 def list_edt():
     classe = request.args.get('classe')
     professeur_id = request.args.get('professeur_id')
@@ -196,6 +201,7 @@ def list_edt():
 @require_auth
 @require_role('admin', 'directeur')
 @idempotent('create_edt')
+@require_permission('emploi_du_temps', 'peut_creer')
 def create_edt():
     body = request.get_json(silent=True) or {}
     jour, creneau, classe = body.get('jour'), body.get('creneau'), body.get('classe')
@@ -219,6 +225,7 @@ def create_edt():
 @bp.route('/emploi-du-temps/<edt_id>', methods=['PUT'])
 @require_auth
 @require_role('admin', 'directeur')
+@require_permission('emploi_du_temps', 'peut_modifier')
 def update_edt(edt_id):
     body = request.get_json(silent=True) or {}
     db.execute(
@@ -236,6 +243,7 @@ def update_edt(edt_id):
 @bp.route('/emploi-du-temps/<edt_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin', 'directeur')
+@require_permission('emploi_du_temps', 'peut_supprimer')
 def delete_edt(edt_id):
     db.execute("DELETE FROM emploi_du_temps WHERE id=? AND ecole_id=?", (edt_id, g.user['ecole_id']))
     db.commit()
@@ -247,6 +255,7 @@ def delete_edt(edt_id):
 # ─────────────────────────────────────────────────────────────
 @bp.route('/absences', methods=['GET'])
 @require_auth
+@require_permission('absences', 'peut_voir')
 def list_absences():
     eleve_id = request.args.get('eleve_id')
     classe = request.args.get('classe')
@@ -306,6 +315,7 @@ def stats_absences(eleve_id):
 @require_auth
 @require_role('admin', 'directeur', 'enseignant', 'secretaire')
 @idempotent('create_absence')
+@require_permission('absences', 'peut_creer')
 def create_absence():
     body = request.get_json(silent=True) or {}
     eleve_id, date_abs = body.get('eleve_id'), body.get('date_abs')
@@ -325,6 +335,7 @@ def create_absence():
 @bp.route('/absences/<absence_id>', methods=['PUT'])
 @require_auth
 @require_role('admin', 'directeur', 'enseignant', 'secretaire')
+@require_permission('absences', 'peut_modifier')
 def update_absence(absence_id):
     body = request.get_json(silent=True) or {}
     # Un enseignant peut modifier une absence, mais doit obligatoirement fournir une justification
@@ -348,6 +359,7 @@ def update_absence(absence_id):
 @bp.route('/absences/<absence_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin', 'directeur', 'secretaire')
+@require_permission('absences', 'peut_supprimer')
 def delete_absence(absence_id):
     db.execute("DELETE FROM absences WHERE id=? AND ecole_id=?", (absence_id, g.user['ecole_id']))
     db.commit()
@@ -359,6 +371,7 @@ def delete_absence(absence_id):
 # ─────────────────────────────────────────────────────────────
 @bp.route('/reinscriptions', methods=['GET'])
 @require_auth
+@require_permission('reinscriptions', 'peut_voir')
 def list_reinscriptions():
     annee_scolaire = request.args.get('annee_scolaire')
     statut = request.args.get('statut')
@@ -377,6 +390,7 @@ def list_reinscriptions():
 @require_auth
 @require_role('admin', 'directeur', 'secretaire')
 @idempotent('create_reinscription')
+@require_permission('reinscriptions', 'peut_creer')
 def create_reinscription():
     body = request.get_json(silent=True) or {}
     eleve_id, annee_scolaire = body.get('eleve_id'), body.get('annee_scolaire')
@@ -403,6 +417,7 @@ def create_reinscription():
 @require_auth
 @require_role('admin', 'directeur')
 @idempotent('valider_reinscription')
+@require_permission('reinscriptions', 'peut_modifier')
 def valider_reinscription(r_id):
     body = request.get_json(silent=True) or {}
     r = db.execute("SELECT * FROM reinscriptions WHERE id=? AND ecole_id=?", (r_id, g.user['ecole_id'])).fetchone()
@@ -448,6 +463,7 @@ def valider_reinscription(r_id):
 @bp.route('/reinscriptions/<r_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin', 'directeur')
+@require_permission('reinscriptions', 'peut_supprimer')
 def delete_reinscription(r_id):
     db.execute("DELETE FROM reinscriptions WHERE id=? AND ecole_id=?", (r_id, g.user['ecole_id']))
     db.commit()
@@ -795,6 +811,7 @@ def creneaux_emploi_temps_personnel(p_id):
 # ─────────────────────────────────────────────────────────────
 @bp.route('/absences-personnel', methods=['GET'])
 @require_auth
+@require_permission('absences', 'peut_voir')
 def list_absences_personnel():
     date_debut = request.args.get('date_debut')
     date_fin = request.args.get('date_fin')
@@ -826,6 +843,7 @@ def absences_personnel_aujourdhui():
 @require_auth
 @require_role('admin', 'directeur', 'secretaire')
 @idempotent('signaler_absence_personnel')
+@require_permission('absences', 'peut_creer')
 def signaler_absence_personnel():
     body = request.get_json(silent=True) or {}
     personnel_id, date_debut = body.get('personnel_id'), body.get('date_debut')
@@ -849,6 +867,7 @@ def signaler_absence_personnel():
 @bp.route('/absences-personnel/<a_id>', methods=['PUT'])
 @require_auth
 @require_role('admin', 'directeur', 'secretaire')
+@require_permission('absences', 'peut_modifier')
 def update_absence_personnel(a_id):
     body = request.get_json(silent=True) or {}
     db.execute(
@@ -866,6 +885,7 @@ def update_absence_personnel(a_id):
 @bp.route('/absences-personnel/<a_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin', 'directeur', 'secretaire')
+@require_permission('absences', 'peut_supprimer')
 def delete_absence_personnel(a_id):
     db.execute("DELETE FROM absences_personnel WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id']))
     db.commit()

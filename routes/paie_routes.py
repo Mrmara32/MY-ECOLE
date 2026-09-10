@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify, g
 
 from database import db, gen_id, rows_to_list, row_to_dict, log_action
 from auth import require_auth, require_role
+from permissions import require_permission
 from offline_sync import idempotent
 
 bp = Blueprint('paie_routes', __name__, url_prefix='/api/paie')
@@ -320,6 +321,7 @@ def delete_type_prime(t_id):
 @bp.route('/avances', methods=['GET'])
 @require_auth
 @require_role(*PAIE_ROLES)
+@require_permission('personnel', 'peut_voir')
 def list_avances():
     personnel_id = request.args.get('personnel_id')
     statut = request.args.get('statut')
@@ -355,6 +357,7 @@ def plafond_avance(personnel_id):
 @require_auth
 @require_role('admin', 'comptable')
 @idempotent('create_avance')
+@require_permission('personnel', 'peut_creer')
 def create_avance():
     body = request.get_json(silent=True) or {}
     personnel_id = body.get('personnel_id')
@@ -412,6 +415,7 @@ def create_avance():
 @bp.route('/avances/<a_id>/annuler', methods=['PUT'])
 @require_auth
 @require_role('admin')
+@require_permission('personnel', 'peut_supprimer')
 def annuler_avance(a_id):
     a = db.execute("SELECT * FROM avances_salaire WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id'])).fetchone()
     if not a:
@@ -430,6 +434,7 @@ def annuler_avance(a_id):
 @require_auth
 @require_role(*PAIE_ROLES)
 @idempotent('generer_bulletin')
+@require_permission('personnel', 'peut_creer')
 def generer_bulletin():
     body = request.get_json(silent=True) or {}
     personnel_id = body.get('personnel_id')
@@ -513,6 +518,7 @@ def generer_bulletin():
 @bp.route('/bulletins', methods=['GET'])
 @require_auth
 @require_role(*PAIE_ROLES)
+@require_permission('personnel', 'peut_voir')
 def list_bulletins():
     personnel_id = request.args.get('personnel_id')
     mois = request.args.get('mois')

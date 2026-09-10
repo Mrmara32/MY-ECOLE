@@ -4,6 +4,7 @@ from werkzeug.security import generate_password_hash
 
 from database import db, gen_id, rows_to_list, row_to_dict, log_action, next_matricule_personnel, matricule_lock, ecole_id_depuis_code
 from auth import require_auth, require_role
+from permissions import require_permission
 from email_service import generer_jeton, envoyer_confirmation_enseignant
 
 bp = Blueprint('candidatures_routes', __name__, url_prefix='/api/candidatures')
@@ -53,6 +54,7 @@ def soumettre_candidature():
 @bp.route('', methods=['GET'])
 @require_auth
 @require_role('admin', 'directeur')
+@require_permission('candidatures', 'peut_voir')
 def list_candidatures():
     statut = request.args.get('statut')
     sql = "SELECT * FROM candidatures_enseignants WHERE ecole_id=?"
@@ -66,6 +68,7 @@ def list_candidatures():
 @bp.route('/<c_id>', methods=['GET'])
 @require_auth
 @require_role('admin', 'directeur')
+@require_permission('candidatures', 'peut_voir')
 def get_candidature(c_id):
     row = db.execute("SELECT * FROM candidatures_enseignants WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone()
     if not row:
@@ -76,6 +79,7 @@ def get_candidature(c_id):
 @bp.route('/<c_id>/approuver', methods=['PUT'])
 @require_auth
 @require_role('admin', 'directeur')
+@require_permission('candidatures', 'peut_modifier')
 def approuver_candidature(c_id):
     """Approuve la candidature : crée (ou met à jour) la fiche personnel correspondante
     avec les matières et disponibilités choisies par le candidat lui-même.
@@ -146,6 +150,7 @@ def approuver_candidature(c_id):
 @bp.route('/<c_id>/rejeter', methods=['PUT'])
 @require_auth
 @require_role('admin', 'directeur')
+@require_permission('candidatures', 'peut_modifier')
 def rejeter_candidature(c_id):
     body = request.get_json(silent=True) or {}
     c = db.execute("SELECT * FROM candidatures_enseignants WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone()
@@ -164,6 +169,7 @@ def rejeter_candidature(c_id):
 @bp.route('/<c_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin', 'directeur')
+@require_permission('candidatures', 'peut_supprimer')
 def delete_candidature(c_id):
     db.execute("DELETE FROM candidatures_enseignants WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id']))
     db.commit()

@@ -7,6 +7,7 @@ from datetime import datetime
 
 from database import db, gen_id, rows_to_list, row_to_dict, log_action
 from auth import require_auth, require_role
+from permissions import require_permission
 from offline_sync import idempotent
 
 bp = Blueprint('logistique_routes', __name__, url_prefix='/api')
@@ -20,6 +21,7 @@ ACHAT_ROLES = ('admin', 'directeur', 'secretaire', 'comptable')
 # ─────────────────────────────────────────────────────────────
 @bp.route('/stock/produits', methods=['GET'])
 @require_auth
+@require_permission('logistique', 'peut_voir')
 def list_stock_produits():
     categorie = request.args.get('categorie')
     sql = "SELECT * FROM stock_produits WHERE ecole_id=?"
@@ -34,6 +36,7 @@ def list_stock_produits():
 @bp.route('/stock/produits', methods=['POST'])
 @require_auth
 @require_role(*LOG_ROLES)
+@require_permission('logistique', 'peut_creer')
 def create_stock_produit():
     body = request.get_json(silent=True) or {}
     nom = (body.get('nom') or '').strip()
@@ -60,6 +63,7 @@ def create_stock_produit():
 @bp.route('/stock/produits/<p_id>', methods=['PUT'])
 @require_auth
 @require_role(*LOG_ROLES)
+@require_permission('logistique', 'peut_modifier')
 def update_stock_produit(p_id):
     body = request.get_json(silent=True) or {}
     if not db.execute("SELECT id FROM stock_produits WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id'])).fetchone():
@@ -79,6 +83,7 @@ def update_stock_produit(p_id):
 @bp.route('/stock/produits/<p_id>', methods=['DELETE'])
 @require_auth
 @require_role(*LOG_ROLES)
+@require_permission('logistique', 'peut_supprimer')
 def delete_stock_produit(p_id):
     if not db.execute("SELECT id FROM stock_produits WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Introuvable'}), 404
@@ -92,6 +97,7 @@ def delete_stock_produit(p_id):
 
 @bp.route('/stock/mouvements', methods=['GET'])
 @require_auth
+@require_permission('logistique', 'peut_voir')
 def list_stock_mouvements():
     produit_id = request.args.get('produit_id')
     sql = ("SELECT m.*, p.nom as produit_nom, p.unite as produit_unite FROM stock_mouvements m "
@@ -108,6 +114,7 @@ def list_stock_mouvements():
 @require_auth
 @require_role(*LOG_ROLES)
 @idempotent('create_stock_mouvement')
+@require_permission('logistique', 'peut_creer')
 def create_stock_mouvement():
     body = request.get_json(silent=True) or {}
     produit_id = body.get('produit_id')
@@ -156,6 +163,7 @@ def _commande_avec_lignes(c_id, ecole_id):
 
 @bp.route('/commandes', methods=['GET'])
 @require_auth
+@require_permission('logistique', 'peut_voir')
 def list_commandes():
     statut = request.args.get('statut')
     sql = "SELECT * FROM commandes WHERE ecole_id=?"
@@ -189,6 +197,7 @@ def get_commande(c_id):
 @require_auth
 @require_role(*ACHAT_ROLES)
 @idempotent('create_commande')
+@require_permission('logistique', 'peut_creer')
 def create_commande():
     body = request.get_json(silent=True) or {}
     lignes = body.get('lignes') or []
@@ -229,6 +238,7 @@ def create_commande():
 @bp.route('/commandes/<c_id>', methods=['PUT'])
 @require_auth
 @require_role(*ACHAT_ROLES)
+@require_permission('logistique', 'peut_modifier')
 def update_commande(c_id):
     body = request.get_json(silent=True) or {}
     c = db.execute("SELECT * FROM commandes WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone()
@@ -249,6 +259,7 @@ def update_commande(c_id):
 @require_auth
 @require_role(*ACHAT_ROLES)
 @idempotent('receptionner_commande')
+@require_permission('logistique', 'peut_modifier')
 def receptionner_commande(c_id):
     """Marque la commande comme reçue et incrémente automatiquement le stock
     pour chaque ligne reliée à un produit de l'inventaire."""
@@ -276,6 +287,7 @@ def receptionner_commande(c_id):
 @bp.route('/commandes/<c_id>', methods=['DELETE'])
 @require_auth
 @require_role(*ACHAT_ROLES)
+@require_permission('logistique', 'peut_supprimer')
 def delete_commande(c_id):
     c = db.execute("SELECT * FROM commandes WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone()
     if not c:
@@ -292,6 +304,7 @@ def delete_commande(c_id):
 # ─────────────────────────────────────────────────────────────
 @bp.route('/maintenance', methods=['GET'])
 @require_auth
+@require_permission('logistique', 'peut_voir')
 def list_maintenance():
     statut = request.args.get('statut')
     sql = "SELECT * FROM maintenance_interventions WHERE ecole_id=?"
@@ -318,6 +331,7 @@ def list_maintenance():
 @require_auth
 @require_role(*LOG_ROLES)
 @idempotent('create_maintenance')
+@require_permission('logistique', 'peut_creer')
 def create_maintenance():
     body = request.get_json(silent=True) or {}
     titre = (body.get('titre') or '').strip()
@@ -340,6 +354,7 @@ def create_maintenance():
 @bp.route('/maintenance/<m_id>', methods=['PUT'])
 @require_auth
 @require_role(*LOG_ROLES)
+@require_permission('logistique', 'peut_modifier')
 def update_maintenance(m_id):
     body = request.get_json(silent=True) or {}
     if not db.execute("SELECT id FROM maintenance_interventions WHERE id=? AND ecole_id=?", (m_id, g.user['ecole_id'])).fetchone():
@@ -367,6 +382,7 @@ def update_maintenance(m_id):
 @bp.route('/maintenance/<m_id>', methods=['DELETE'])
 @require_auth
 @require_role(*LOG_ROLES)
+@require_permission('logistique', 'peut_supprimer')
 def delete_maintenance(m_id):
     if not db.execute("SELECT id FROM maintenance_interventions WHERE id=? AND ecole_id=?", (m_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Introuvable'}), 404
@@ -380,6 +396,7 @@ def delete_maintenance(m_id):
 # ─────────────────────────────────────────────────────────────
 @bp.route('/transport/vehicules', methods=['GET'])
 @require_auth
+@require_permission('logistique', 'peut_voir')
 def list_vehicules():
     rows = db.execute("SELECT * FROM transport_vehicules WHERE ecole_id=? ORDER BY immatriculation", (g.user['ecole_id'],)).fetchall()
     result = []
@@ -396,6 +413,7 @@ def list_vehicules():
 @require_auth
 @require_role(*LOG_ROLES)
 @idempotent('create_vehicule')
+@require_permission('logistique', 'peut_creer')
 def create_vehicule():
     body = request.get_json(silent=True) or {}
     immat = (body.get('immatriculation') or '').strip()
@@ -418,6 +436,7 @@ def create_vehicule():
 @bp.route('/transport/vehicules/<v_id>', methods=['PUT'])
 @require_auth
 @require_role(*LOG_ROLES)
+@require_permission('logistique', 'peut_modifier')
 def update_vehicule(v_id):
     body = request.get_json(silent=True) or {}
     if not db.execute("SELECT id FROM transport_vehicules WHERE id=? AND ecole_id=?", (v_id, g.user['ecole_id'])).fetchone():
@@ -437,6 +456,7 @@ def update_vehicule(v_id):
 @bp.route('/transport/vehicules/<v_id>', methods=['DELETE'])
 @require_auth
 @require_role(*LOG_ROLES)
+@require_permission('logistique', 'peut_supprimer')
 def delete_vehicule(v_id):
     if not db.execute("SELECT id FROM transport_vehicules WHERE id=? AND ecole_id=?", (v_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Introuvable'}), 404
@@ -450,6 +470,7 @@ def delete_vehicule(v_id):
 
 @bp.route('/transport/itineraires', methods=['GET'])
 @require_auth
+@require_permission('logistique', 'peut_voir')
 def list_itineraires():
     rows = db.execute("SELECT * FROM transport_itineraires WHERE ecole_id=? ORDER BY nom", (g.user['ecole_id'],)).fetchall()
     result = []
@@ -467,6 +488,7 @@ def list_itineraires():
 @require_auth
 @require_role(*LOG_ROLES)
 @idempotent('create_itineraire')
+@require_permission('logistique', 'peut_creer')
 def create_itineraire():
     body = request.get_json(silent=True) or {}
     nom = (body.get('nom') or '').strip()
@@ -485,6 +507,7 @@ def create_itineraire():
 @bp.route('/transport/itineraires/<i_id>', methods=['PUT'])
 @require_auth
 @require_role(*LOG_ROLES)
+@require_permission('logistique', 'peut_modifier')
 def update_itineraire(i_id):
     body = request.get_json(silent=True) or {}
     if not db.execute("SELECT id FROM transport_itineraires WHERE id=? AND ecole_id=?", (i_id, g.user['ecole_id'])).fetchone():
@@ -502,6 +525,7 @@ def update_itineraire(i_id):
 @bp.route('/transport/itineraires/<i_id>', methods=['DELETE'])
 @require_auth
 @require_role(*LOG_ROLES)
+@require_permission('logistique', 'peut_supprimer')
 def delete_itineraire(i_id):
     if not db.execute("SELECT id FROM transport_itineraires WHERE id=? AND ecole_id=?", (i_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Introuvable'}), 404
@@ -512,6 +536,7 @@ def delete_itineraire(i_id):
 
 @bp.route('/transport/eleves', methods=['GET'])
 @require_auth
+@require_permission('logistique', 'peut_voir')
 def list_transport_eleves():
     itineraire_id = request.args.get('itineraire_id')
     sql = ("SELECT t.*, e.nom as eleve_nom, e.prenom as eleve_prenom, e.classe as eleve_classe FROM transport_eleves t "
@@ -528,6 +553,7 @@ def list_transport_eleves():
 @require_auth
 @require_role(*LOG_ROLES)
 @idempotent('assign_transport_eleve')
+@require_permission('logistique', 'peut_creer')
 def assign_transport_eleve():
     body = request.get_json(silent=True) or {}
     eleve_id, itineraire_id = body.get('eleve_id'), body.get('itineraire_id')
@@ -548,6 +574,7 @@ def assign_transport_eleve():
 @bp.route('/transport/eleves/<t_id>', methods=['DELETE'])
 @require_auth
 @require_role(*LOG_ROLES)
+@require_permission('logistique', 'peut_supprimer')
 def unassign_transport_eleve(t_id):
     if not db.execute("SELECT id FROM transport_eleves WHERE id=? AND ecole_id=?", (t_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Introuvable'}), 404

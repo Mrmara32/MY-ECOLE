@@ -25,6 +25,17 @@ MODULES_PERMISSIONS = [
     ('personnel', "Personnel & Paie"),
     ('comptabilite', "Comptabilité"),
     ('fournisseurs', "Fournisseurs"),
+    ('logistique', "Logistique"),
+    ('cantine', "Cantine"),
+    ('reinscriptions', "Réinscriptions"),
+    ('classes', "Classes"),
+    ('salles', "Salles"),
+    ('notes', "Notes & Bulletins scolaires"),
+    ('absences', "Absences"),
+    ('emploi_du_temps', "Emploi du temps"),
+    ('revision', "Cours de révision"),
+    ('candidatures', "Candidatures"),
+    ('communication', "Communication"),
 ]
 
 ACTIONS = ['peut_voir', 'peut_creer', 'peut_modifier', 'peut_supprimer']
