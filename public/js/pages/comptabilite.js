@@ -458,7 +458,7 @@ async function imprimerLivreJournal(dateDebut, dateFin) {
         <div class="ecole">
           ${settings.ecole_logo?`<img src="${settings.ecole_logo}">`:''}
           <div>
-            <h1>${esc(settings.ecole_nom||'Groupe Scolaire Elhadji Mountaga Djély')}</h1>
+            <h1>${esc(settings.ecole_nom||'MY-ECOLE')}</h1>
             <p>${esc(settings.ecole_adresse||'')}</p>
             ${settings.ecole_telephone?`<p>Tél : ${esc(settings.ecole_telephone)}</p>`:''}
           </div>
@@ -846,7 +846,7 @@ async function imprimerBalance(dateDebut, dateFin) {
         <div class="ecole">
           ${settings.ecole_logo?`<img src="${settings.ecole_logo}">`:''}
           <div>
-            <h1>${esc(settings.ecole_nom||'Groupe Scolaire Elhadji Mountaga Djély')}</h1>
+            <h1>${esc(settings.ecole_nom||'MY-ECOLE')}</h1>
             <p>${esc(settings.ecole_adresse||'')}</p>
             ${settings.ecole_telephone?`<p>Tél : ${esc(settings.ecole_telephone)}</p>`:''}
           </div>
@@ -1185,7 +1185,7 @@ function _enteteReleveHtml(settings, titre, sousTitre) {
         <div class="ecole">
           ${settings.ecole_logo?`<img src="${settings.ecole_logo}">`:''}
           <div>
-            <h1>${esc(settings.ecole_nom||'Groupe Scolaire Elhadji Mountaga Djély')}</h1>
+            <h1>${esc(settings.ecole_nom||'MY-ECOLE')}</h1>
             <p>${esc(settings.ecole_adresse||'')}</p>
             ${settings.ecole_telephone?`<p>Tél : ${esc(settings.ecole_telephone)}</p>`:''}
           </div>

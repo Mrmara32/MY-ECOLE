@@ -236,7 +236,7 @@ async function imprimerCarteAcces(personnelId) {
   const creneaux = await apiGetEdt('professeur_id=' + personnelId);
   const salles = [...new Set(creneaux.map(c => c.salle).filter(Boolean))];
 
-  const ecoleNomAffiche = "Groupe Scolaire Elhadji Mountaga Djély";
+  const ecoleNomAffiche = settings.ecole_nom || "MY-ECOLE";
   const [nomEcole1, ...resteNom] = ecoleNomAffiche.split(/\s+/);
   const initiales = ecoleNomAffiche.split(/\s+/).map(w=>w[0]).join('').substring(0,2).toUpperCase();
   const qrData = `${ecoleNomAffiche} | Accès salles | ${p.matricule||''} | ${p.prenom} ${p.nom}`;

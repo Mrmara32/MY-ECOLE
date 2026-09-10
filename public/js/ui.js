@@ -773,7 +773,7 @@ async function imprimerRecu({ type, nom, description, montant, date, moyenPaieme
         <div class="ecole">
           ${settings.ecole_logo?`<img src="${settings.ecole_logo}">`:''}
           <div>
-            <h1>${esc(settings.ecole_nom||'Groupe Scolaire Elhadji Mountaga Djély')}</h1>
+            <h1>${esc(settings.ecole_nom||'MY-ECOLE')}</h1>
             <p>${esc(settings.ecole_adresse||'')}</p>
             ${settings.ecole_telephone?`<p>Tél : ${esc(settings.ecole_telephone)}</p>`:''}
           </div>

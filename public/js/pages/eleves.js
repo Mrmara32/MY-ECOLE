@@ -443,7 +443,7 @@ async function imprimerCarteScolaire(eleveId) {
   const contact = e.contact_urgence_nom || e.contact_urgence_telephone
     ? `${e.contact_urgence_nom||''}${e.contact_urgence_nom&&e.contact_urgence_telephone?' — ':''}${e.contact_urgence_telephone||''}`
     : (e.pere_telephone || e.mere_telephone || e.tuteur_telephone || '—');
-  const ecoleNomAffiche = "Groupe Scolaire Privé El.M.Djély";
+  const ecoleNomAffiche = settings.ecole_nom || "MY-ECOLE";
   const ecoleLieuAffiche = settings.ecole_adresse || "Yattaya · Commune de Sonfonia";
 
   const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Carte scolaire — ${e.prenom} ${e.nom}</title>
@@ -549,7 +549,7 @@ window.imprimerCarteScolaire = imprimerCarteScolaire;
 async function imprimerCarteRetrait(eleveId) {
   const e = await apiGetEleve(eleveId);
   const settings = await apiGetSettings();
-  const ecoleNomAffiche = "Groupe Scolaire Privé El.M.Djély";
+  const ecoleNomAffiche = settings.ecole_nom || "MY-ECOLE";
 
   const personnes = [
     e.pere_nom ? { role: 'Père', nom: e.pere_nom, tel: e.pere_telephone } : null,

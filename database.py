@@ -1358,7 +1358,7 @@ def init_db():
 
     # Paramètres par défaut
     defaults = {
-        'ecole_nom': 'Groupe Scolaire',
+        'ecole_nom': 'MY-ECOLE',
         'ecole_adresse': '',
         'ecole_telephone': '',
         'ecole_email': '',

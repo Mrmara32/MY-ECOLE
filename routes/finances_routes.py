@@ -204,7 +204,7 @@ def export_transactions_excel():
     titre_font = Font(name="Arial", bold=True, size=14, color=NAVY)
     bordure = Border(bottom=Side(style="thin", color="D1D5DB"))
 
-    ws["A1"] = s.get("ecole_nom") or "Groupe Scolaire"
+    ws["A1"] = s.get("ecole_nom") or "MY-ECOLE"
     ws["A1"].font = titre_font
     ws["A2"] = "Journal comptable"
     ws["A2"].font = Font(name="Arial", size=11, color="6B7280")
