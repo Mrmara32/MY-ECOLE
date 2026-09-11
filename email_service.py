@@ -1,18 +1,29 @@
 """
 Envoi d'e-mails (confirmations de compte, notifications) via SMTP.
-Configuré par défaut pour Gmail, mais fonctionne avec n'importe quel service SMTP
-standard en changeant les variables d'environnement EMAIL_HOST / EMAIL_PORT.
+
+Configuré pour Brevo (ex-Sendinblue) par défaut — un service d'envoi
+transactionnel, bien plus fiable que l'envoi automatique via un Gmail
+personnel (qui est silencieusement filtré par beaucoup de fournisseurs de
+messagerie, sans même passer par les indésirables). Reste compatible avec
+n'importe quel autre service SMTP standard en changeant EMAIL_HOST / EMAIL_PORT.
 
 Configuration requise (variables d'environnement, à définir sur l'hébergeur —
 jamais dans le code) :
-  EMAIL_ADRESSE       : l'adresse d'envoi (ex: contact@monecole.com ou un Gmail)
-  EMAIL_MOT_DE_PASSE  : le "mot de passe d'application" (PAS le mot de passe normal
-                        du compte — voir https://myaccount.google.com/apppasswords
-                        pour Gmail : nécessite la validation en 2 étapes activée)
-  EMAIL_HOST          : optionnel, défaut smtp.gmail.com
-  EMAIL_PORT          : optionnel, défaut 587
-  URL_APPLICATION     : l'adresse publique de l'application (pour les liens dans les
-                        e-mails, ex: https://my-ecole.onrender.com) — sans slash final
+  EMAIL_ADRESSE        : identifiant SMTP Brevo (l'adresse e-mail de votre
+                         compte Brevo — visible dans Brevo, SMTP & API > SMTP)
+  EMAIL_MOT_DE_PASSE   : la clé SMTP Brevo (générée dans Brevo, SMTP & API > SMTP
+                         > "Générer une nouvelle clé SMTP" — PAS le mot de passe
+                         de votre compte Brevo)
+  EMAIL_EXPEDITEUR     : optionnel — l'adresse affichée comme expéditeur si elle
+                         diffère de EMAIL_ADRESSE (doit être un expéditeur
+                         validé dans Brevo : Expéditeurs, domaines & dédiés).
+                         À défaut, EMAIL_ADRESSE est utilisée.
+  EMAIL_EXPEDITEUR_NOM : optionnel — nom affiché avant l'adresse (ex: "MY-ECOLE").
+  EMAIL_HOST           : optionnel, défaut smtp-relay.brevo.com
+  EMAIL_PORT           : optionnel, défaut 587
+  URL_APPLICATION      : l'adresse publique de l'application (pour les liens dans
+                         les e-mails, ex: https://my-ecole.onrender.com) — sans
+                         slash final
 
 Si ces variables ne sont pas définies, l'envoi est silencieusement ignoré (avec un
 message dans les logs) plutôt que de faire planter l'application — un e-mail non
@@ -25,6 +36,7 @@ import secrets
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
+from email.utils import formataddr
 from email import encoders
 
 
@@ -54,12 +66,14 @@ def envoyer_email(destinataire, sujet, corps_html, piece_jointe=None):
     try:
         adresse = os.environ['EMAIL_ADRESSE']
         mot_de_passe = os.environ['EMAIL_MOT_DE_PASSE']
-        host = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+        expediteur_email = os.environ.get('EMAIL_EXPEDITEUR') or adresse
+        expediteur_nom = os.environ.get('EMAIL_EXPEDITEUR_NOM')
+        host = os.environ.get('EMAIL_HOST', 'smtp-relay.brevo.com')
         port = int(os.environ.get('EMAIL_PORT', '587'))
 
         msg = MIMEMultipart('mixed' if piece_jointe else 'alternative')
         msg['Subject'] = sujet
-        msg['From'] = adresse
+        msg['From'] = formataddr((expediteur_nom, expediteur_email)) if expediteur_nom else expediteur_email
         msg['To'] = destinataire
 
         if piece_jointe:
@@ -83,7 +97,7 @@ def envoyer_email(destinataire, sujet, corps_html, piece_jointe=None):
         with smtplib.SMTP(host, port, timeout=15) as serveur:
             serveur.starttls()
             serveur.login(adresse, mot_de_passe)
-            serveur.sendmail(adresse, destinataire, msg.as_string())
+            serveur.sendmail(expediteur_email, destinataire, msg.as_string())
         return True
     except Exception as e:
         print(f"[email] Échec d'envoi à {destinataire} : {e}")
