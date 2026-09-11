@@ -1,5 +1,5 @@
 """
-Gestion Scolaire — Serveur Python (Flask)
+MY-ECOLE — Serveur Python (Flask)
 Remplace la version Node.js pour éviter les problèmes de compilation native
 (better-sqlite3) rencontrés lors de l'installation sur certains postes Windows.
 """
@@ -252,7 +252,7 @@ if __name__ == '__main__':
     PORT = int(os.environ.get('PORT', 3000))
     HOST = os.environ.get('HOST', '0.0.0.0')
 
-    print(f"\n🎓 Gestion Scolaire — Serveur sur http://localhost:{PORT}\n")
+    print(f"\n🎓 MY-ECOLE — Serveur sur http://localhost:{PORT}\n")
 
     # Ouvre le navigateur automatiquement en mode desktop (GS_AUTO_OPEN=1),
     # ou automatiquement aussi lorsqu'il s'agit d'un exécutable autonome (PyInstaller),

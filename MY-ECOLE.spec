@@ -39,7 +39,15 @@ bloc_analyse = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        # Dépendances optionnelles de pandas/openpyxl jamais utilisées par cette
+        # application (ni graphiques, ni traitement d'image, ni calcul scientifique
+        # avancé) — les exclure réduit la taille de l'exécutable d'environ 150 Mo
+        # sans rien retirer de fonctionnel.
+        'matplotlib', 'scipy', 'PIL', 'Pillow', 'kiwisolver', 'lxml', 'yaml',
+        'PyQt5', 'PyQt6', 'PySide2', 'PySide6', 'tkinter', 'IPython', 'notebook',
+        'pytest', 'sphinx',
+    ],
     noarchive=False,
     optimize=0,
 )
