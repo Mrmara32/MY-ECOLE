@@ -62,17 +62,23 @@ def envoyer_email(destinataire, sujet, corps_html, piece_jointe=None):
         msg['From'] = adresse
         msg['To'] = destinataire
 
-        corps = MIMEMultipart('alternative')
-        corps.attach(MIMEText(corps_html, 'html', 'utf-8'))
-        msg.attach(corps)
-
         if piece_jointe:
+            # Avec pièce jointe : le corps HTML doit être imbriqué dans un sous-message
+            # 'alternative' séparé de la pièce jointe (structure MIME 'mixed' standard).
+            corps = MIMEMultipart('alternative')
+            corps.attach(MIMEText(corps_html, 'html', 'utf-8'))
+            msg.attach(corps)
             donnees = base64.b64decode(piece_jointe['contenu_base64'])
             piece = MIMEBase(*piece_jointe.get('type_mime', 'application/pdf').split('/', 1))
             piece.set_payload(donnees)
             encoders.encode_base64(piece)
             piece.add_header('Content-Disposition', 'attachment', filename=piece_jointe['nom_fichier'])
             msg.attach(piece)
+        else:
+            # Sans pièce jointe : attacher directement le HTML au message 'alternative'
+            # de premier niveau — pas besoin (et pas souhaitable) d'imbrication ici,
+            # certains clients mail affichent mal un 'alternative' imbriqué sans raison.
+            msg.attach(MIMEText(corps_html, 'html', 'utf-8'))
 
         with smtplib.SMTP(host, port, timeout=15) as serveur:
             serveur.starttls()
