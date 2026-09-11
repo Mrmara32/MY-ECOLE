@@ -3,7 +3,7 @@ import time
 import random
 from flask import Blueprint, request, jsonify, current_app, g
 
-from database import db, gen_id, rows_to_list, row_to_dict, log_action, get_classes_enseignant, matricule_lock, next_sequence, ecole_id_depuis_code
+from database import db, gen_id, rows_to_list, row_to_dict, log_action, get_classes_enseignant, matricule_lock, next_sequence, ecole_id_depuis_code, next_numero_recu
 from auth import require_auth, require_role
 from permissions import require_permission
 from offline_sync import idempotent
@@ -211,7 +211,7 @@ def valider_preinscription(eleve_id):
             "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (tid, 'entree', date_op, f"Frais d'inscription — {e['prenom']} {e['nom']} ({e['matricule']})",
              "Frais d'inscription", body.get('moyen_paiement', 'Espèces'), montant,
-             body.get('reference') or f"INS-{eleve_id}", eleve_id, g.user['id'], 'auto'),
+             body.get('reference') or next_numero_recu(g.user['ecole_id']), eleve_id, g.user['id'], 'auto'),
         )
         db.commit()
 

@@ -3,6 +3,24 @@
 ============================================================ */
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
+
+/* Ouvre un document HTML généré dynamiquement (carte, reçu, bulletin, relevé…)
+   dans une nouvelle fenêtre/onglet, prêt à être imprimé ou partagé.
+   IMPORTANT : n'utilise PAS window.open('', '_blank') + document.write(), qui
+   empêche silencieusement le chargement de scripts externes ajoutés après coup
+   (html2canvas, jsPDF pour les boutons PNG/PDF/WhatsApp/E-mail) — bug de
+   navigateur confirmé par test réel, qui rendait ces boutons inopérants. Une
+   URL Blob crée un vrai document avec sa propre origine, sans cette limite. */
+function ouvrirDocumentImprimable(html) {
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  // L'URL Blob n'est plus nécessaire une fois la page chargée dans la nouvelle
+  // fenêtre ; la libérer évite d'accumuler de la mémoire au fil des impressions.
+  if (win) win.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+  return win;
+}
+
 const el = (tag, attrs = {}, ...children) => {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -509,49 +527,62 @@ function finaliserCarteImprimable(win, selector, filename) {
   const filenameJpeg = filename.replace(/\.png$/i, '.jpg');
   const toolbarHtml = `
     <style>
-      .carte-toolbar{position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:9999;font-family:Arial,Helvetica,sans-serif}
-      .carte-toolbar button{padding:9px 16px;border-radius:7px;border:none;font-size:13px;font-weight:700;cursor:pointer;
-        box-shadow:0 2px 8px rgba(0,0,0,.18)}
+      .carte-toolbar{position:fixed;top:14px;right:14px;display:flex;flex-wrap:wrap;gap:8px;z-index:9999;font-family:Arial,Helvetica,sans-serif;max-width:280px;justify-content:flex-end}
+      .carte-toolbar button{padding:9px 14px;border-radius:7px;border:none;font-size:12.5px;font-weight:700;cursor:pointer;
+        box-shadow:0 2px 8px rgba(0,0,0,.18);white-space:nowrap}
       .carte-toolbar .btn-print{background:#1E2A4A;color:#fff}
       .carte-toolbar .btn-png{background:#B91C1C;color:#fff}
       .carte-toolbar .btn-jpeg{background:#8A4B00;color:#fff}
+      .carte-toolbar .btn-wa{background:#25D366;color:#fff}
+      .carte-toolbar .btn-mail{background:#4B5563;color:#fff}
       .carte-toolbar button:disabled{opacity:.6;cursor:wait}
       @media print{.carte-toolbar{display:none !important}}
     </style>
     <div class="carte-toolbar">
       <button type="button" class="btn-print" onclick="window.focus();window.print()">🖨 Imprimer</button>
       <button type="button" class="btn-png" id="btn-dl-carte-png" disabled>⏳ Chargement…</button>
-      <button type="button" class="btn-jpeg" id="btn-dl-carte-jpeg" disabled>⏳ Chargement…</button>
+      <button type="button" class="btn-jpeg" id="btn-dl-carte-jpeg" disabled>⏳…</button>
+      <button type="button" class="btn-wa" id="btn-carte-wa" disabled>⏳…</button>
+      <button type="button" class="btn-mail" id="btn-carte-mail" disabled>⏳…</button>
     </div>`;
   const inject = () => {
     try {
       win.document.body.insertAdjacentHTML('beforeend', toolbarHtml);
       const btnPng = win.document.getElementById('btn-dl-carte-png');
       const btnJpeg = win.document.getElementById('btn-dl-carte-jpeg');
+      const btnWa = win.document.getElementById('btn-carte-wa');
+      const btnMail = win.document.getElementById('btn-carte-mail');
       // IMPORTANT : une balise <script> insérée via innerHTML/insertAdjacentHTML ne
       // s'exécute JAMAIS dans un navigateur (comportement standard du DOM). Il faut
       // la créer via createElement + appendChild pour qu'elle soit réellement chargée.
       const script = win.document.createElement('script');
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
       script.onload = () => {
-        btnPng.disabled = false; btnPng.textContent = '📥 Télécharger en PNG';
-        btnJpeg.disabled = false; btnJpeg.textContent = '📷 Télécharger en JPEG';
+        btnPng.disabled = false; btnPng.textContent = '📥 PNG';
+        btnJpeg.disabled = false; btnJpeg.textContent = '📷 JPEG';
+        btnWa.disabled = false; btnWa.textContent = '💬 WhatsApp';
+        btnMail.disabled = false; btnMail.textContent = '✉️ E-mail';
       };
       script.onerror = () => {
-        btnPng.textContent = '⚠ Indisponible (hors ligne ?)';
-        btnJpeg.textContent = '⚠ Indisponible (hors ligne ?)';
+        [btnPng, btnJpeg, btnWa, btnMail].forEach(b => b.textContent = '⚠ Indisponible');
       };
       win.document.head.appendChild(script);
 
-      const genererEtTelecharger = (btn, format, fname, options) => {
+      const genererCanvas = (fond) => {
         const el = win.document.querySelector(selector);
         if (!el || typeof win.html2canvas === 'undefined') {
           win.alert("Le générateur d'image n'a pas pu se charger. Vérifiez votre connexion internet puis réessayez.");
-          return;
+          return null;
         }
+        return win.html2canvas(el, { scale: 4, backgroundColor: fond, useCORS: true });
+      };
+
+      const genererEtTelecharger = (btn, format, fname, options) => {
         const texteOriginal = btn.textContent;
-        btn.disabled = true; btn.textContent = '⏳ Génération…';
-        win.html2canvas(el, options).then((canvas) => {
+        btn.disabled = true; btn.textContent = '⏳…';
+        const p = genererCanvas(options.backgroundColor);
+        if (!p) { btn.disabled = false; btn.textContent = texteOriginal; return; }
+        p.then((canvas) => {
           const link = win.document.createElement('a');
           link.download = fname;
           link.href = canvas.toDataURL(format === 'jpeg' ? 'image/jpeg' : 'image/png', format === 'jpeg' ? 0.95 : undefined);
@@ -563,13 +594,72 @@ function finaliserCarteImprimable(win, selector, filename) {
         });
       };
 
-      btnPng.addEventListener('click', () => genererEtTelecharger(btnPng, 'png', filename, { scale: 4, backgroundColor: null, useCORS: true }));
+      btnPng.addEventListener('click', () => genererEtTelecharger(btnPng, 'png', filename, { backgroundColor: null }));
       // Le JPEG ne gère pas la transparence : on force un fond blanc pour éviter un rendu noir.
-      btnJpeg.addEventListener('click', () => genererEtTelecharger(btnJpeg, 'jpeg', filenameJpeg, { scale: 4, backgroundColor: '#ffffff', useCORS: true }));
+      btnJpeg.addEventListener('click', () => genererEtTelecharger(btnJpeg, 'jpeg', filenameJpeg, { backgroundColor: '#ffffff' }));
+
+      btnWa.addEventListener('click', async () => {
+        const texte = btnWa.textContent;
+        btnWa.disabled = true; btnWa.textContent = '⏳…';
+        try {
+          const p = genererCanvas('#ffffff');
+          if (!p) { btnWa.disabled = false; btnWa.textContent = texte; return; }
+          const canvas = await p;
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+          const fichier = new win.File([blob], filenameJpeg, { type: 'image/jpeg' });
+          if (win.navigator.canShare && win.navigator.canShare({ files: [fichier] })) {
+            await win.navigator.share({ files: [fichier] });
+          } else {
+            const url = win.URL.createObjectURL(blob);
+            const link = win.document.createElement('a');
+            link.href = url; link.download = filenameJpeg; link.click();
+            win.URL.revokeObjectURL(url);
+            win.alert("Votre navigateur ne permet pas d'envoyer directement une image vers WhatsApp. L'image a été téléchargée : ouvrez WhatsApp puis joignez-la manuellement.");
+            win.open('https://wa.me/', '_blank');
+          }
+        } catch (err) {
+          if (err.name !== 'AbortError') win.alert('Erreur lors du partage : ' + err.message);
+        }
+        btnWa.disabled = false; btnWa.textContent = texte;
+      });
+
+      btnMail.addEventListener('click', async () => {
+        const destinataire = win.prompt("Adresse e-mail du destinataire :", '');
+        if (!destinataire) return;
+        const texte = btnMail.textContent;
+        btnMail.disabled = true; btnMail.textContent = '⏳ Envoi…';
+        try {
+          const p = genererCanvas('#ffffff');
+          if (!p) { btnMail.disabled = false; btnMail.textContent = texte; return; }
+          const canvas = await p;
+          const base64 = canvas.toDataURL('image/jpeg', 0.92).split(',')[1];
+          await apiEnvoyerReleveEmail({
+            destinataire, pdf_base64: base64, nom_fichier: filenameJpeg, type_mime: 'image/jpeg',
+            sujet: 'Document — ' + filename.replace(/\.(png|jpg|jpeg)$/i, ''),
+            message: 'Veuillez trouver ci-joint le document demandé.',
+          });
+          win.alert('✅ Document envoyé par e-mail à ' + destinataire);
+        } catch (err) { win.alert("Erreur lors de l'envoi : " + err.message); }
+        btnMail.disabled = false; btnMail.textContent = texte;
+      });
     } catch(e) { console.error('finaliserCarteImprimable', e); }
   };
-  if (win.document.readyState === 'complete') inject();
-  else win.addEventListener('load', inject);
+  // IMPORTANT : ne JAMAIS se fier à win.document.readyState ici. Juste après
+  // window.open(url), la fenêtre passe brièvement par un document 'about:blank'
+  // déjà considéré 'complete' AVANT que la vraie navigation vers le contenu (URL
+  // Blob) ne s'exécute et ne remplace tout le document — ce qui effacerait
+  // silencieusement une barre d'outils injectée trop tôt. On vérifie donc la
+  // présence réelle du contenu attendu (le sélecteur du document/carte) avant
+  // d'injecter quoi que ce soit, quitte à réessayer plusieurs fois.
+  let _tentativesCarte = 0;
+  const _attendreContenuCarte = () => {
+    _tentativesCarte++;
+    if (win.closed) return;
+    if (win.document.querySelector(selector)) { inject(); return; }
+    if (_tentativesCarte > 100) { console.error('finaliserCarteImprimable : contenu jamais détecté'); return; }
+    setTimeout(_attendreContenuCarte, 30);
+  };
+  _attendreContenuCarte();
   win.focus();
 }
 
@@ -717,14 +807,24 @@ function finaliserDocumentPartageable(win, selector, options = {}) {
       });
     } catch (e) { console.error('finaliserDocumentPartageable', e); }
   };
-  if (win.document.readyState === 'complete') inject();
-  else win.addEventListener('load', inject);
+  // Même précaution que pour les cartes : ne pas se fier à readyState, attendre
+  // la présence réelle du contenu (voir le commentaire détaillé dans
+  // finaliserCarteImprimable ci-dessus pour la raison exacte).
+  let _tentativesDoc = 0;
+  const _attendreContenuDoc = () => {
+    _tentativesDoc++;
+    if (win.closed) return;
+    if (win.document.querySelector(selector)) { inject(); return; }
+    if (_tentativesDoc > 100) { console.error('finaliserDocumentPartageable : contenu jamais détecté'); return; }
+    setTimeout(_attendreContenuDoc, 30);
+  };
+  _attendreContenuDoc();
   win.focus();
 }
 
 async function imprimerRecu({ type, nom, description, montant, date, moyenPaiement, reference, recuPar }) {
   const settings = await apiGetSettings();
-  const numeroRecu = reference || ('REC-' + Date.now().toString(36).toUpperCase());
+  const numeroRecu = reference || '—';
   // La mention de non-remboursement ne concerne que les paiements REÇUS de la part
   // des élèves/parents (frais d'inscription, scolarité…) — jamais les paiements
   // versés À un enseignant, un employé ou un prestataire (avances, salaires, etc.)
@@ -809,10 +909,12 @@ async function imprimerRecu({ type, nom, description, montant, date, moyenPaieme
     </div>
   </div>
   </body></html>`;
-  const win = window.open('', '_blank');
-  win.document.write(html);
-  win.document.close();
-  imprimerFenetre(win);
+  const win = ouvrirDocumentImprimable(html);
+  finaliserDocumentPartageable(win, '.recu', {
+    filenameBase: `recu_${numeroRecu}`,
+    sujetEmail: `Reçu de paiement — ${numeroRecu}`,
+    messageEmail: `Veuillez trouver ci-joint votre reçu de paiement n° ${numeroRecu}.`,
+  });
 }
 window.imprimerRecu = imprimerRecu;
 

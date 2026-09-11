@@ -1,7 +1,7 @@
 from datetime import datetime
 from flask import Blueprint, request, jsonify, g
 
-from database import db, gen_id, rows_to_list, row_to_dict, log_action
+from database import db, gen_id, rows_to_list, row_to_dict, log_action, next_numero_recu
 from auth import require_auth, require_role
 from offline_sync import idempotent
 from permissions import require_permission
@@ -252,7 +252,7 @@ def payer_participant(p_id):
         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         (tid, g.user['ecole_id'], 'entree', date_vers, f"Cours de révision « {p['cours_titre']} » — {p['prenom']} {p['nom']}",
          'Cours de révision', body.get('moyen_paiement', 'Espèces'), montant,
-         body.get('reference') or f"REV-{p_id}", p['eleve_id'], g.user['id'], 'auto'),
+         body.get('reference') or next_numero_recu(g.user['ecole_id']), p['eleve_id'], g.user['id'], 'auto'),
     )
     db.commit()
     log_action(g.user, 'versement', 'cours_revision', p_id, {'montant': montant, 'participant': f"{p['prenom']} {p['nom']}"})

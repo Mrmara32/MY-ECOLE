@@ -493,10 +493,12 @@ async function imprimerLivreJournal(dateDebut, dateFin) {
   </div>
   </body></html>`;
 
-  const win = window.open('', '_blank');
-  win.document.write(html);
-  win.document.close();
-  imprimerFenetre(win);
+  const win = ouvrirDocumentImprimable(html);
+  finaliserDocumentPartageable(win, '.doc', {
+    filenameBase: `livre_journal_${dateDebut}_${dateFin}`,
+    sujetEmail: `Livre journal — du ${dateDebut} au ${dateFin}`,
+    messageEmail: 'Veuillez trouver ci-joint le livre journal de la période demandée.',
+  });
 }
 window.imprimerLivreJournal = imprimerLivreJournal;
 
@@ -883,9 +885,7 @@ async function imprimerBalance(dateDebut, dateFin) {
   </div>
   </body></html>`;
 
-  const win = window.open('', '_blank');
-  win.document.write(html);
-  win.document.close();
+  const win = ouvrirDocumentImprimable(html);
   finaliserDocumentPartageable(win, '.doc', {
     filenameBase: `balance_generale_${dateDebut}_${dateFin}`,
     sujetEmail: `Balance générale — du ${dateDebut} au ${dateFin}`,
@@ -1278,9 +1278,7 @@ function imprimerReleveEleves(data, settings) {
     ${_piedSignaturesHtml(settings)}
   </body></html>`;
 
-  const win = window.open('', '_blank');
-  win.document.write(html);
-  win.document.close();
+  const win = ouvrirDocumentImprimable(html);
   const nomEleve = nbEleves === 1 ? `${data.resultats[0].eleve.prenom}_${data.resultats[0].eleve.nom}` : `${nbEleves}_eleves`;
   finaliserDocumentPartageable(win, '.doc', {
     filenameBase: `releve_${nomEleve}`,
@@ -1311,9 +1309,7 @@ function imprimerReleveTransaction(t, settings) {
     ${_piedSignaturesHtml(settings)}
   </body></html>`;
 
-  const win = window.open('', '_blank');
-  win.document.write(html);
-  win.document.close();
+  const win = ouvrirDocumentImprimable(html);
   finaliserDocumentPartageable(win, '.doc', {
     filenameBase: `transaction_${t.reference||t.id}`,
     sujetEmail: `Détail de transaction — ${t.reference||t.id}`,
@@ -1345,9 +1341,7 @@ function imprimerReleveGeneral(data, settings) {
     ${_piedSignaturesHtml(settings)}
   </body></html>`;
 
-  const win = window.open('', '_blank');
-  win.document.write(html);
-  win.document.close();
+  const win = ouvrirDocumentImprimable(html);
   finaliserDocumentPartageable(win, '.doc', {
     filenameBase: `releve_general_${data.date_debut||'debut'}_${data.date_fin||'fin'}`,
     sujetEmail: 'Relevé général des transactions',

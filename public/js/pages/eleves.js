@@ -392,9 +392,10 @@ async function imprimerBulletin(eleveId, tri = 1) {
     .sig div{border-top:1px solid #333;padding-top:8px;text-align:center;font-size:11px}
     @media print{body{padding:0}}
   </style></head><body>
+  <div class="doc">
   <div class="header">
     ${settings.ecole_logo?`<img src="${settings.ecole_logo}" alt="Logo">`:''}
-    <h1>${settings.ecole_nom||'Groupe Scolaire'}</h1>
+    <h1>${settings.ecole_nom||'MY-ECOLE'}</h1>
     ${settings.ecole_adresse?`<p>${settings.ecole_adresse}</p>`:''}
     ${settings.ecole_telephone?`<p>Tél : ${settings.ecole_telephone}</p>`:''}
     <h2 style="margin-top:8px;font-size:15px;color:#374151">BULLETIN DE NOTES — TRIMESTRE ${tri}</h2>
@@ -427,12 +428,16 @@ async function imprimerBulletin(eleveId, tri = 1) {
     <div>Le Directeur</div>
     <div>Signature des parents</div>
   </div>
+  </div>
   </body></html>`;
 
-  const win = window.open('', '_blank');
-  win.document.write(bulletinHtml);
-  win.document.close();
-  imprimerFenetre(win);
+  const win = ouvrirDocumentImprimable(bulletinHtml);
+  finaliserDocumentPartageable(win, '.doc', {
+    filenameBase: `bulletin_${eleve.prenom}_${eleve.nom}_T${tri}`,
+    sujetEmail: `Bulletin de notes — ${eleve.prenom} ${eleve.nom} (Trimestre ${tri})`,
+    messageEmail: `Veuillez trouver ci-joint le bulletin de notes du trimestre ${tri}.`,
+    destinataireDefaut: eleve.email_parent || '',
+  });
 }
 window.imprimerBulletin = imprimerBulletin;
 
@@ -536,9 +541,7 @@ async function imprimerCarteScolaire(eleveId) {
   </div>
   </body></html>`;
 
-  const win = window.open('', '_blank');
-  win.document.write(html);
-  win.document.close();
+  const win = ouvrirDocumentImprimable(html);
   finaliserCarteImprimable(win, '.carte', `carte_scolaire_${(e.matricule||e.nom||'eleve')}.png`);
 }
 window.imprimerCarteScolaire = imprimerCarteScolaire;
@@ -629,9 +632,7 @@ async function imprimerCarteRetrait(eleveId) {
   </div>
   </body></html>`;
 
-  const win = window.open('', '_blank');
-  win.document.write(html);
-  win.document.close();
+  const win = ouvrirDocumentImprimable(html);
   finaliserCarteImprimable(win, '.carte', `carte_retrait_${(e.matricule||e.nom||'eleve')}.png`);
 }
 window.imprimerCarteRetrait = imprimerCarteRetrait;

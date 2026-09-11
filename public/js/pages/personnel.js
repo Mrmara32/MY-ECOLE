@@ -353,9 +353,7 @@ async function imprimerCarteAcces(personnelId) {
   </div>
   </body></html>`;
 
-  const win = window.open('', '_blank');
-  win.document.write(html);
-  win.document.close();
+  const win = ouvrirDocumentImprimable(html);
   finaliserCarteImprimable(win, '.card', `carte_acces_${(p.matricule||p.nom||'personnel')}.png`);
 }
 window.imprimerCarteAcces = imprimerCarteAcces;
@@ -450,9 +448,7 @@ async function imprimerBadge(personnelId) {
   </div>
   </body></html>`;
 
-  const win = window.open('', '_blank');
-  win.document.write(html);
-  win.document.close();
+  const win = ouvrirDocumentImprimable(html);
   finaliserCarteImprimable(win, '.badge', `badge_${(p.matricule||p.nom||'personnel')}.png`);
 }
 window.imprimerBadge = imprimerBadge;

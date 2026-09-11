@@ -1470,6 +1470,18 @@ def next_matricule_personnel(ecole_id=1):
     return next_sequence('matricule_personnel', 'P', 4, ecole_id=ecole_id)
 
 
+def next_numero_recu(ecole_id=1):
+    """Génère le prochain numéro de reçu/facture, au format REC-2026-00001 —
+    séquentiel et remis à zéro chaque année civile (convention comptable standard).
+    Remplace les anciens numéros improvisés (horodatage aléatoire côté client, ou
+    identifiant technique du versement) qui n'étaient ni séquentiels ni stables :
+    imprimer deux fois le même reçu pouvait même lui donner un numéro différent
+    à chaque fois, ce qu'aucun document comptable/légal ne doit jamais faire."""
+    from datetime import datetime
+    annee = datetime.now().year
+    return next_sequence(f'numero_recu_{annee}', f'REC-{annee}-', 5, ecole_id=ecole_id)
+
+
 def get_classes_enseignant(user_id):
     """Retourne la liste des classes qu'un enseignant donné (via son user_id) enseigne
     réellement, déduite de l'emploi du temps. Utilisé pour restreindre ce qu'un

@@ -407,10 +407,13 @@ async function imprimerBulletinSalaire(bulletinId) {
   </div>
   </body></html>`;
 
-  const win = window.open('', '_blank');
-  win.document.write(html);
-  win.document.close();
-  imprimerFenetre(win);
+  const win = ouvrirDocumentImprimable(html);
+  finaliserDocumentPartageable(win, '.doc', {
+    filenameBase: `bulletin_salaire_${b.prenom}_${b.nom}_${b.mois}`,
+    sujetEmail: `Bulletin de salaire — ${b.prenom} ${b.nom} (${b.mois})`,
+    messageEmail: `Veuillez trouver ci-joint votre bulletin de salaire du mois de ${b.mois}.`,
+    destinataireDefaut: b.email || '',
+  });
 }
 window.pagePaieList = pagePaieList;
 window.modalPayerSalaire = modalPayerSalaire;

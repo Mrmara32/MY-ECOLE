@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, g
 
-from database import db, gen_id, rows_to_list, row_to_dict, log_action, get_settings
+from database import db, gen_id, rows_to_list, row_to_dict, log_action, get_settings, next_numero_recu
 from auth import require_auth, require_role
 from permissions import require_permission
 from offline_sync import idempotent
@@ -319,7 +319,7 @@ def create_transaction():
         "INSERT INTO transactions (id,ecole_id,type,date_op,description,categorie,moyen_paiement,montant,reference,eleve_id,fournisseur_id,journal,cree_par,statut_validation) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (tid, g.user['ecole_id'], type_, date_op, body.get('description'), body.get('categorie'), body.get('moyen_paiement'),
-         montant, body.get('reference'), body.get('eleve_id'), fournisseur_id, journal, g.user['id'], statut),
+         montant, body.get('reference') or next_numero_recu(g.user['ecole_id']), body.get('eleve_id'), fournisseur_id, journal, g.user['id'], statut),
     )
     db.commit()
     log_action(g.user, 'creation', 'transaction', tid, {'type': type_, 'montant': montant, 'statut_validation': statut})
@@ -661,7 +661,7 @@ def verser_paiement(p_id):
         "INSERT INTO transactions (id,ecole_id,type,date_op,description,categorie,moyen_paiement,montant,reference,eleve_id) "
         "VALUES (?,?,?,?,?,?,?,?,?,?)",
         (tid, g.user['ecole_id'], 'entree', date_vers, f"{pai['libelle']} — {eleve['prenom']} {eleve['nom']} ({eleve['matricule']})",
-         categorie_frais, moyen_paiement, montant, body.get('reference') or f"REC-{vid}", pai['eleve_id']),
+         categorie_frais, moyen_paiement, montant, body.get('reference') or next_numero_recu(g.user['ecole_id']), pai['eleve_id']),
     )
     db.commit()
 
@@ -867,7 +867,7 @@ def payer_abonnement(a_id):
         "VALUES (?,?,?,?,?,?,?,?,?,?)",
         (tid, g.user['ecole_id'], 'entree', d, f"Cantine {abo['mois']} — {abo['prenom']} {abo['nom']} ({abo['matricule']})",
          'Cantine', body.get('moyen_paiement', 'Espèces'), abo['montant'],
-         body.get('reference') or f"CANT-{abo['id']}", abo['eleve_id']),
+         body.get('reference') or next_numero_recu(g.user['ecole_id']), abo['eleve_id']),
     )
     db.commit()
     return jsonify({'success': True})
@@ -1286,28 +1286,30 @@ def releve():
 @require_auth
 @require_role('admin', 'directeur', 'comptable', 'secretaire')
 def envoyer_releve_email():
-    """Envoie un document déjà généré côté client (relevé, balance…) par e-mail, en
-    pièce jointe PDF. Le PDF est produit dans le navigateur (html2canvas + jsPDF) et
-    transmis ici encodé en base64 — le serveur ne fait que router l'envoi SMTP."""
+    """Envoie un document déjà généré côté client (relevé, balance, carte…) par
+    e-mail, en pièce jointe. Le fichier (PDF ou image) est produit dans le
+    navigateur et transmis ici encodé en base64 — le serveur ne fait que router
+    l'envoi SMTP."""
     from email_service import envoyer_email
     body = request.get_json(silent=True) or {}
     destinataire = (body.get('destinataire') or '').strip()
     pdf_base64 = body.get('pdf_base64')
-    nom_fichier = body.get('nom_fichier') or 'document.pdf'
+    type_mime = body.get('type_mime') or 'application/pdf'
+    nom_fichier = body.get('nom_fichier') or ('document.pdf' if type_mime == 'application/pdf' else 'document')
     sujet = body.get('sujet') or 'Document — ' + (get_settings(g.user['ecole_id']).get('ecole_nom') or 'École')
     message = body.get('message') or 'Veuillez trouver ci-joint le document demandé.'
 
     if not destinataire or '@' not in destinataire:
         return jsonify({'error': 'Adresse e-mail invalide'}), 400
     if not pdf_base64:
-        return jsonify({'error': 'Aucun document à envoyer (PDF manquant)'}), 400
+        return jsonify({'error': 'Aucun document à envoyer (fichier manquant)'}), 400
 
     corps_html = f"""<div style="font-family:Arial,sans-serif;font-size:14px;color:#111827;line-height:1.6">
       <p>{message}</p>
       <p style="color:#6B7280;font-size:12px;margin-top:24px">Document généré automatiquement par l'application de gestion scolaire.</p>
     </div>"""
     ok = envoyer_email(destinataire, sujet, corps_html, piece_jointe={
-        'nom_fichier': nom_fichier, 'contenu_base64': pdf_base64, 'type_mime': 'application/pdf',
+        'nom_fichier': nom_fichier, 'contenu_base64': pdf_base64, 'type_mime': type_mime,
     })
     if not ok:
         return jsonify({'error': "L'envoi a échoué. Vérifiez que la configuration e-mail de l'application est bien active."}), 502
