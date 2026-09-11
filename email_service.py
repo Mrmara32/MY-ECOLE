@@ -146,13 +146,23 @@ def _encart_code(code_ecole):
         </div>"""
 
 
-def envoyer_confirmation_ecole(email_destinataire, nom_ecole, code_ecole, jeton):
+def envoyer_confirmation_ecole(email_destinataire, nom_ecole, code_ecole, jeton, admin_username=None, admin_password=None):
     url = f"{url_application()}/api/ecoles/confirmer/{jeton}"
+    identifiants_html = ""
+    if admin_username and admin_password:
+        identifiants_html = f"""
+        <div style="background:#F3F4F6;border-radius:8px;padding:16px;margin:16px 0">
+          <p style="margin:0 0 8px 0;font-weight:700;color:#111827">Vos identifiants de connexion</p>
+          <p style="margin:4px 0"><strong>Identifiant :</strong> {admin_username}</p>
+          <p style="margin:4px 0"><strong>Mot de passe :</strong> {admin_password}</p>
+          <p style="margin:8px 0 0 0;font-size:12px;color:#6B7280">Conservez-les précieusement et changez le mot de passe après votre première connexion.</p>
+        </div>"""
     corps = _gabarit(
         "Bienvenue sur Gestion Scolaire !",
         f"""<p>Bonjour,</p>
         <p>Votre établissement <strong>{nom_ecole}</strong> vient d'être inscrit sur la plateforme.</p>
         {_encart_code(code_ecole)}
+        {identifiants_html}
         <p>Pour activer votre compte et commencer à l'utiliser, veuillez confirmer votre adresse e-mail :</p>""",
         bouton_texte="Confirmer mon compte",
         bouton_url=url,
