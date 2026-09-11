@@ -1,25 +1,27 @@
 """
 Envoi d'e-mails (confirmations de compte, notifications) via SMTP.
 
-Configuré pour Brevo (ex-Sendinblue) par défaut — un service d'envoi
-transactionnel, bien plus fiable que l'envoi automatique via un Gmail
-personnel (qui est silencieusement filtré par beaucoup de fournisseurs de
-messagerie, sans même passer par les indésirables). Reste compatible avec
-n'importe quel autre service SMTP standard en changeant EMAIL_HOST / EMAIL_PORT.
+Configuré pour Gmail par défaut. Reste compatible avec n'importe quel autre
+service SMTP standard (Brevo, Mailgun, SendGrid…) en changeant EMAIL_HOST /
+EMAIL_PORT — utile si la délivrabilité de Gmail personnel pose problème
+(certains fournisseurs de messagerie filtrent silencieusement les envois
+automatiques venant d'un compte Gmail personnel, sans même passer par les
+indésirables).
 
 Configuration requise (variables d'environnement, à définir sur l'hébergeur —
 jamais dans le code) :
-  EMAIL_ADRESSE        : identifiant SMTP Brevo (l'adresse e-mail de votre
-                         compte Brevo — visible dans Brevo, SMTP & API > SMTP)
-  EMAIL_MOT_DE_PASSE   : la clé SMTP Brevo (générée dans Brevo, SMTP & API > SMTP
-                         > "Générer une nouvelle clé SMTP" — PAS le mot de passe
-                         de votre compte Brevo)
-  EMAIL_EXPEDITEUR     : optionnel — l'adresse affichée comme expéditeur si elle
-                         diffère de EMAIL_ADRESSE (doit être un expéditeur
-                         validé dans Brevo : Expéditeurs, domaines & dédiés).
-                         À défaut, EMAIL_ADRESSE est utilisée.
+  EMAIL_ADRESSE        : l'adresse d'envoi (ex: contact@monecole.com ou un Gmail).
+                         Pour Gmail, nécessite un "mot de passe d'application"
+                         (voir https://myaccount.google.com/apppasswords —
+                         requiert la validation en 2 étapes activée).
+  EMAIL_MOT_DE_PASSE   : le mot de passe d'application (PAS le mot de passe
+                         normal du compte).
+  EMAIL_EXPEDITEUR     : optionnel — adresse affichée comme expéditeur si elle
+                         diffère de EMAIL_ADRESSE (utile avec certains services
+                         comme Brevo qui séparent identifiant de connexion et
+                         expéditeur validé). À défaut, EMAIL_ADRESSE est utilisée.
   EMAIL_EXPEDITEUR_NOM : optionnel — nom affiché avant l'adresse (ex: "MY-ECOLE").
-  EMAIL_HOST           : optionnel, défaut smtp-relay.brevo.com
+  EMAIL_HOST           : optionnel, défaut smtp.gmail.com
   EMAIL_PORT           : optionnel, défaut 587
   URL_APPLICATION      : l'adresse publique de l'application (pour les liens dans
                          les e-mails, ex: https://my-ecole.onrender.com) — sans
@@ -68,7 +70,7 @@ def envoyer_email(destinataire, sujet, corps_html, piece_jointe=None):
         mot_de_passe = os.environ['EMAIL_MOT_DE_PASSE']
         expediteur_email = os.environ.get('EMAIL_EXPEDITEUR') or adresse
         expediteur_nom = os.environ.get('EMAIL_EXPEDITEUR_NOM')
-        host = os.environ.get('EMAIL_HOST', 'smtp-relay.brevo.com')
+        host = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
         port = int(os.environ.get('EMAIL_PORT', '587'))
 
         msg = MIMEMultipart('mixed' if piece_jointe else 'alternative')
