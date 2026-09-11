@@ -106,7 +106,7 @@ def envoyer_email(destinataire, sujet, corps_html, piece_jointe=None):
         return False
 
 
-def _gabarit(titre, contenu_html, bouton_texte=None, bouton_url=None):
+def _gabarit(titre, contenu_html, bouton_texte=None, bouton_url=None, contenu_apres_bouton=""):
     bouton = ""
     if bouton_texte and bouton_url:
         bouton = f"""
@@ -123,11 +123,25 @@ def _gabarit(titre, contenu_html, bouton_texte=None, bouton_url=None):
         <h1 style="color:#0E332C;font-size:20px;text-align:center;margin:0 0 20px">{titre}</h1>
         <div style="color:#374151;font-size:14.5px;line-height:1.6">{contenu_html}</div>
         {bouton}
+        <div style="color:#374151;font-size:13px;line-height:1.6">{contenu_apres_bouton}</div>
       </div>
       <p style="text-align:center;color:#9CA3AF;font-size:11.5px;margin-top:18px">
-        Gestion Scolaire — Actif System Groupe
+        MY-ECOLE — développé par Actif System Groupe
       </p>
     </div>"""
+
+
+# Slogan affiché en pied des e-mails de bienvenue — une seule phrase, mémorable.
+SLOGAN_MY_ECOLE = "MY-ECOLE — Votre école, pilotée en toute clarté."
+
+PRESENTATION_MY_ECOLE = """
+    <p style="margin-top:18px">
+      <strong>MY-ECOLE</strong> est une application de gestion scolaire tout-en-un : élèves,
+      personnel, notes et bulletins, paiements et comptabilité, communication avec les
+      familles — tout au même endroit. Conçue pour fonctionner même sans connexion
+      internet stable, elle synchronise automatiquement vos données dès que le réseau
+      revient.
+    </p>"""
 
 
 def _encart_code(code_ecole):
@@ -158,7 +172,7 @@ def envoyer_confirmation_ecole(email_destinataire, nom_ecole, code_ecole, jeton,
           <p style="margin:8px 0 0 0;font-size:12px;color:#6B7280">Conservez-les précieusement et changez le mot de passe après votre première connexion.</p>
         </div>"""
     corps = _gabarit(
-        "Bienvenue sur Gestion Scolaire !",
+        "Bienvenue sur MY-ECOLE !",
         f"""<p>Bonjour,</p>
         <p>Votre établissement <strong>{nom_ecole}</strong> vient d'être inscrit sur la plateforme.</p>
         {_encart_code(code_ecole)}
@@ -166,6 +180,8 @@ def envoyer_confirmation_ecole(email_destinataire, nom_ecole, code_ecole, jeton,
         <p>Pour activer votre compte et commencer à l'utiliser, veuillez confirmer votre adresse e-mail :</p>""",
         bouton_texte="Confirmer mon compte",
         bouton_url=url,
+        contenu_apres_bouton=f"""{PRESENTATION_MY_ECOLE}
+        <p style="text-align:center;font-weight:700;color:#0E332C;margin-top:22px;font-size:13px">{SLOGAN_MY_ECOLE}</p>""",
     )
     return envoyer_email(email_destinataire, f"Confirmez votre inscription — {nom_ecole}", corps)
 
