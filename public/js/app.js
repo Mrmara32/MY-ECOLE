@@ -53,19 +53,46 @@ async function initLogin() {
   $('#app').style.display = 'none';
   $('#login-lang-wrap').innerHTML = langSwitcherHtml(false, 'lang-switcher-login');
   applyLoginTranslations();
-  try {
-    const s = await apiGetSettings();
-    if (s.ecole_nom) {
-      $('#login-ecole-nom').textContent = s.ecole_nom;
-      $('#login-ecole-nom').style.display = '';
-      document.title = s.ecole_nom + ' — Connexion';
-    }
-    if (s.ecole_logo) {
-      $('#login-logo').src = s.ecole_logo;
-      $('#login-logo').style.display = '';
-      $('#login-logo-default').style.display = 'none';
-    }
-  } catch(_) {}
+
+  // Par défaut (aucun code établissement saisi), la page affiche l'identité
+  // générique MY-ECOLE — jamais celle d'une école en particulier. Ce n'est
+  // qu'une fois qu'un code établissement valide est entré que le nom et le
+  // logo réels de CETTE école s'affichent (voir _appliquerBrandingLogin ci-dessous).
+  document.title = 'MY-ECOLE — Connexion';
+  const _brandingParDefaut = () => {
+    $('#login-ecole-nom').textContent = 'MY-ECOLE';
+    $('#login-logo').style.display = 'none';
+    $('#login-logo-default').style.display = '';
+    document.title = 'MY-ECOLE — Connexion';
+  };
+  _brandingParDefaut();
+
+  let _timerBrandingLogin = null;
+  const _appliquerBrandingLogin = async (codeEcole) => {
+    if (!codeEcole) { _brandingParDefaut(); return; }
+    try {
+      const s = await apiGetSettings('ecole=' + encodeURIComponent(codeEcole));
+      if (s.ecole_nom) {
+        $('#login-ecole-nom').textContent = s.ecole_nom;
+        document.title = s.ecole_nom + ' — Connexion';
+      } else {
+        _brandingParDefaut();
+      }
+      if (s.ecole_logo) {
+        $('#login-logo').src = s.ecole_logo;
+        $('#login-logo').style.display = '';
+        $('#login-logo-default').style.display = 'none';
+      } else {
+        $('#login-logo').style.display = 'none';
+        $('#login-logo-default').style.display = '';
+      }
+    } catch(_) { _brandingParDefaut(); }
+  };
+  $('#l-code-ecole')?.addEventListener('input', (e) => {
+    clearTimeout(_timerBrandingLogin);
+    const valeur = e.target.value.trim();
+    _timerBrandingLogin = setTimeout(() => _appliquerBrandingLogin(valeur), 400);
+  });
 
   $('#login-form').addEventListener('submit', async e => {
     e.preventDefault();

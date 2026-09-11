@@ -14,15 +14,21 @@ ALLOWED_EXT = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
 def get_settings_route():
     """Route accessible avec ou sans connexion. Priorité : (1) utilisateur connecté -> ses
     propres paramètres, (2) code établissement en paramètre (page de connexion, avant identification)
-    -> les paramètres de cette école, (3) à défaut, école n°1 (rétro-compatibilité mono-école)."""
+    -> les paramètres de cette école, (3) à défaut (aucun code fourni) -> école n°1
+    (rétro-compatibilité mono-école). Important : un code fourni mais INVALIDE ne doit
+    JAMAIS retomber sur l'école n°1 — sans ça, la page de connexion publique pourrait
+    révéler par erreur le nom/logo d'une école à un visiteur tapant un code différent
+    du sien. Dans ce cas précis, on renvoie des paramètres vides (identité neutre)."""
     ecole_id = ecole_id_optionnelle()
     if ecole_id is None:
         code_ecole = request.args.get('ecole')
-        ecole_id = 1
         if code_ecole:
             e = db.execute("SELECT id FROM ecoles WHERE code=?", (code_ecole,)).fetchone()
-            if e:
-                ecole_id = e['id']
+            if not e:
+                return jsonify({})
+            ecole_id = e['id']
+        else:
+            ecole_id = 1
     return jsonify(get_settings(ecole_id))
 
 

@@ -90,7 +90,7 @@ function authLogout() {
 function apiSetToken(tok) { _token = tok; localStorage.setItem('gs_tok', tok); }
 
 /* ── Settings ── */
-const apiGetSettings  = ()  => apiFetch('/settings');
+const apiGetSettings  = (q='')  => apiFetch('/settings' + (q?'?'+q:''));
 
 /* ── Licence (installation autonome / version .exe uniquement) ── */
 const apiGetStatutLicence = () => apiFetch('/licence/statut');
