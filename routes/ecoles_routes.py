@@ -132,6 +132,47 @@ def confirmer_ecole(jeton):
     return redirect(f"/?ecole_confirmee=1&code={e['code']}")
 
 
+@bp.route('/<int:ecole_id>/confirmer-manuellement', methods=['POST'])
+@require_auth
+@require_super_admin
+def confirmer_ecole_manuellement(ecole_id):
+    """Permet au super-administrateur d'activer une école cliente sans que le
+    mail de confirmation n'ait besoin d'arriver — utile quand l'e-mail se
+    perd (dossier indésirable, adresse mal saisie, fournisseur qui bloque)."""
+    e = db.execute("SELECT * FROM ecoles WHERE id=?", (ecole_id,)).fetchone()
+    if not e:
+        return jsonify({'error': 'Introuvable'}), 404
+    if e['email_confirme']:
+        return jsonify({'error': 'Cette école a déjà confirmé son adresse e-mail'}), 409
+    db.execute("UPDATE ecoles SET email_confirme=1, jeton_confirmation=NULL WHERE id=?", (ecole_id,))
+    db.commit()
+    log_action(g.user, 'confirmation_manuelle_ecole', 'ecole', str(ecole_id), {'nom': e['nom']})
+    return jsonify({'success': True})
+
+
+@bp.route('/<int:ecole_id>/renvoyer-confirmation', methods=['POST'])
+@require_auth
+@require_super_admin
+def renvoyer_confirmation_ecole(ecole_id):
+    """Régénère un nouveau jeton de confirmation et renvoie l'e-mail — pour le
+    cas où le premier envoi a échoué ou n'a simplement jamais été reçu."""
+    e = db.execute("SELECT * FROM ecoles WHERE id=?", (ecole_id,)).fetchone()
+    if not e:
+        return jsonify({'error': 'Introuvable'}), 404
+    if e['email_confirme']:
+        return jsonify({'error': 'Cette école a déjà confirmé son adresse e-mail'}), 409
+    if not e['email_contact']:
+        return jsonify({'error': "Cette école n'a aucune adresse e-mail de contact enregistrée"}), 400
+    nouveau_jeton = generer_jeton()
+    db.execute("UPDATE ecoles SET jeton_confirmation=? WHERE id=?", (nouveau_jeton, ecole_id))
+    db.commit()
+    email_envoye = envoyer_confirmation_ecole(e['email_contact'], e['nom'], e['code'], nouveau_jeton)
+    if not email_envoye:
+        return jsonify({'error': "L'envoi a échoué. Vérifiez la configuration e-mail de l'application, ou confirmez manuellement en attendant."}), 502
+    log_action(g.user, 'renvoi_confirmation_ecole', 'ecole', str(ecole_id), {'nom': e['nom'], 'email': e['email_contact']})
+    return jsonify({'success': True, 'email_contact': e['email_contact']})
+
+
 @bp.route('', methods=['GET'])
 @require_auth
 @require_super_admin

@@ -100,6 +100,8 @@ const apiActiverLicence   = (cle) => apiFetch('/licence/activer', { method:'POST
 const apiGetEcoles     = () => apiFetch('/ecoles');
 const apiGetEcole      = (id) => apiFetch(`/ecoles/${id}`);
 const apiUpdateEcole   = (id, d) => apiFetch(`/ecoles/${id}`, { method:'PUT', body:d });
+const apiConfirmerEcoleManuellement = (id) => apiFetch(`/ecoles/${id}/confirmer-manuellement`, { method:'POST' });
+const apiRenvoyerConfirmationEcole  = (id) => apiFetch(`/ecoles/${id}/renvoyer-confirmation`, { method:'POST' });
 const apiDeleteEcole   = (id) => apiFetch(`/ecoles/${id}`, { method:'DELETE' });
 const apiSaveSettings = (b) => apiFetch('/settings', { method: 'PUT', body: b });
 

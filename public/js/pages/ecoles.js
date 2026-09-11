@@ -71,6 +71,15 @@ async function modalDetailEcole(ecoleId) {
           <button type="submit" class="btn btn-primary">Enregistrer</button>
         </div>
       </form>
+      ${!e.email_confirme ? `
+      <div style="border-top:1px solid var(--line,#E1E8E4);padding-top:14px;margin-top:2px">
+        <div style="font-size:12px;font-weight:700;color:#B45309;margin-bottom:8px">⚠ Adresse e-mail non confirmée</div>
+        <div class="text-muted" style="font-size:12px;margin-bottom:10px">Si l'école n'a pas reçu (ou pas retrouvé) l'e-mail de confirmation, vous pouvez soit le renvoyer, soit activer directement le compte manuellement.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn btn-outline btn-sm" onclick="renvoyerConfirmation(${e.id})">✉️ Renvoyer le lien par e-mail</button>
+          <button type="button" class="btn btn-primary btn-sm" onclick="confirmerManuellement(${e.id})">✔ Confirmer manuellement maintenant</button>
+        </div>
+      </div>` : ''}
       ${e.id !== 1 ? `
       <div style="border-top:1px solid var(--line,#E1E8E4);padding-top:14px;margin-top:2px">
         <div style="font-size:12px;font-weight:700;color:#DC2626;margin-bottom:8px">Zone de danger</div>
@@ -91,6 +100,25 @@ async function modalDetailEcole(ecoleId) {
   };
 }
 window.modalDetailEcole = modalDetailEcole;
+
+async function confirmerManuellement(ecoleId) {
+  if (!confirm("Confirmer manuellement l'adresse e-mail de cette école ? Elle pourra se connecter immédiatement.")) return;
+  try {
+    await apiConfirmerEcoleManuellement(ecoleId);
+    toast('École confirmée manuellement ✅', 'success');
+    closeModal();
+    pageEcoles();
+  } catch(err) { toast(err.message, 'error'); }
+}
+window.confirmerManuellement = confirmerManuellement;
+
+async function renvoyerConfirmation(ecoleId) {
+  try {
+    const r = await apiRenvoyerConfirmationEcole(ecoleId);
+    toast(`Lien de confirmation renvoyé à ${r.email_contact}`, 'success');
+  } catch(err) { toast(err.message, 'error'); }
+}
+window.renvoyerConfirmation = renvoyerConfirmation;
 
 function confirmerSuppressionEcole(ecoleId, nom, code) {
   openModal(`⚠️ Supprimer « ${esc(nom)} » ?`, `

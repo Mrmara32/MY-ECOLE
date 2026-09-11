@@ -1,0 +1,67 @@
+COMMENT OBTENIR MY-ECOLE.exe (EXÉCUTABLE WINDOWS AUTONOME)
+=============================================================
+
+IMPORTANT — À LIRE EN PREMIER
+------------------------------
+Je (l'assistant) ne peux PAS construire directement le fichier .exe pour vous :
+un exécutable Windows doit être construit SUR une machine Windows (PyInstaller
+ne peut pas fabriquer un .exe depuis un autre système d'exploitation). Ce que
+j'ai préparé, c'est TOUT ce qu'il vous faut pour le construire vous-même en
+2 minutes, avec une seule commande.
+
+Le résultat sera un programme que vous pourrez lancer par double-clic, sans
+que l'utilisateur final ait besoin d'installer Python — exactement comme un
+logiciel de bureau classique.
+
+
+ÉTAPES (sur une machine Windows)
+---------------------------------
+1. Assurez-vous d'avoir Python installé (python.org), avec l'option
+   "Add python.exe to PATH" cochée pendant l'installation.
+
+2. Ouvrez une invite de commande dans le dossier du projet MY-ECOLE
+   (celui qui contient app.py, MY-ECOLE.spec, construire-exe.bat).
+
+3. Double-cliquez sur construire-exe.bat
+   (ou tapez : construire-exe.bat dans une invite de commande)
+
+   Ce script va automatiquement :
+     - installer les dépendances Python du projet
+     - installer PyInstaller
+     - construire l'exécutable
+
+4. Une fois terminé, votre exécutable se trouve dans :
+       dist\MY-ECOLE\MY-ECOLE.exe
+
+5. Pour distribuer l'application : copiez TOUT le dossier dist\MY-ECOLE\
+   (pas seulement le fichier .exe — les autres fichiers à côté sont
+   nécessaires à son fonctionnement) sur le poste final, une clé USB,
+   ou un partage réseau.
+
+6. Au premier lancement, MY-ECOLE.exe va :
+     - créer automatiquement sa base de données à côté de l'exécutable
+     - ouvrir votre navigateur par défaut sur l'application
+     - afficher une fenêtre noire (console) : NE PAS LA FERMER, c'est le
+       serveur qui tourne. La fermer arrête l'application.
+
+
+PERSONNALISER (optionnel)
+---------------------------
+- Icône de l'application : ajoutez un fichier .ico dans public/, puis modifiez
+  MY-ECOLE.spec, ligne icon=None, en icon='public/votre-icone.ico'.
+- Masquer la fenêtre noire : dans MY-ECOLE.spec, remplacez console=True par
+  console=False (déconseillé tant que l'application n'est pas bien testée :
+  cette fenêtre affiche les erreurs éventuelles, utiles pour le support).
+
+
+EN CAS DE PROBLÈME
+--------------------
+- "pyinstaller n'est pas reconnu" -> réinstallez Python en cochant bien
+  "Add python.exe to PATH", ou remplacez pyinstaller par :
+  python -m PyInstaller dans construire-exe.bat.
+- Antivirus qui bloque le .exe généré -> c'est un faux positif fréquent avec
+  les exécutables PyInstaller ; ajoutez une exception, ou signez le fichier
+  avec un certificat de signature de code si vous le distribuez largement.
+- L'exécutable démarre puis se ferme aussitôt -> relancez-le depuis une
+  invite de commande (pas par double-clic) pour voir le message d'erreur
+  qui s'affiche avant la fermeture.
