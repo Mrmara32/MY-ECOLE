@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify, g
 from werkzeug.security import generate_password_hash
 
 from database import db, gen_id, rows_to_list, row_to_dict, log_action, next_matricule_personnel, matricule_lock, ecole_id_depuis_code
+from securite import erreur_mot_de_passe
 from auth import require_auth, require_role
 from permissions import require_permission
 from email_service import generer_jeton, envoyer_confirmation_enseignant
@@ -27,8 +28,8 @@ def soumettre_candidature():
         return jsonify({'error': 'Une adresse e-mail valide est requise'}), 400
     if not username_souhaite:
         return jsonify({'error': 'Un identifiant de connexion est requis'}), 400
-    if len(password) < 6:
-        return jsonify({'error': 'Le mot de passe doit contenir au moins 6 caractères'}), 400
+    if erreur_mot_de_passe(password):
+        return jsonify({'error': erreur_mot_de_passe(password)}), 400
     matieres = body.get('matieres')
     if isinstance(matieres, list):
         matieres = ', '.join(matieres)

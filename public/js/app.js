@@ -127,6 +127,7 @@ async function initLogin() {
         else localStorage.removeItem('gs_code_ecole');
       } catch (_) { /* stockage indisponible : simple confort, sans conséquence */ }
       await startApp();
+      if (user.doit_changer_mot_de_passe) showPwdModal(true);
       const civ = user.civilite ? user.civilite + ' ' : '';
       toast(`Bienvenue ${civ}${user.full_name || user.username} 👋`, 'success');
     } catch(err) {
@@ -266,15 +267,17 @@ function logout() {
 window.logout = logout;
 
 /* ── Modal mot de passe ── */
-function showPwdModal() {
-  openModal('Changer mon mot de passe', `
+function showPwdModal(obligatoire = false) {
+  if (obligatoire !== true) obligatoire = false;
+  openModal(obligatoire ? 'Choisissez votre mot de passe' : 'Changer mon mot de passe', `
+    ${obligatoire ? `<div class="alert alert-info" style="margin-bottom:12px">Votre mot de passe est provisoire : vous devez en choisir un nouveau, qui vous est personnel, avant de continuer.</div>` : ''}
     <form id="f-cpwd" style="display:flex;flex-direction:column;gap:14px">
-      <div class="fg"><label>Ancien mot de passe</label><input type="password" id="cpwd-old" required></div>
-      <div class="fg"><label>Nouveau mot de passe (min. 6 car.)</label><input type="password" id="cpwd-new" required minlength="6"></div>
-      <div class="fg"><label>Confirmer le nouveau mot de passe</label><input type="password" id="cpwd-conf" required></div>
+      <div class="fg"><label>${obligatoire ? 'Mot de passe provisoire (actuel)' : 'Ancien mot de passe'}</label><input type="password" id="cpwd-old" required autocomplete="current-password"></div>
+      <div class="fg"><label>Nouveau mot de passe (8 caractères min., avec lettres et chiffres)</label><input type="password" id="cpwd-new" required minlength="8" autocomplete="new-password"></div>
+      <div class="fg"><label>Confirmer le nouveau mot de passe</label><input type="password" id="cpwd-conf" required autocomplete="new-password"></div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-outline" onclick="closeModal()">Annuler</button>
-        <button type="submit" class="btn btn-primary">Changer</button>
+        ${obligatoire ? '' : '<button type="button" class="btn btn-outline" onclick="closeModal()">Annuler</button>'}
+        <button type="submit" class="btn btn-primary">${obligatoire ? 'Enregistrer et continuer' : 'Changer'}</button>
       </div>
     </form>`, { narrow: true });
   $('#f-cpwd').onsubmit = async e => {
@@ -284,8 +287,10 @@ function showPwdModal() {
     const conf = $('#cpwd-conf').value;
     if (newPwd !== conf) { toast('Les mots de passe ne correspondent pas','error'); return; }
     try {
-      await apiChangePwd(oldPwd, newPwd);
+      const r = await apiChangePwd(oldPwd, newPwd);
+      if (r && r.token) apiSetToken(r.token);          // jeton sans la mention « mot de passe provisoire »
       toast('Mot de passe modifié ✅','success'); closeModal();
+      if (obligatoire) { try { currentUser.doit_changer_mot_de_passe = false; localStorage.setItem('gs_user', JSON.stringify(currentUser)); } catch (_) {} navigate && navigate('dashboard'); }
     } catch(err) { toast(err.message,'error'); }
   };
 }

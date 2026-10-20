@@ -94,6 +94,21 @@ def login(username, password, code_ecole=None):
     db.execute("UPDATE users SET last_login=CURRENT_TIMESTAMP WHERE id=?", (user['id'],))
     db.commit()
 
+    token = emettre_jeton(user)
+    return {
+        'token': token,
+        'user': {
+            'id': user['id'], 'ecole_id': user['ecole_id'], 'username': user['username'], 'full_name': user['full_name'],
+            'role': user['role'], 'email': user['email'], 'civilite': user['civilite'],
+            'est_super_admin': bool(user['est_super_admin']),
+            'doit_changer_mot_de_passe': bool(user['doit_changer_mdp']),
+        },
+    }
+
+
+def emettre_jeton(user):
+    """Jeton de session. Tant que le mot de passe est provisoire, le jeton porte la mention
+    'mdp_provisoire' et require_auth n'autorise alors QUE le changement de mot de passe."""
     payload = {
         'id': user['id'],
         'ecole_id': user['ecole_id'],
@@ -104,15 +119,13 @@ def login(username, password, code_ecole=None):
         'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=12),
         'iat': datetime.datetime.utcnow(),
     }
-    token = jwt.encode(payload, get_secret(), algorithm='HS256')
-    return {
-        'token': token,
-        'user': {
-            'id': user['id'], 'ecole_id': user['ecole_id'], 'username': user['username'], 'full_name': user['full_name'],
-            'role': user['role'], 'email': user['email'], 'civilite': user['civilite'],
-            'est_super_admin': bool(user['est_super_admin']),
-        },
-    }
+    if user['doit_changer_mdp']:
+        payload['mdp_provisoire'] = True
+    return jwt.encode(payload, get_secret(), algorithm='HS256')
+
+
+# Seules routes accessibles avec un mot de passe provisoire.
+ROUTES_MDP_PROVISOIRE = ('/api/auth/change-password', '/api/auth/me')
 
 
 def require_auth(f):
@@ -134,6 +147,10 @@ def require_auth(f):
             return jsonify({'error': 'Session expirée — reconnectez-vous'}), 401
         except jwt.InvalidTokenError:
             return jsonify({'error': 'Session expirée — reconnectez-vous'}), 401
+
+        if g.user.get('mdp_provisoire') and request.path not in ROUTES_MDP_PROVISOIRE:
+            return jsonify({'error': 'Vous devez d\'abord changer votre mot de passe provisoire.',
+                             'code': 'MOT_DE_PASSE_A_CHANGER'}), 403
 
         from licence import statut_licence
         statut = statut_licence(db)
