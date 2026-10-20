@@ -137,7 +137,9 @@ def create_app():
     # ── Écritures une par une, lectures en parallèle (voir database.verrou_ecritures) ──
     # Exception : l'envoi d'un relevé par e-mail n'écrit rien en base ; il ne doit
     # pas faire attendre les autres pendant l'échange avec le serveur d'e-mail.
-    SANS_VERROU_ECRITURE = {'finances_routes.envoyer_releve_email'}
+    SANS_VERROU_ECRITURE = {'finances_routes.envoyer_releve_email', 'orange_money_routes.creer_lien',
+                            'orange_money_routes.notification', 'orange_money_routes.retour',
+                            'orange_money_routes.verifier'}
     ATTENTE_MAX_VERROU_S = 90
 
     @app.before_request
@@ -290,6 +292,7 @@ def create_app():
     from routes.pointage_routes import bp as pointage_bp, bp_zk as pointage_zk_bp
     from routes.whatsapp_routes import bp as whatsapp_bp
     from routes.sms_routes import bp as sms_bp
+    from routes.orange_money_routes import bp as orange_money_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
@@ -322,6 +325,7 @@ def create_app():
     app.register_blueprint(pointage_zk_bp)
     app.register_blueprint(whatsapp_bp)
     app.register_blueprint(sms_bp)
+    app.register_blueprint(orange_money_bp)
 
     # Copie automatique quotidienne de la base (voir sauvegarde.py)
     sauvegarde.demarrer_sauvegardes_automatiques()

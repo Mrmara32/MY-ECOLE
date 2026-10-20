@@ -337,13 +337,14 @@ function messageRelance(el, modele) {
     .replaceAll('{ecole}', _nomEcoleRelance || 'Groupe scolaire');
 }
 
-let _waAutoRel = false, _smsAutoRel = false;
+let _waAutoRel = false, _smsAutoRel = false, _omRel = false;
 async function modalRelances() {
   openModal('📣 Relances des impayés', loadingHtml, { wide: true });
   try {
     const [impayes, parametres] = await Promise.all([apiGetImpayes(), apiGetSettings().catch(() => ({}))]);
     _waAutoRel = await whatsappAutoActif();
     _smsAutoRel = await smsAutoActif();
+    _omRel = await orangeMoneyActif() && ['admin', 'directeur', 'comptable'].includes(currentUser.role);
     _relances = impayes;
     _nomEcoleRelance = (parametres && parametres.ecole_nom) || '';
   } catch (e) { $('#modal-body').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`; return; }
@@ -381,6 +382,7 @@ async function modalRelances() {
       const i = _relances.indexOf(r);
       const intl = r.contact ? numeroInternational(r.contact.telephone) : '';
       const actions = r.contact ? `
+        ${_omRel ? `<button class="btn btn-outline btn-xs" style="border-color:#ff7900;color:#ff7900" onclick="lienOrangeMoney(${i})">🟠 Orange Money</button>` : ''}
         ${intl && _smsAutoRel ? `<button class="btn btn-primary btn-xs" onclick="envoyerRelanceSmsAuto(${i})">📨 SMS auto</button>` : ''}
         ${intl && _waAutoRel ? `<button class="btn btn-primary btn-xs" onclick="envoyerRelanceAuto(${i})">📤 Auto</button>` : ''}
         ${intl ? `<button class="btn btn-ok btn-xs" onclick="envoyerRelance(${i},'whatsapp')">WhatsApp</button>` : ''}
@@ -456,3 +458,29 @@ async function envoyerRelanceSmsAuto(i) {
   } catch (e) { toast(e.message, 'error'); }
 }
 window.envoyerRelanceSmsAuto = envoyerRelanceSmsAuto;
+
+
+/* Lien de paiement Orange Money : le parent paie depuis son téléphone, le versement et le reçu
+   s'enregistrent tout seuls dès la confirmation d'Orange. */
+async function lienOrangeMoney(i) {
+  const el = _relances[i];
+  if (!el) return;
+  const saisie = prompt(`Montant à faire payer à ${el.prenom} ${el.nom} (GNF)\nSolde dû : ${el.reste}`, String(Math.round(el.reste)));
+  if (saisie === null) return;
+  let lien;
+  try { lien = await apiOrangeMoneyLien(el.eleve_id, saisie.replace(/\s/g, '')); }
+  catch (e) { return toast(e.message, 'error'); }
+  const texte = `${_nomEcoleRelance || 'École'} : pour régler ${fmtMoney(lien.montant)} de la scolarité de ${el.prenom} ${el.nom}, payez avec Orange Money : ${lien.payment_url}`;
+  window._omTexte = texte;
+  const intl = el.contact ? numeroInternational(el.contact.telephone) : '';
+  openModal('🟠 Lien de paiement Orange Money', `
+    <div class="alert alert-info" style="font-size:12px">Le lien est valable pour ce montant. Le versement et le reçu seront enregistrés automatiquement dès qu'Orange confirme le paiement.</div>
+    <div class="fg"><label>Message à envoyer au parent</label><textarea id="om-texte" rows="4" readonly>${esc(texte)}</textarea></div>
+    <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
+      <button class="btn btn-outline" onclick="closeModal()">Fermer</button>
+      <button class="btn btn-outline" onclick="navigator.clipboard.writeText(window._omTexte).then(()=>toast('Message copié','success'))">Copier</button>
+      ${intl ? `<button class="btn btn-ok" onclick="window.open('https://wa.me/${intl}?text='+encodeURIComponent(window._omTexte),'_blank','noopener')">WhatsApp</button>
+      <button class="btn btn-primary" onclick="window.location.href='sms:${esc(String(el.contact.telephone).replace(/[^\d+]/g, ''))}?body='+encodeURIComponent(window._omTexte)">SMS</button>` : ''}
+    </div>`);
+}
+window.lienOrangeMoney = lienOrangeMoney;
