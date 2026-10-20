@@ -399,6 +399,35 @@ CREATE TABLE IF NOT EXISTS discipline (
 );
 CREATE INDEX IF NOT EXISTS idx_discipline_eleve ON discipline(ecole_id, eleve_id, date_fait);
 
+-- Bibliothèque : catalogue des livres et prêts (voir routes/bibliotheque_routes.py).
+CREATE TABLE IF NOT EXISTS livres (
+  ecole_id    INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id          TEXT PRIMARY KEY,
+  titre       TEXT NOT NULL,
+  auteur      TEXT,
+  isbn        TEXT,
+  categorie   TEXT,
+  emplacement TEXT,
+  exemplaires INTEGER NOT NULL DEFAULT 1 CHECK(exemplaires >= 0),
+  created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_livres_ecole ON livres(ecole_id, titre);
+CREATE TABLE IF NOT EXISTS prets_livres (
+  ecole_id         INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id               TEXT PRIMARY KEY,
+  livre_id         TEXT NOT NULL REFERENCES livres(id) ON DELETE CASCADE,
+  emprunteur_type  TEXT NOT NULL CHECK(emprunteur_type IN ('eleve','personnel')),
+  emprunteur_id    TEXT NOT NULL,
+  emprunteur_nom   TEXT NOT NULL,
+  date_pret        TEXT NOT NULL,
+  date_retour_prevue TEXT NOT NULL,
+  date_retour      TEXT,
+  enregistre_par   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at       TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_prets_ecole ON prets_livres(ecole_id, date_retour, date_retour_prevue);
+CREATE INDEX IF NOT EXISTS idx_prets_emprunteur ON prets_livres(ecole_id, emprunteur_id);
+
 -- Échecs de connexion (blocage temporaire anti force brute, voir securite.py).
 CREATE TABLE IF NOT EXISTS echecs_connexion (
   cle          TEXT PRIMARY KEY,

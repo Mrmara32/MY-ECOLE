@@ -21,7 +21,7 @@ const FICHIERS_A_PRECACHER = [
   '/js/vendor/html2canvas.min.js', '/js/vendor/jspdf.umd.min.js',
   '/js/pages/dashboard.js', '/js/pages/users.js', '/js/pages/settings.js', '/js/pages/ecoles.js',
   '/js/pages/personnel.js', '/js/pages/eleves.js', '/js/pages/notes.js', '/js/pages/devoirs.js',
-  '/js/pages/emploi.js', '/js/pages/seances.js', '/js/pages/absences.js', '/js/pages/pointage.js', '/js/pages/discipline.js', '/js/pages/paiements.js',
+  '/js/pages/emploi.js', '/js/pages/seances.js', '/js/pages/absences.js', '/js/pages/pointage.js', '/js/pages/discipline.js', '/js/pages/bibliotheque.js', '/js/pages/paiements.js',
   '/js/pages/cantine.js', '/js/pages/comptabilite.js', '/js/pages/fournisseurs.js', '/js/pages/logistique.js',
   '/js/pages/revision.js', '/js/pages/paie.js', '/js/pages/candidatures.js', '/js/pages/reinscriptions.js',
   '/js/pages/communication.js', '/js/pages/classes.js', '/js/pages/salles.js', '/js/pages/journal.js',
