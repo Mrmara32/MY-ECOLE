@@ -116,7 +116,7 @@ def test_parent_voit_son_enfant_mais_pas_la_classe(client, entetes, creer_eleve,
     noter(mon['id'], 'Maths', 12); noter(autre['id'], 'Maths', 18)
     r = client.post('/api/users', json={'username': 'parent-g', 'password': 'Parent-Test-1', 'full_name': 'Parent G', 'role': 'parent'}, headers=entetes)
     assert r.status_code == 201, r.get_json()
-    database.db.execute("INSERT INTO parents_eleves (user_id, eleve_id) VALUES (?,?)", (r.get_json()['id'], mon['id']))
+    database.db.execute("INSERT INTO parents_eleves (id, user_id, eleve_id) VALUES (?,?,?)", (database.gen_id('pe'), r.get_json()['id'], mon['id']))
     database.db.commit()
     tok = client.post('/api/auth/login', json={'username': 'parent-g', 'password': 'Parent-Test-1'}).get_json()['token']
     # compte créé par l'administrateur : mot de passe provisoire, à changer avant toute autre action

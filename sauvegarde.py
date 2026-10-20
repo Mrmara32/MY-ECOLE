@@ -41,6 +41,9 @@ def preparer_dossier():
 
 def _copier_base_vers(destination):
     """Copie cohérente de la base, même pendant que d'autres utilisateurs écrivent."""
+    if database.USE_PG:
+        import pg_migration       # PostgreSQL : on exporte vers un fichier SQLite portable (même format de sauvegarde)
+        return pg_migration.exporter_vers_sqlite(destination)
     source = sqlite3.connect(database.DB_PATH, timeout=database.DELAI_ATTENTE_VERROU_S)
     try:
         cible = sqlite3.connect(destination)

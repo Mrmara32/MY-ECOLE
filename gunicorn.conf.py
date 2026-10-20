@@ -13,7 +13,9 @@ par la commande de Render « gunicorn app:app » — rien à changer sur Render.
 import os
 
 bind = f"0.0.0.0:{os.environ.get('PORT', '8000')}"
-workers = 1
+# SQLite : un seul processus. PostgreSQL : GUNICORN_WORKERS peut être augmenté (les écritures restent
+# sérialisées entre processus par un verrou PostgreSQL, voir database.prendre_verrou_ecritures_global).
+workers = int(os.environ.get('GUNICORN_WORKERS', '1')) if os.environ.get('DATABASE_URL') else 1
 worker_class = 'gthread'
 threads = int(os.environ.get('GUNICORN_THREADS', '8'))
 timeout = int(os.environ.get('GUNICORN_TIMEOUT', '120'))  # exports et e-mails lents

@@ -25,6 +25,13 @@ os.environ.update({
     'JWT_SECRET': 'cle-utilisee-uniquement-pour-les-tests',
 })
 os.environ.pop('RENDER', None)
+if os.environ.get('TEST_PG'):
+    # Même suite de tests, sur un vrai PostgreSQL jetable (pip install pgserver "psycopg[binary]")
+    import pgserver
+    _pg = pgserver.get_server(os.path.join(_DOSSIER_TEMP, 'pg'))
+    os.environ['DATABASE_URL'] = _pg.get_uri()
+else:
+    os.environ.pop('DATABASE_URL', None)
 sys.path.insert(0, RACINE)
 
 MOT_DE_PASSE_ADMIN = 'Test-Admin-2026!'

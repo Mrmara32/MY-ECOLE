@@ -8,11 +8,9 @@ def test_plus_aucun_index_manquant_apres_migration():
 
 
 def test_indexer_est_idempotent_et_rattrape_un_index_supprime():
-    t = next(t for t in base_sante._tables(db) if 'eleve_id' in {r['name'] for r in db.execute(f"PRAGMA table_info({t})")}
-             and f'idx_auto_{t}_eleve_id' in {r['name'] for r in db.execute(f"PRAGMA index_list({t})")})
-    db.execute(f"DROP INDEX idx_auto_{t}_eleve_id"); db.commit()
-    assert (t, 'eleve_id') in base_sante.index_manquants(db)
-    assert f"{t}.eleve_id" in base_sante.indexer_cles_etrangeres(db)
+    db.execute("DROP INDEX idx_auto_versements_eleve_id"); db.commit()
+    assert ('versements', 'eleve_id') in base_sante.index_manquants(db)
+    assert "versements.eleve_id" in base_sante.indexer_cles_etrangeres(db)
     assert base_sante.indexer_cles_etrangeres(db) == []
 
 

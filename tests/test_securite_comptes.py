@@ -1,4 +1,5 @@
 """Protection des comptes : blocage après échecs, règles de mot de passe, mot de passe provisoire."""
+import os
 import pytest
 
 import securite
@@ -89,6 +90,7 @@ def test_reinitialisation_par_admin_rend_le_mot_de_passe_provisoire(client, ente
     assert _login(client, 'reinit1', 'Nouveau-Temp-3').get_json()['user']['doit_changer_mot_de_passe'] is True
 
 
+@pytest.mark.skipif(bool(os.environ.get("TEST_PG")), reason="lance un processus SQLite isolé")
 def test_admin_par_defaut_doit_changer_son_mot_de_passe(tmp_path, monkeypatch):
     """Sans ADMIN_PASSWORD configuré, le compte admin créé au premier démarrage est en mot de passe provisoire."""
     import sqlite3, subprocess, sys, os, textwrap
