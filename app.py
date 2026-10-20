@@ -271,6 +271,7 @@ def create_app():
     from routes.permissions_routes import bp as permissions_bp
     from routes.systeme_routes import bp as systeme_bp
     from routes.resultats_routes import bp as resultats_bp
+    from routes.discipline_routes import bp as discipline_bp
     from routes.import_eleves_routes import bp as import_eleves_bp
     from routes.pointage_routes import bp as pointage_bp, bp_zk as pointage_zk_bp
 
@@ -297,6 +298,7 @@ def create_app():
     app.register_blueprint(permissions_bp)
     app.register_blueprint(systeme_bp)
     app.register_blueprint(resultats_bp)
+    app.register_blueprint(discipline_bp)
     app.register_blueprint(import_eleves_bp)
     app.register_blueprint(pointage_bp)
     app.register_blueprint(pointage_zk_bp)
