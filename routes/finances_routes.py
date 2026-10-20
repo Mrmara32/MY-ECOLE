@@ -696,6 +696,85 @@ def lister_paiements_supprimes():
     return jsonify(rows_to_list(rows))
 
 
+@bp.route('/paiements-impayes', methods=['GET'])
+@require_auth
+@require_role('admin', 'directeur', 'comptable')
+def lister_impayes():
+    """Élèves ayant un solde à payer, regroupés par élève, avec le contact du parent à
+    relancer et la date de la dernière relance — base de l'écran « Relances »."""
+    annee = request.args.get('annee_scolaire')
+    ecole_id = g.user['ecole_id']
+    sql = """SELECT p.montant_du, p.montant_paye, p.date_echeance,
+                    e.id AS eleve_id, e.nom, e.prenom, e.classe, e.matricule,
+                    e.mere_prenom, e.mere_nom, e.mere_telephone,
+                    e.pere_prenom, e.pere_nom, e.pere_telephone,
+                    e.tuteur_prenom, e.tuteur_nom, e.tuteur_telephone,
+                    e.contact_urgence_nom, e.contact_urgence_telephone
+             FROM paiements p JOIN eleves e ON e.id = p.eleve_id AND e.ecole_id = p.ecole_id
+             WHERE p.ecole_id = ? AND p.montant_du - p.montant_paye > 0
+               AND COALESCE(e.statut, 'actif') NOT IN ('inactif', 'exclu', 'transfere', 'preinscrit')"""
+    params = [ecole_id]
+    if annee:
+        sql += " AND p.annee_scolaire = ?"
+        params.append(annee)
+    aujourdhui = datetime.now().strftime('%Y-%m-%d')
+
+    def contact(r):
+        for prenom, nom, tel, lien in (
+            (r['mere_prenom'], r['mere_nom'], r['mere_telephone'], 'Mère'),
+            (r['pere_prenom'], r['pere_nom'], r['pere_telephone'], 'Père'),
+            (r['tuteur_prenom'], r['tuteur_nom'], r['tuteur_telephone'], 'Tuteur'),
+            (None, r['contact_urgence_nom'], r['contact_urgence_telephone'], 'Contact'),
+        ):
+            if (tel or '').strip():
+                return {'lien': lien, 'nom': ' '.join(x for x in (prenom, nom) if x).strip(), 'telephone': tel.strip()}
+        return None
+
+    par_eleve = {}
+    for r in db.execute(sql, params).fetchall():
+        e = par_eleve.setdefault(r['eleve_id'], {
+            'eleve_id': r['eleve_id'], 'nom': r['nom'], 'prenom': r['prenom'], 'classe': r['classe'],
+            'matricule': r['matricule'], 'reste': 0, 'reste_en_retard': 0, 'nb_echeances': 0,
+            'prochaine_echeance': None, 'contact': contact(r),
+        })
+        reste = (r['montant_du'] or 0) - (r['montant_paye'] or 0)
+        e['reste'] += reste
+        e['nb_echeances'] += 1
+        echeance = (r['date_echeance'] or '')[:10]
+        if echeance and echeance < aujourdhui:
+            e['reste_en_retard'] += reste
+        if echeance and (e['prochaine_echeance'] is None or echeance < e['prochaine_echeance']):
+            e['prochaine_echeance'] = echeance
+
+    relances = {r['entite_id']: r for r in db.execute(
+        """SELECT entite_id, MAX(created_at) AS derniere, COUNT(*) AS nb
+           FROM journal_audit WHERE ecole_id = ? AND entite = 'relance' GROUP BY entite_id""", (ecole_id,)).fetchall()}
+    resultat = []
+    for e in par_eleve.values():
+        rel = relances.get(e['eleve_id'])
+        e['derniere_relance'] = rel['derniere'] if rel else None
+        e['nb_relances'] = rel['nb'] if rel else 0
+        resultat.append(e)
+    resultat.sort(key=lambda e: (-e['reste_en_retard'], -e['reste']))
+    return jsonify(resultat)
+
+
+@bp.route('/paiements-impayes/<eleve_id>/relance', methods=['POST'])
+@require_auth
+@require_role('admin', 'directeur', 'comptable')
+def enregistrer_relance(eleve_id):
+    """Garde la trace (journal d'audit) d'une relance faite à un parent."""
+    body = request.get_json(silent=True) or {}
+    canal = body.get('canal') if body.get('canal') in ('whatsapp', 'sms', 'appel', 'copie') else 'autre'
+    eleve = db.execute("SELECT nom, prenom FROM eleves WHERE id=? AND ecole_id=?",
+                       (eleve_id, g.user['ecole_id'])).fetchone()
+    if not eleve:
+        return jsonify({'error': 'Élève introuvable'}), 404
+    log_action(g.user, 'relance', 'relance', eleve_id,
+               {'canal': canal, 'eleve': f"{eleve['prenom']} {eleve['nom']}", 'reste': body.get('reste')})
+    return jsonify({'ok': True})
+
+
 @bp.route('/paiements/<p_id>/verser', methods=['POST'])
 @require_auth
 @require_role(*FIN_CREATE_ROLES)

@@ -282,3 +282,70 @@ def test_releve_ancien_format_xls_message_clair():
 def test_connexion_admin_toujours_possible(client):
     r = client.post('/api/auth/login', json={'username': 'admin', 'password': MOT_DE_PASSE_ADMIN})
     assert r.status_code == 200
+
+
+def test_migrations_versionnees_appliquees_une_seule_fois():
+    import database
+    derniere = max(m[0] for m in database.MIGRATIONS_VERSIONNEES)
+    assert database.version_base() == derniere
+    # Rejouer ne doit rien refaire ni échouer
+    database.appliquer_migrations_versionnees()
+    assert database.version_base() == derniere
+
+
+def test_migration_en_attente_est_appliquee_apres_copie_de_securite(monkeypatch):
+    import os
+    import database
+    appels = []
+    suivante = database.version_base() + 1
+    monkeypatch.setattr(database, 'MIGRATIONS_VERSIONNEES',
+                        database.MIGRATIONS_VERSIONNEES + [(suivante, 'test', lambda: appels.append(1))])
+    database.appliquer_migrations_versionnees()
+    assert appels == [1]
+    assert database.version_base() == suivante
+    assert os.path.isfile(os.path.join(database.DATA_DIR, 'sauvegardes',
+                                       f'avant-migration-v{suivante - 1}-vers-v{suivante}.db'))
+    database.appliquer_migrations_versionnees()
+    assert appels == [1]  # pas rejouée
+
+
+def test_migration_en_echec_ne_change_pas_la_version(monkeypatch):
+    import database
+    avant = database.version_base()
+
+    def casse():
+        raise RuntimeError('boum')
+    monkeypatch.setattr(database, 'MIGRATIONS_VERSIONNEES',
+                        database.MIGRATIONS_VERSIONNEES + [(avant + 5, 'cassée', casse)])
+    database.appliquer_migrations_versionnees()
+    assert database.version_base() == avant
+
+
+def test_relances_impayes_contact_retard_et_journal(client, entetes):
+    r = client.post('/api/eleves', json={'nom': 'Relance', 'prenom': 'Fatoumata', 'classe': 'CE1', 'sexe': 'F',
+                                         'pere_telephone': '622 00 11 22', 'mere_telephone': '',
+                                         'mere_prenom': '', 'pere_prenom': 'Ibrahima', 'pere_nom': 'Relance'},
+                    headers=entetes)
+    assert r.status_code == 201, r.get_json()
+    eleve = r.get_json()
+    r = client.post('/api/paiements', json={'eleve_id': eleve['id'], 'montant_du': 400000, 'type_frais': 'scolarite',
+                                            'libelle': 'Tranche 1', 'date_echeance': '2020-01-15'}, headers=entetes)
+    assert r.status_code == 201, r.get_json()
+
+    r = client.get('/api/paiements-impayes', headers=entetes)
+    assert r.status_code == 200
+    ligne = next(x for x in r.get_json() if x['eleve_id'] == eleve['id'])
+    assert ligne['reste'] == 400000 and ligne['reste_en_retard'] == 400000
+    assert ligne['contact']['lien'] == 'Père' and ligne['contact']['telephone'] == '622 00 11 22'
+    assert ligne['derniere_relance'] is None
+
+    r = client.post(f"/api/paiements-impayes/{eleve['id']}/relance", json={'canal': 'whatsapp', 'reste': 400000},
+                    headers=entetes)
+    assert r.status_code == 200
+    ligne = next(x for x in client.get('/api/paiements-impayes', headers=entetes).get_json()
+                 if x['eleve_id'] == eleve['id'])
+    assert ligne['nb_relances'] == 1 and ligne['derniere_relance']
+
+
+def test_relances_reservees_au_personnel_financier(client):
+    assert client.get('/api/paiements-impayes').status_code == 401
