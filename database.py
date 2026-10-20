@@ -33,6 +33,12 @@ else:
 os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, 'ecole.db')
 
+# PostgreSQL (hébergement multi-écoles) si DATABASE_URL est défini ; sinon SQLite (version .exe, développement).
+DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
+if DATABASE_URL.startswith('postgres://'):
+    DATABASE_URL = 'postgresql://' + DATABASE_URL[len('postgres://'):]
+USE_PG = DATABASE_URL.startswith('postgresql://')
+
 
 # ================================================================
 # CONNEXION À LA BASE — une connexion PAR FIL D'EXÉCUTION (thread)
@@ -62,6 +68,9 @@ verrou_ecritures = threading.Lock()
 
 
 def _ouvrir_connexion():
+    if USE_PG:
+        import pg_compat
+        return pg_compat.ConnexionPg(DATABASE_URL)
     conn = sqlite3.connect(DB_PATH, timeout=DELAI_ATTENTE_VERROU_S)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode = WAL")
@@ -73,6 +82,8 @@ def _ouvrir_connexion():
 def connexion_courante():
     """Connexion SQLite propre au thread courant (créée au premier besoin)."""
     conn = getattr(_local, 'conn', None)
+    if conn is not None and USE_PG and conn.closed:
+        conn = None          # connexion coupée par le serveur (redémarrage, inactivité) : on en rouvre une
     if conn is None:
         conn = _ouvrir_connexion()
         _local.conn = conn
@@ -115,6 +126,26 @@ def terminer_requete(erreur=None):
             pass
 
 
+def prendre_verrou_ecritures_global():
+    """PostgreSQL, plusieurs processus : le verrou des écritures (threading.Lock) ne protège qu'un seul
+    processus ; on le double d'un verrou de session PostgreSQL pour garder « une écriture à la fois »."""
+    if USE_PG:
+        connexion_courante().execute("SELECT pg_advisory_lock(7002)")
+
+
+def liberer_verrou_ecritures_global():
+    if USE_PG:
+        try:
+            connexion_courante().execute("SELECT pg_advisory_unlock(7002)")
+        except Exception:
+            # connexion dans un état incertain : la fermer libère le verrou côté serveur
+            try:
+                _local.conn.close()
+            except Exception:
+                pass
+            _local.conn = None
+
+
 def debut_ecriture_exclusive():
     """Démarre une transaction en prenant IMMÉDIATEMENT le verrou d'écriture de la
     base (BEGIN IMMEDIATE). À utiliser avant un « lire puis modifier » sur une même
@@ -123,6 +154,11 @@ def debut_ecriture_exclusive():
     conn = connexion_courante()
     if conn.in_transaction:
         conn.commit()
+    if USE_PG:
+        # Verrou applicatif global, relâché à la fin de la transaction : équivalent de BEGIN IMMEDIATE,
+        # y compris entre plusieurs processus/serveurs.
+        conn.execute("SELECT pg_advisory_xact_lock(7001)")
+        return
     conn.execute("BEGIN IMMEDIATE")
 
 
@@ -1156,7 +1192,31 @@ def _reparer_references_corrompues(table_cassee_ref, table_correcte):
             db.execute("PRAGMA legacy_alter_table = OFF")
 
 
+def _run_migrations_pg():
+    """PostgreSQL : le schéma est créé à jour ; seules les colonnes ajoutées après coup (dictionnaire
+    MIGRATIONS) restent à rattraper. Les reconstructions de tables propres à SQLite n'ont pas lieu d'être."""
+    tables = {r['table_name'] for r in db.execute(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema='public'").fetchall()}
+    for table, colonnes in MIGRATIONS.items():
+        if table not in tables:
+            continue
+        actuelles = {r['name'] for r in db.execute(f"PRAGMA table_info({table})").fetchall()}
+        for colonne, definition in colonnes.items():
+            if colonne not in actuelles:
+                db.execute(f"ALTER TABLE {table} ADD COLUMN {colonne} {pg_compat_type(definition)}")
+                print(f"[migration] Colonne ajoutée : {table}.{colonne}")
+    db.commit()
+    appliquer_migrations_versionnees()
+
+
+def pg_compat_type(definition):
+    import pg_compat
+    return pg_compat.traduire_schema(definition)
+
+
 def run_migrations():
+    if USE_PG:
+        return _run_migrations_pg()
     # Priorité absolue : réparer toute corruption de référence héritée d'une migration
     # précédente, AVANT toute autre opération (voir _reparer_references_corrompues ci-dessus).
     _reparer_references_corrompues('users_old_migration', 'users')
@@ -1649,6 +1709,8 @@ def version_base():
 
 def _copie_avant_migration(ancienne, nouvelle):
     """Copie cohérente de la base juste avant d'appliquer des migrations (sauf base neuve)."""
+    if USE_PG:
+        return None      # PostgreSQL : sauvegardes assurées par le service d'hébergement de la base
     try:
         a_des_donnees = db.execute("SELECT 1 FROM users LIMIT 1").fetchone()
     except Exception:
@@ -1845,7 +1907,7 @@ def next_sequence(nom, prefixe, largeur, ecole_id=1):
     # deux reçus pouvaient recevoir le même numéro.)
     db.execute(
         "INSERT INTO sequences (ecole_id, nom, valeur) VALUES (?,?,1) "
-        "ON CONFLICT(ecole_id, nom) DO UPDATE SET valeur = valeur + 1",
+        "ON CONFLICT(ecole_id, nom) DO UPDATE SET valeur = sequences.valeur + 1",
         (ecole_id, nom),
     )
     valeur = db.execute("SELECT valeur FROM sequences WHERE ecole_id=? AND nom=?", (ecole_id, nom)).fetchone()['valeur']

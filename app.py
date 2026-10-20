@@ -115,6 +115,9 @@ def create_app():
     # car elles importent `db` depuis database.py)
     import database
     database.init_db()
+    if database.USE_PG:
+        import pg_migration
+        pg_migration.migrer_au_demarrage()
 
     import sauvegarde
     diagnostic_stockage([
@@ -151,6 +154,12 @@ def create_app():
         if not database.verrou_ecritures.acquire(timeout=ATTENTE_MAX_VERROU_S):
             return jsonify({'error': "Le serveur est très sollicité en ce moment : merci de réessayer dans un instant."}), 503
         g.verrou_ecritures_pris = True
+        try:
+            database.prendre_verrou_ecritures_global()
+        except Exception:
+            database.verrou_ecritures.release()
+            g.pop('verrou_ecritures_pris', None)
+            raise
         return None
 
     # Fin de chaque requête : valide les écritures restées en attente, ou les annule
@@ -162,7 +171,10 @@ def create_app():
             database.terminer_requete(erreur)
         finally:
             if g.pop('verrou_ecritures_pris', False):
-                database.verrou_ecritures.release()
+                try:
+                    database.liberer_verrou_ecritures_global()
+                finally:
+                    database.verrou_ecritures.release()
 
     # ── Fichiers statiques (équivalent express.static) ──
     @app.route('/uploads/<path:filename>')

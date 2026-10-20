@@ -76,7 +76,7 @@ def test_parent_ne_voit_que_les_faits_visibles_de_son_enfant(client, entetes, cr
     _fait(client, entetes, mon, motif='Note interne', visible_parents=False)
     _fait(client, entetes, autre, motif='Autre enfant')
     uid, par = _compte(client, entetes, 'par-dis', 'parent')
-    database.db.execute("INSERT INTO parents_eleves (user_id, eleve_id) VALUES (?,?)", (uid, mon['id']))
+    database.db.execute("INSERT INTO parents_eleves (id, user_id, eleve_id) VALUES (?,?,?)", (database.gen_id('pe'), uid, mon['id']))
     database.db.commit()
     vus = client.get('/api/discipline', headers=par).get_json()
     assert [x['motif'] for x in vus] == ['Visible']

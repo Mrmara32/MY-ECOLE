@@ -4,6 +4,8 @@ sauvegardes, annulation des écritures en cas d'erreur, version de l'interface,
 lecture des relevés bancaires.
 """
 import io
+import os
+import pytest
 import json
 import zipfile
 from datetime import datetime
@@ -284,6 +286,7 @@ def test_connexion_admin_toujours_possible(client):
     assert r.status_code == 200
 
 
+@pytest.mark.skipif(bool(os.environ.get("TEST_PG")), reason="spécifique à SQLite (PRAGMA user_version, copie de fichier)")
 def test_migrations_versionnees_appliquees_une_seule_fois():
     import database
     derniere = max(m[0] for m in database.MIGRATIONS_VERSIONNEES)
@@ -293,6 +296,7 @@ def test_migrations_versionnees_appliquees_une_seule_fois():
     assert database.version_base() == derniere
 
 
+@pytest.mark.skipif(bool(os.environ.get("TEST_PG")), reason="spécifique à SQLite (PRAGMA user_version, copie de fichier)")
 def test_migration_en_attente_est_appliquee_apres_copie_de_securite(monkeypatch):
     import os
     import database
