@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, Response, g, jsonify, request
 
 from auth import require_auth, require_role
+from contact_parent import COLONNES_CONTACT, contact_a_prevenir
 from database import db, gen_id, log_action, rows_to_list
 
 bp = Blueprint('pointage_routes', __name__, url_prefix='/api/pointage')
@@ -465,7 +466,13 @@ def rapport_du_jour():
         params.append(classe)
     sql += " ORDER BY classe, nom, prenom"
     absences = {r['eleve_id']: r for r in db.execute(
-        "SELECT eleve_id, type, justifie, motif FROM absences WHERE ecole_id=? AND date_abs=?", (ecole_id, jour)).fetchall()}
+        "SELECT id, eleve_id, type, justifie, motif, duree FROM absences WHERE ecole_id=? AND date_abs=?",
+        (ecole_id, jour)).fetchall()}
+    contacts = {r['id']: contact_a_prevenir(r) for r in db.execute(
+        f"SELECT e.id, {COLONNES_CONTACT} FROM eleves e WHERE e.ecole_id=?", (ecole_id,)).fetchall()}
+    prevenus = {r['entite_id']: r['derniere'] for r in db.execute(
+        "SELECT entite_id, MAX(created_at) AS derniere FROM journal_audit "
+        "WHERE ecole_id=? AND action='prevenir_parent' AND entite='absence' GROUP BY entite_id", (ecole_id,)).fetchall()}
     limite_eleves = _limite_retard(parametres, 'eleve')
     eleves = []
     for e in db.execute(sql, params).fetchall():
@@ -481,6 +488,12 @@ def rapport_du_jour():
             ligne['justifie'] = bool(absences[e['id']]['justifie'])
         else:
             ligne['statut'] = 'non_pointe'
+        # Retard ou absence enregistré ce jour-là : de quoi prévenir le parent en un clic
+        # (même fenêtre que dans Absences).
+        ab = absences.get(e['id'])
+        if ab and ligne['statut'] in ('retard', 'absent'):
+            ligne.update(absence_id=ab['id'], absence_type=ab['type'], motif=ab['motif'], duree=ab['duree'],
+                         contact=contacts.get(e['id']), parent_prevenu_le=prevenus.get(ab['id']))
         eleves.append(ligne)
 
     # — Personnel
@@ -606,3 +619,80 @@ def cloturer_la_journee():
     db.commit()
     log_action(g.user, 'creation', 'cloture_pointage', None, {'date': jour, 'absences_creees': crees})
     return jsonify({'ok': True, 'date': jour, 'absences_creees': crees})
+
+
+# ───────────────────────── rapport du mois ─────────────────────────
+def _heures_presence(horodatages):
+    """Durée entre la première et la dernière arrivée de la journée, en heures (0 si un seul passage)."""
+    premiere, depart = _arrivee_depart(horodatages)
+    if not depart:
+        return 0.0
+    ecart = datetime.strptime(depart, '%Y-%m-%d %H:%M:%S') - datetime.strptime(premiere, '%Y-%m-%d %H:%M:%S')
+    return round(ecart.total_seconds() / 3600, 2)
+
+
+@bp.route('/mensuel', methods=['GET'])
+@require_auth
+@require_role(*ROLES_CONSULTATION)
+def rapport_du_mois():
+    """Ponctualité du mois : par élève (jours de classe, présences, retards, absences) et par
+    membre du personnel (jours de présence, retards, heures de présence)."""
+    ecole_id = g.user['ecole_id']
+    mois = request.args.get('mois') or datetime.now().strftime('%Y-%m')
+    try:
+        debut = datetime.strptime(mois + '-01', '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'error': 'Mois invalide (format AAAA-MM)'}), 400
+    fin = (debut.replace(day=28) + timedelta(days=4)).replace(day=1)
+    parametres = _parametres(ecole_id)
+    limites = {'eleve': _limite_retard(parametres, 'eleve'), 'personnel': _limite_retard(parametres, 'personnel')}
+
+    codes = {r['code']: (r['personne_type'], r['personne_id']) for r in db.execute(
+        "SELECT code, personne_type, personne_id FROM codes_pointage WHERE ecole_id=?", (ecole_id,)).fetchall()}
+    par_personne_jour = {}
+    for r in db.execute(
+            "SELECT code, horodatage, personne_type, personne_id FROM pointages "
+            "WHERE ecole_id=? AND horodatage>=? AND horodatage<? ORDER BY horodatage",
+            (ecole_id, debut.strftime('%Y-%m-%d') + ' 00:00:00', fin.strftime('%Y-%m-%d') + ' 00:00:00')).fetchall():
+        cible = (r['personne_type'], r['personne_id']) if r['personne_id'] else codes.get(r['code'])
+        if cible:
+            par_personne_jour.setdefault(cible, {}).setdefault(r['horodatage'][:10], []).append(r['horodatage'])
+
+    jours_classe = {j for (t, _), jours in par_personne_jour.items() if t == 'eleve' for j in jours}
+    jours_service = {j for (t, _), jours in par_personne_jour.items() if t == 'personnel' for j in jours}
+    justifiees = {}
+    for r in db.execute(
+            "SELECT eleve_id, date_abs FROM absences WHERE ecole_id=? AND type='absence' AND justifie=1 "
+            "AND date_abs>=? AND date_abs<?", (ecole_id, debut.strftime('%Y-%m-%d'), fin.strftime('%Y-%m-%d'))).fetchall():
+        justifiees.setdefault(r['eleve_id'], set()).add(r['date_abs'])
+
+    def stats(categorie, pid, jours_ref):
+        jours = par_personne_jour.get((categorie, pid), {})
+        retards = sum(1 for h in jours.values() if _minutes(_hm(h[0])) > limites[categorie])
+        presents = len([j for j in jours if j in jours_ref])
+        heures = round(sum(_heures_presence(h) for h in jours.values()), 1)
+        return jours, presents, retards, heures
+
+    eleves = []
+    sql = ("SELECT id, nom, prenom, classe, matricule FROM eleves WHERE ecole_id=? "
+           "AND COALESCE(statut,'actif') IN ('actif','reinsrit')")
+    params = [ecole_id]
+    if request.args.get('classe'):
+        sql += " AND classe=?"
+        params.append(request.args['classe'])
+    for e in db.execute(sql + " ORDER BY classe, nom, prenom", params).fetchall():
+        _, presents, retards, _h = stats('eleve', e['id'], jours_classe)
+        absents = len(jours_classe) - presents
+        just = len([j for j in justifiees.get(e['id'], set()) if j in jours_classe and j not in par_personne_jour.get(('eleve', e['id']), {})])
+        eleves.append({'id': e['id'], 'nom': e['nom'], 'prenom': e['prenom'], 'classe': e['classe'], 'matricule': e['matricule'],
+                       'presents': presents, 'retards': retards, 'absents': absents, 'absences_justifiees': just,
+                       'taux_presence': round(100 * presents / len(jours_classe)) if jours_classe else None})
+    personnel = []
+    for p in db.execute("SELECT id, nom, prenom, poste FROM personnel WHERE ecole_id=? ORDER BY nom, prenom", (ecole_id,)).fetchall():
+        _, presents, retards, heures = stats('personnel', p['id'], jours_service)
+        personnel.append({'id': p['id'], 'nom': p['nom'], 'prenom': p['prenom'], 'poste': p['poste'],
+                          'presents': presents, 'retards': retards, 'heures_presence': heures,
+                          'absents': len(jours_service) - presents,
+                          'taux_presence': round(100 * presents / len(jours_service)) if jours_service else None})
+    return jsonify({'mois': mois, 'jours_classe': len(jours_classe), 'jours_service': len(jours_service),
+                    'eleves': eleves, 'personnel': personnel})
