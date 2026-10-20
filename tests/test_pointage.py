@@ -205,3 +205,17 @@ def test_rapport_mensuel(client, entetes, creer_eleve):
     prof = next(p for p in m['personnel'] if p['id'] == pid)
     assert prof['presents'] == 2 and prof['heures_presence'] == 14.0
     assert client.get('/api/pointage/mensuel?mois=n-importe-quoi', headers=entetes).status_code == 400
+
+
+def test_heures_pointees_alimentent_la_paie(app_ctx=None):
+    from routes.pointage_routes import heures_pointees
+    from database import db
+    ec = db.execute("SELECT id FROM ecoles LIMIT 1").fetchone()['id']
+    pid = 'perso-h1'
+    db.execute("INSERT OR IGNORE INTO codes_pointage (ecole_id,code,personne_type,personne_id) VALUES (?,?,?,?)",
+               (ec, '777', 'personnel', pid))
+    for h in ('2026-09-01 08:00:00', '2026-09-01 12:30:00', '2026-09-02 08:00:00', '2026-09-02 08:05:00'):
+        db.execute("INSERT INTO pointages (id,ecole_id,code,horodatage,source) VALUES (?,?,?,?,?)",
+                   ('p'+h, ec, '777', h, 'appareil'))
+    db.commit()
+    assert heures_pointees(ec, pid, '2026-09') == 4.5

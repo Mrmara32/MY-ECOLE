@@ -195,6 +195,27 @@ def _arrivee_depart(horodatages):
     return premiere, depart
 
 
+def heures_pointees(ecole_id, personnel_id, mois):
+    """Heures de présence d'un membre du personnel sur un mois 'YYYY-MM' :
+    pour chaque jour, dernier passage − premier passage (si l'écart atteint le minimum)."""
+    codes = {r['code']: (r['personne_type'], r['personne_id']) for r in db.execute(
+        "SELECT code, personne_type, personne_id FROM codes_pointage WHERE ecole_id=?", (ecole_id,)).fetchall()}
+    par_jour = {}
+    for r in db.execute("SELECT code, horodatage, personne_type, personne_id FROM pointages "
+                        "WHERE ecole_id=? AND substr(horodatage,1,7)=? ORDER BY horodatage",
+                        (ecole_id, mois)).fetchall():
+        cible = (r['personne_type'], r['personne_id']) if r['personne_id'] else codes.get(r['code'])
+        if cible == ('personnel', personnel_id):
+            par_jour.setdefault(r['horodatage'][:10], []).append(r['horodatage'])
+    total = 0.0
+    fmt = '%Y-%m-%d %H:%M:%S'
+    for h in par_jour.values():
+        _, depart = _arrivee_depart(h)
+        if depart:
+            total += (datetime.strptime(depart, fmt) - datetime.strptime(h[0], fmt)).total_seconds() / 3600
+    return round(total, 2)
+
+
 # ───────────────────────── 1) envoi par clé d'appareil ─────────────────────────
 @bp.route('/passages', methods=['POST'])
 def recevoir_passages():
