@@ -56,6 +56,20 @@ def list_notes():
     return jsonify(rows_to_list(rows))
 
 
+def _valider_note(note, note_max):
+    """Renvoie (note, note_max, erreur). Refuse les notes hors barème (ex. 25/20, -3) ou non numériques."""
+    try:
+        nmax = 20.0 if note_max in (None, '') else float(note_max)
+        n = None if note in (None, '') else float(note)
+    except (TypeError, ValueError):
+        return None, None, 'La note et le barème doivent être des nombres'
+    if not 0 < nmax <= 1000:
+        return None, None, 'Le barème doit être supérieur à 0'
+    if n is not None and not 0 <= n <= nmax:
+        return None, None, f'La note doit être comprise entre 0 et {nmax:g}'
+    return n, nmax, None
+
+
 @bp.route('/notes', methods=['POST'])
 @require_auth
 @require_role('admin', 'directeur', 'enseignant')
@@ -63,14 +77,27 @@ def list_notes():
 @require_permission('notes', 'peut_creer')
 def create_note():
     body = request.get_json(silent=True) or {}
-    eleve_id, matiere, trimestre = body.get('eleve_id'), body.get('matiere'), body.get('trimestre')
+    eleve_id, matiere, trimestre = body.get('eleve_id'), (body.get('matiere') or '').strip(), body.get('trimestre')
     if not eleve_id or not matiere or not trimestre:
         return jsonify({'error': 'Champs requis'}), 400
+    try:
+        trimestre = int(trimestre)
+    except (TypeError, ValueError):
+        trimestre = 0
+    if trimestre not in (1, 2, 3):
+        return jsonify({'error': 'Le trimestre doit être 1, 2 ou 3'}), 400
+    note, note_max, erreur = _valider_note(body.get('note'), body.get('note_max'))
+    if erreur:
+        return jsonify({'error': erreur}), 400
+    eleve = db.execute("SELECT classe FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id'])).fetchone()
+    if not eleve:
+        return jsonify({'error': 'Élève introuvable'}), 404
+    if g.user['role'] == 'enseignant' and eleve['classe'] not in get_classes_enseignant(g.user['id']):
+        return jsonify({'error': "Cet élève n'est pas dans une de vos classes"}), 403
     nid = gen_id('n')
     db.execute(
         "INSERT INTO notes (id,ecole_id,eleve_id,matiere,trimestre,type,note,note_max,date_note) VALUES (?,?,?,?,?,?,?,?,?)",
-        (nid, g.user['ecole_id'], eleve_id, matiere, trimestre, body.get('type'), body.get('note'),
-         body.get('note_max', 20), body.get('date_note')),
+        (nid, g.user['ecole_id'], eleve_id, matiere, trimestre, body.get('type'), note, note_max, body.get('date_note')),
     )
     db.commit()
     row = db.execute("SELECT * FROM notes WHERE id=?", (nid,)).fetchone()
@@ -83,10 +110,21 @@ def create_note():
 @require_permission('notes', 'peut_modifier')
 def update_note(note_id):
     body = request.get_json(silent=True) or {}
+    actuelle = db.execute("SELECT n.*, e.classe FROM notes n JOIN eleves e ON e.id=n.eleve_id "
+                          "WHERE n.id=? AND n.ecole_id=?", (note_id, g.user['ecole_id'])).fetchone()
+    if not actuelle:
+        return jsonify({'error': 'Note introuvable'}), 404
+    if g.user['role'] == 'enseignant' and actuelle['classe'] not in get_classes_enseignant(g.user['id']):
+        return jsonify({'error': "Cet élève n'est pas dans une de vos classes"}), 403
+    note, note_max, erreur = _valider_note(
+        body['note'] if 'note' in body else actuelle['note'],
+        body['note_max'] if 'note_max' in body else actuelle['note_max'])
+    if erreur:
+        return jsonify({'error': erreur}), 400
     db.execute(
-        "UPDATE notes SET note=COALESCE(?,note), note_max=COALESCE(?,note_max), "
-        "type=COALESCE(?,type), date_note=COALESCE(?,date_note) WHERE id=? AND ecole_id=?",
-        (body.get('note'), body.get('note_max'), body.get('type'), body.get('date_note'), note_id, g.user['ecole_id']),
+        "UPDATE notes SET note=?, note_max=?, type=COALESCE(?,type), date_note=COALESCE(?,date_note) "
+        "WHERE id=? AND ecole_id=?",
+        (note, note_max, body.get('type'), body.get('date_note'), note_id, g.user['ecole_id']),
     )
     db.commit()
     row = db.execute("SELECT * FROM notes WHERE id=?", (note_id,)).fetchone()

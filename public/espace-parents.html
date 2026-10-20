@@ -295,11 +295,21 @@ async function choisirEnfant(eleveId) {
   const zone = document.getElementById('dash-contenu');
   zone.innerHTML = `<p class="empty">Chargement…</p>`;
 
-  const [notes, absences, devoirs] = await Promise.all([
+  const [notes, absences, devoirs, resultats] = await Promise.all([
     apiFetch('/notes?eleve_id=' + eleveId).catch(() => []),
     apiFetch('/absences?eleve_id=' + eleveId).catch(() => []),
     apiFetch('/devoirs?classe=' + encodeURIComponent(ENFANT_ACTIF.classe || '')).catch(() => []),
+    // Résultats officiels calculés par l'école (coefficients, rang, mention) pour chaque période
+    Promise.all(['1', '2', '3', 'annee'].map(per =>
+      apiFetch('/bulletins/eleve/' + eleveId + '?periode=' + per).then(r => ({ per, r })).catch(() => ({ per, r: null })))),
   ]);
+  const libPer = { '1': 'Trimestre 1', '2': 'Trimestre 2', '3': 'Trimestre 3', 'annee': 'Année' };
+  const lignesResultats = resultats.filter(x => x.r && x.r.eleve && x.r.eleve.moyenne_generale != null).map(({ per, r }) => {
+    const l = r.eleve;
+    return `<tr><td><strong>${libPer[per]}</strong></td><td>${l.moyenne_generale.toFixed(2)}/20</td>
+      <td>${l.rang != null ? l.rang + (l.rang === 1 ? 'er' : 'e') + ' / ' + l.effectif : '—'}</td>
+      <td>${r.moyenne_classe != null ? r.moyenne_classe.toFixed(2) : '—'}</td><td>${esc(l.mention || '—')}</td></tr>`;
+  }).join('');
 
   // Regrouper les notes par matière pour calculer une moyenne simple
   const parMatiere = {};
@@ -322,6 +332,9 @@ async function choisirEnfant(eleveId) {
   const nbAbsInjust = absences.filter(a => !a.justifie).length;
 
   zone.innerHTML = `
+    ${lignesResultats ? `<div class="section-card"><h2>🏅 Résultats</h2>
+      <table><thead><tr><th>Période</th><th>Moyenne générale</th><th>Rang</th><th>Moyenne de la classe</th><th>Mention</th></tr></thead>
+      <tbody>${lignesResultats}</tbody></table></div>` : ''}
     <div class="section-card">
       <h2>📊 Notes — ${esc(ENFANT_ACTIF.classe || '')}</h2>
       ${notes.length ? `

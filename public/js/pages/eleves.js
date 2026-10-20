@@ -335,40 +335,26 @@ window.switchFicheTab = switchFicheTab;
 
 /* ── BULLETIN ── */
 async function imprimerBulletin(eleveId, tri = 1) {
+  tri = String(tri);
+  const libellePeriode = tri === 'annee' ? 'ANNÉE SCOLAIRE (moyenne annuelle)' : `TRIMESTRE ${tri}`;
   const eleve = await apiGetEleve(eleveId);
-  const notes = await apiGetNotes(`eleve_id=${eleveId}&trimestre=${tri}`);
   const settings = await apiGetSettings();
-
-  // Calcul des moyennes par matière
-  const parMatiere = {};
-  notes.forEach(n => {
-    if (!parMatiere[n.matiere]) parMatiere[n.matiere] = [];
-    parMatiere[n.matiere].push(n.note / (n.note_max||20) * 20);
-  });
-  const lignesMat = Object.entries(parMatiere).map(([mat, vals]) => {
-    const moy = vals.reduce((a,b)=>a+b,0)/vals.length;
-    return { mat, moy };
-  });
-  lignesMat.sort((a,b) => a.mat.localeCompare(b.mat));
-  const moyGen = lignesMat.length ? lignesMat.reduce((s,l)=>s+l.moy,0)/lignesMat.length : null;
-
-  // Calcul rang (tous élèves de la classe)
-  let rangText = '—';
-  try {
-    const all = await apiGetNotes(`classe=${eleve.classe}&trimestre=${tri}`);
-    const moyEleves = {};
-    all.forEach(n => {
-      if (!moyEleves[n.eleve_id]) moyEleves[n.eleve_id] = { vals:[], id:n.eleve_id };
-      moyEleves[n.eleve_id].vals.push(n.note/(n.note_max||20)*20);
-    });
-    const ranked = Object.values(moyEleves).map(e => ({ id:e.id, moy:e.vals.reduce((a,b)=>a+b,0)/e.vals.length })).sort((a,b)=>b.moy-a.moy);
-    const pos = ranked.findIndex(r=>r.id===eleveId);
-    rangText = pos >= 0 ? `${pos+1}e / ${ranked.length}` : '—';
-  } catch(_) {}
-
-  const apprec = moyGen == null ? 'Pas assez de notes' : moyGen >= 18 ? 'Excellent travail ! Félicitations.' : moyGen >= 16 ? 'Très bon travail. Continuez ainsi.' : moyGen >= 14 ? 'Bon travail. Quelques efforts restent à fournir.' : moyGen >= 12 ? 'Travail satisfaisant. Des progrès sont possibles.' : moyGen >= 10 ? 'Résultats passables. Un effort supplémentaire est nécessaire.' : 'Résultats insuffisants. Un sérieux travail de rattrapage s\'impose.';
-
-  const mention = moyGen == null ? '—' : moyGen >= 16 ? 'Très Bien' : moyGen >= 14 ? 'Bien' : moyGen >= 12 ? 'Assez Bien' : moyGen >= 10 ? 'Passable' : 'Insuffisant';
+  // Tous les calculs (coefficients, moyenne de classe, rang, mention) viennent du serveur :
+  // le bulletin imprimé, l'écran des notes et le portail parents affichent donc les mêmes chiffres.
+  let res;
+  try { res = await apiGetBulletinEleve(eleveId, tri); }
+  catch (e) { toast(e.message, 'error'); return; }
+  const l = res.eleve;
+  const statsMat = Object.fromEntries(res.matieres.map(m => [m.matiere, m]));
+  const lignesMat = Object.entries(l.moyennes).map(([mat, moy]) => ({ mat, moy, st: statsMat[mat] || {} }))
+    .sort((x, y) => x.mat.localeCompare(y.mat));
+  const moyGen = l.moyenne_generale;
+  const rangText = l.rang != null ? `${l.rang}${l.rang === 1 ? 'er' : 'e'} / ${l.effectif}` : '—';
+  const apprec = esc(l.appreciation || '');
+  const mention = l.mention || '—';
+  const decisionTxt = (tri === 'annee' && l.decision)
+    ? ({ admis: `Admis(e) en classe supérieure${l.decision.classe_suivante ? ' (' + esc(l.decision.classe_suivante) + ')' : ''}`,
+         redouble: 'Redouble sa classe', exclu: 'Exclu(e)' })[l.decision.decision] : '';
 
   const bulletinHtml = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Bulletin — ${eleve.prenom} ${eleve.nom}</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -398,7 +384,7 @@ async function imprimerBulletin(eleveId, tri = 1) {
     <h1>${settings.ecole_nom||'MY-ECOLE'}</h1>
     ${settings.ecole_adresse?`<p>${settings.ecole_adresse}</p>`:''}
     ${settings.ecole_telephone?`<p>Tél : ${settings.ecole_telephone}</p>`:''}
-    <h2 style="margin-top:8px;font-size:15px;color:#374151">BULLETIN DE NOTES — TRIMESTRE ${tri}</h2>
+    <h2 style="margin-top:8px;font-size:15px;color:#374151">BULLETIN DE NOTES — ${libellePeriode}</h2>
     <p style="font-size:12px;color:#555">Année scolaire : ${settings.annee_scolaire||eleve.annee_scolaire||'—'}</p>
   </div>
   <div class="info-grid">
@@ -408,22 +394,25 @@ async function imprimerBulletin(eleveId, tri = 1) {
     <div><strong>Né(e) le :</strong> ${fmtDate(eleve.date_naissance)} ${eleve.lieu_naissance?'à '+eleve.lieu_naissance:''}</div>
   </div>
   <table>
-    <thead><tr><th>Matière</th><th>Moyenne /20</th><th>Appréciation</th></tr></thead>
+    <thead><tr><th>Matière</th><th style="text-align:center">Coef.</th><th style="text-align:center">Moyenne /20</th><th style="text-align:center">Moy. classe</th><th style="text-align:center">Min / Max</th></tr></thead>
     <tbody>
-      ${lignesMat.length ? lignesMat.map(l => `<tr>
-        <td>${l.mat}</td>
-        <td style="font-weight:600;color:${l.moy>=10?'#059669':'#DC2626'}">${l.moy.toFixed(2)}</td>
-        <td>${l.moy>=16?'Très bien':l.moy>=12?'Bien':l.moy>=10?'Passable':'Insuffisant'}</td>
-      </tr>`).join('') : '<tr><td colspan="3" style="text-align:center;color:#999">Aucune note enregistrée pour ce trimestre</td></tr>'}
+      ${lignesMat.length ? lignesMat.map(x => `<tr>
+        <td>${esc(x.mat)}</td>
+        <td style="text-align:center">${x.st.coefficient ?? 1}</td>
+        <td style="text-align:center;font-weight:600;color:${x.moy>=10?'#059669':'#DC2626'}">${x.moy.toFixed(2)}</td>
+        <td style="text-align:center">${x.st.moyenne_classe != null ? x.st.moyenne_classe.toFixed(2) : '—'}</td>
+        <td style="text-align:center">${x.st.min != null ? x.st.min.toFixed(2) + ' / ' + x.st.max.toFixed(2) : '—'}</td>
+      </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:#999">Aucune note enregistrée pour cette période</td></tr>'}
     </tbody>
   </table>
   <div class="summary">
     <div><div class="sl">Moy. générale</div><div class="sv" style="color:${moyGen!=null&&moyGen>=10?'#059669':'#DC2626'}">${moyGen!=null?moyGen.toFixed(2)+'/ 20':'—'}</div></div>
     <div><div class="sl">Rang</div><div class="sv">${rangText}</div></div>
     <div><div class="sl">Mention</div><div class="sv" style="font-size:14px">${mention}</div></div>
-    <div><div class="sl">Trimestre</div><div class="sv">${tri}</div></div>
+    <div><div class="sl">Moy. de la classe</div><div class="sv" style="font-size:16px">${res.moyenne_classe != null ? res.moyenne_classe.toFixed(2) : '—'}</div></div>
   </div>
   <div class="apprec"><strong>Appréciation générale :</strong> ${apprec}</div>
+  ${decisionTxt ? `<p style="margin:12px 0;font-weight:700;color:#1E3A8A">Décision du conseil de classe : ${decisionTxt}</p>` : ''}
   <div class="sig">
     <div>Le Directeur</div>
     <div>Signature des parents</div>
@@ -433,9 +422,9 @@ async function imprimerBulletin(eleveId, tri = 1) {
 
   const win = ouvrirDocumentImprimable(bulletinHtml);
   finaliserDocumentPartageable(win, '.doc', {
-    filenameBase: `bulletin_${eleve.prenom}_${eleve.nom}_T${tri}`,
-    sujetEmail: `Bulletin de notes — ${eleve.prenom} ${eleve.nom} (Trimestre ${tri})`,
-    messageEmail: `Veuillez trouver ci-joint le bulletin de notes du trimestre ${tri}.`,
+    filenameBase: `bulletin_${eleve.prenom}_${eleve.nom}_${tri === 'annee' ? 'annuel' : 'T' + tri}`,
+    sujetEmail: `Bulletin de notes — ${eleve.prenom} ${eleve.nom} (${tri === 'annee' ? 'année' : 'trimestre ' + tri})`,
+    messageEmail: `Veuillez trouver ci-joint le bulletin de notes (${tri === 'annee' ? 'annuel' : 'trimestre ' + tri}).`,
     destinataireDefaut: eleve.email_parent || '',
   });
 }

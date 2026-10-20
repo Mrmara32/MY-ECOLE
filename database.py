@@ -346,6 +346,40 @@ CREATE TABLE IF NOT EXISTS notes (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Matières enseignées dans chaque classe, avec leur coefficient (moyenne générale pondérée).
+CREATE TABLE IF NOT EXISTS matieres_classe (
+  ecole_id    INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id          TEXT PRIMARY KEY,
+  classe      TEXT NOT NULL,
+  matiere     TEXT NOT NULL,
+  coefficient REAL NOT NULL DEFAULT 1 CHECK(coefficient > 0),
+  UNIQUE(ecole_id, classe, matiere)
+);
+
+-- Appréciation du conseil de classe saisie à la main (remplace l'appréciation automatique).
+CREATE TABLE IF NOT EXISTS appreciations_bulletin (
+  ecole_id     INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  eleve_id     TEXT NOT NULL REFERENCES eleves(id) ON DELETE CASCADE,
+  periode      TEXT NOT NULL CHECK(periode IN ('1','2','3','annee')),
+  appreciation TEXT,
+  updated_at   TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (eleve_id, periode)
+);
+
+-- Décision de fin d'année (conseil de classe) : admis, redouble, exclu.
+CREATE TABLE IF NOT EXISTS decisions_annuelles (
+  ecole_id         INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  eleve_id         TEXT NOT NULL REFERENCES eleves(id) ON DELETE CASCADE,
+  annee_scolaire   TEXT NOT NULL,
+  classe_origine   TEXT NOT NULL,
+  moyenne_annuelle REAL,
+  decision         TEXT NOT NULL CHECK(decision IN ('admis','redouble','exclu')),
+  classe_suivante  TEXT,
+  decide_par       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at       TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (eleve_id, annee_scolaire)
+);
+
 CREATE TABLE IF NOT EXISTS devoirs (
   ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id              TEXT PRIMARY KEY,
