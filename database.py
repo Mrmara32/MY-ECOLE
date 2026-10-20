@@ -1630,10 +1630,16 @@ def _rattacher_notes_a_l_annee():
             db.execute("UPDATE notes SET annee_scolaire=? WHERE ecole_id=? AND annee_scolaire IS NULL", (r['valeur'], e['ecole_id']))
 
 
+def _indexer_cles_etrangeres():
+    import base_sante
+    base_sante.indexer_cles_etrangeres(db)
+
+
 MIGRATIONS_VERSIONNEES = [
     (1, "Rattacher chaque ligne à l'école de son élève", _rattacher_a_la_bonne_ecole),
     (2, "Index par école sur les grosses tables", _creer_index_par_ecole),
     (3, "Rattacher les notes existantes à l'année scolaire en cours de leur école", _rattacher_notes_a_l_annee),
+    (4, "Index sur toutes les colonnes de jointure (école, élève, parent…)", _indexer_cles_etrangeres),
 ]
 
 
@@ -1719,6 +1725,11 @@ def init_db():
         db.commit()
 
     run_migrations()
+    try:
+        import base_sante
+        base_sante.optimiser(db)
+    except Exception as e:
+        print(f"[base] optimisation ignorée : {e}")
 
     # Licence (installation locale hors-ligne) : enregistre la date de première
     # utilisation, une seule fois — point de départ de la période d'essai de 14 jours.

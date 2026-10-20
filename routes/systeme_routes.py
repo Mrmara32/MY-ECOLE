@@ -48,6 +48,27 @@ def telecharger_sauvegarde(nom):
     return send_file(chemin, mimetype='application/zip', as_attachment=True, download_name=nom)
 
 
+@bp.route('/base', methods=['GET'])
+@require_auth
+@require_super_admin
+def diagnostic_base():
+    """État de santé de la base : intégrité, clés étrangères, taille, volumétrie, index manquants."""
+    import base_sante
+    from database import db, DB_PATH
+    return jsonify(base_sante.diagnostic(db, DB_PATH))
+
+
+@bp.route('/base/optimiser', methods=['POST'])
+@require_auth
+@require_super_admin
+def optimiser_base():
+    import base_sante
+    from database import db
+    base_sante.optimiser(db)
+    log_action(g.user, 'optimisation', 'base', None, {})
+    return jsonify({'success': True})
+
+
 @bp.route('/sauvegardes/hors-serveur/essai', methods=['POST'])
 @require_auth
 @require_super_admin
