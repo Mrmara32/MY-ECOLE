@@ -5,17 +5,53 @@ tout comme werkzeug.security pour le hachage des mots de passe (pbkdf2:sha256,
 basé sur hashlib, intégré à Python).
 """
 import os
+import secrets
+import time
 import jwt
 import datetime
 from functools import wraps
 from flask import request, jsonify, g
 from werkzeug.security import check_password_hash
 
-from database import db
+from database import db, DATA_DIR
+
+_secret_jwt = None
+
+
+def _secret_local():
+    """Secret propre à CETTE installation, tiré au hasard au premier démarrage et rangé à
+    côté de la base de données. Sert quand JWT_SECRET n'est pas configuré (exécutable
+    installé dans une école, développement) : aucun secret n'est jamais écrit dans le code,
+    donc aucun n'est partagé entre installations ni visible dans le dépôt."""
+    chemin = os.path.join(DATA_DIR, 'cle_jwt_locale.txt')
+    try:
+        fd = os.open(chemin, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        pass
+    else:
+        with os.fdopen(fd, 'w') as f:
+            f.write(secrets.token_urlsafe(48))
+    for _ in range(50):  # un autre processus (worker gunicorn) peut être en train de l'écrire
+        with open(chemin) as f:
+            valeur = f.read().strip()
+        if valeur:
+            return valeur
+        time.sleep(0.05)
+    raise RuntimeError(f"Secret de connexion illisible : {chemin}")
 
 
 def get_secret():
-    return os.environ.get('JWT_SECRET', 'dev-secret-changez-en-production')
+    global _secret_jwt
+    if _secret_jwt is None:
+        configure = (os.environ.get('JWT_SECRET') or '').strip()
+        # Une valeur d'exemple (« changez-moi... », publiée dans .env.example) n'est jamais un secret.
+        if configure and 'changez' not in configure.lower():
+            _secret_jwt = configure
+        else:
+            if configure:
+                print("[auth] JWT_SECRET contient une valeur d'exemple : ignorée, secret local utilisé.")
+            _secret_jwt = _secret_local()
+    return _secret_jwt
 
 
 def ecole_id_optionnelle():

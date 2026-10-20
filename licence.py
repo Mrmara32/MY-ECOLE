@@ -3,23 +3,39 @@ Gestion des licences — installation locale (version .exe / hors-ligne).
 Chaque installation démarre avec une période d'essai gratuite de 14 jours ; au-delà,
 une clé de licence valide est nécessaire pour continuer à utiliser l'application.
 
-Les clés sont générées hors-ligne par l'outil `outil_licences.py` (réservé à l'éditeur,
-JAMAIS distribué avec l'application) et vérifiées ici par simple signature HMAC — aucune
-connexion internet n'est nécessaire pour activer une licence, ce qui convient à un usage
-en zone à connectivité limitée.
+Les clés sont signées hors-ligne par l'éditeur avec sa CLÉ PRIVÉE
+(outils_editeur/generer_licence.py, jamais distribué avec l'application) et vérifiées
+ici avec la CLÉ PUBLIQUE correspondante (signature Ed25519). Aucune connexion internet
+n'est nécessaire pour activer une licence, ce qui convient à un usage en zone à
+connectivité limitée.
 
-IMPORTANT : SECRET_LICENCE doit être IDENTIQUE dans ce fichier et dans outil_licences.py,
-et ne doit JAMAIS être partagé ni inclus dans un dépôt public — c'est lui qui garantit
-qu'une clé de licence ne peut être fabriquée que par l'éditeur.
+Ce fichier ne contient AUCUN secret : la clé publique ci-dessous permet seulement de
+VÉRIFIER une licence, pas d'en fabriquer une. Elle peut être lue par n'importe qui
+(dépôt, exécutable) sans danger. Seule la clé privée, gardée par l'éditeur hors du
+projet, permet de produire une licence valide.
+
+Format d'une clé : IDENTIFIANT-EXPIRATION-SIGNATURE, par exemple
+ECOLEDJELY-PERPETUEL-<signature> ou ECOLEDJELY-20271231-<signature>. La signature fait
+103 caractères (A-Z et 2-7) : la clé se copie-colle plutôt qu'elle ne se tape.
 """
-import hmac
-import hashlib
+import base64
+import binascii
 import re
 import os
 import sys
 from datetime import datetime, date
 
-SECRET_LICENCE = "GestionScolaire-Guinee-2026-CleSecreteEditeur-NePasPartager"
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+# Clé publique de l'éditeur (Ed25519, 32 octets en base64). Pour en changer : générer une
+# nouvelle paire avec `python outils_editeur/generer_licence.py --creer-cles`, remplacer
+# cette valeur, reconstruire l'exécutable. Les licences signées avec l'ancienne clé
+# privée cessent alors d'être acceptées.
+CLE_PUBLIQUE_LICENCES = "MtopJuDZPCs2MwoV99Uuo69nhluumyJdB4V+tbk4XtE="
+# Préfixe ajouté au texte signé, pour qu'une signature produite pour autre chose ne
+# puisse jamais servir de licence. Doit être identique dans l'outil de l'éditeur.
+CONTEXTE_SIGNATURE = "MY-ECOLE-LICENCE-V2"
 DUREE_ESSAI_JOURS = 14
 
 # Ce module de licence (essai 14 jours + clé) ne concerne QUE les installations locales
@@ -40,39 +56,36 @@ def licence_active() -> bool:
     return False
 
 
-def _signature(payload: str) -> str:
-    return hmac.new(SECRET_LICENCE.encode(), payload.encode(), hashlib.sha256).hexdigest()[:8].upper()
+def texte_signe(identifiant: str, expiration: str) -> bytes:
+    """Ce que la signature d'une licence couvre (identique côté éditeur et côté application)."""
+    return f"{CONTEXTE_SIGNATURE}|{identifiant}|{expiration}".encode('ascii')
 
 
-def generer_cle_licence(identifiant_client: str, expiration=None) -> str:
-    """Génère une clé de licence pour un client donné, au format lisible
-    IDENTIFIANT-EXPIRATION-SIGNATURE (ex: ECOLEDJELY-PERPETUEL-A1B2C3D4).
-    `expiration` : None (licence perpétuelle) ou date 'AAAA-MM-JJ' (licence limitée dans le temps).
-    Réservé à l'outil de génération de l'éditeur — voir outil_licences.py.
-    """
-    import unicodedata
-    sans_accents = unicodedata.normalize('NFD', identifiant_client).encode('ascii', 'ignore').decode('ascii')
-    identifiant_propre = re.sub(r'[^A-Za-z0-9]', '', sans_accents).upper()[:12]
-    if not identifiant_propre:
-        raise ValueError("Identifiant client invalide (doit contenir au moins un caractère alphanumérique)")
-    exp = expiration.replace('-', '') if expiration else "PERPETUEL"
-    payload = f"{identifiant_propre}-{exp}"
-    sig = _signature(payload)
-    return f"{payload}-{sig}"
+def signature_valide(identifiant: str, expiration: str, signature_b32: str) -> bool:
+    """La signature a-t-elle bien été produite par la clé privée de l'éditeur ?"""
+    if not re.fullmatch(r'[A-Z2-7]{103}', signature_b32):
+        return False
+    try:
+        signature = base64.b32decode(signature_b32 + '=')
+        cle = Ed25519PublicKey.from_public_bytes(base64.b64decode(CLE_PUBLIQUE_LICENCES))
+        cle.verify(signature, texte_signe(identifiant, expiration))
+        return True
+    except (InvalidSignature, binascii.Error, ValueError):
+        return False
 
 
 def verifier_cle_licence(cle: str) -> dict:
     """Vérifie une clé de licence. Retourne toujours un dict avec au moins la clé 'valide'."""
     if not cle or not cle.strip():
         return {'valide': False, 'erreur': "Aucune clé fournie"}
-    parties = cle.strip().upper().replace(' ', '').split('-')
+    parties = re.sub(r'\s+', '', cle).upper().split('-')
     if len(parties) != 3:
         return {'valide': False, 'erreur': "Format de clé invalide"}
     identifiant, exp, sig_fournie = parties
-    payload = f"{identifiant}-{exp}"
+    if not re.fullmatch(r'[A-Z0-9]{1,12}', identifiant) or not re.fullmatch(r'PERPETUEL|\d{8}', exp):
+        return {'valide': False, 'erreur': "Format de clé invalide"}
 
-    sig_attendue = _signature(payload)
-    if not hmac.compare_digest(sig_fournie, sig_attendue):
+    if not signature_valide(identifiant, exp, sig_fournie):
         return {'valide': False, 'erreur': "Clé de licence invalide"}
 
     if exp != 'PERPETUEL':

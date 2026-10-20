@@ -12,3 +12,7 @@ build/
 dist/
 *.spec
 logs/
+# Clés privées (licences, etc.) : jamais dans le dépôt
+*.pem
+cle_privee*
+data/cle_jwt_locale.txt
