@@ -90,9 +90,10 @@ async function apiUpload(path, formData) {
 }
 
 /* ── Auth ── */
-async function apiLogin(username, password, codeEcole) {
+async function apiLogin(username, password, codeEcole, code2fa) {
   const body = { username, password };
   if (codeEcole) body.code_ecole = codeEcole;
+  if (code2fa) body.code_2fa = code2fa;
   const r = await fetch(API_BASE + '/auth/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -135,6 +136,11 @@ const apiCreateUser  = (b)    => apiFetch('/users', { method: 'POST', body: b })
 const apiUpdateUser  = (id,b) => apiFetch(`/users/${id}`, { method: 'PUT', body: b });
 const apiDeleteUser  = (id)   => apiFetch(`/users/${id}`, { method: 'DELETE' });
 const apiResetPwd    = (id,p) => apiFetch(`/users/${id}/reset-password`, { method: 'POST', body: { newPassword: p } });
+const api2faStatut   = ()     => apiFetch('/auth/2fa');
+const api2faPreparer = ()     => apiFetch('/auth/2fa/preparer', { method: 'POST' });
+const api2faActiver  = (code) => apiFetch('/auth/2fa/activer', { method: 'POST', body: { code } });
+const api2faDesactiver = (password, code) => apiFetch('/auth/2fa/desactiver', { method: 'POST', body: { password, code } });
+const apiReset2fa    = (id)   => apiFetch(`/users/${id}/reset-2fa`, { method: 'POST' });
 const apiChangePwd   = (o,n)  => apiFetch('/auth/change-password', { method: 'POST', body: { oldPassword: o, newPassword: n } });
 
 /* ── Personnel ── */

@@ -119,7 +119,14 @@ async function initLogin() {
     btn.textContent = 'Connexion…';
     $('#login-err').style.display = 'none';
     try {
-      const { token, user } = await apiLogin(username, password, codeEcole);
+      let rep = await apiLogin(username, password, codeEcole);
+      if (rep.requires_2fa) {
+        // Mot de passe correct : le compte demande aussi le code de l'application d'authentification.
+        const code = await demanderCode2fa();
+        if (!code) { btn.disabled = false; btn.textContent = 'Se connecter'; return; }
+        rep = await apiLogin(username, password, codeEcole, code);
+      }
+      const { token, user } = rep;
       apiSetToken(token);
       currentUser = user;
       localStorage.setItem('gs_user', JSON.stringify(user));
@@ -129,6 +136,7 @@ async function initLogin() {
       } catch (_) { /* stockage indisponible : simple confort, sans conséquence */ }
       await startApp();
       if (user.doit_changer_mot_de_passe) showPwdModal(true);
+      if (user.codes_secours_restants !== undefined) toast(`Code de secours utilisé — il vous en reste ${user.codes_secours_restants}.`, 'warning');
       const civ = user.civilite ? user.civilite + ' ' : '';
       toast(`Bienvenue ${civ}${user.full_name || user.username} 👋`, 'success');
     } catch(err) {
@@ -296,6 +304,74 @@ function showPwdModal(obligatoire = false) {
   };
 }
 window.showPwdModal = showPwdModal;
+
+/* ── Double authentification ── */
+function demanderCode2fa() {
+  return new Promise(resolve => {
+    openModal('Vérification en deux étapes', `
+      <form id="f-2fa" style="display:flex;flex-direction:column;gap:14px">
+        <div class="alert alert-info">Saisissez le code à 6 chiffres affiché par votre application d'authentification (ou un code de secours).</div>
+        <div class="fg"><label>Code de vérification</label>
+          <input id="c2fa" required autocomplete="one-time-code" inputmode="text" maxlength="12" style="font-size:1.4rem;letter-spacing:.2em;text-align:center"></div>
+        <div class="modal-footer"><button type="button" class="btn btn-outline" id="c2fa-x">Annuler</button>
+          <button class="btn btn-primary" type="submit">Valider</button></div>
+      </form>`, { narrow: true });
+    setTimeout(() => { const i = $('#c2fa'); i && i.focus(); }, 50);
+    $('#c2fa-x').onclick = () => { closeModal(); resolve(null); };
+    $('#f-2fa').onsubmit = e => { e.preventDefault(); const v = $('#c2fa').value.trim(); closeModal(); resolve(v); };
+  });
+}
+
+async function show2faModal() {
+  let st;
+  try { st = await api2faStatut(); } catch (err) { toast(err.message, 'error'); return; }
+  if (st.actif) {
+    openModal('Double authentification', `
+      <div class="alert alert-success" style="margin-bottom:12px">✅ Active sur votre compte. Codes de secours restants : <b>${st.codes_secours_restants}</b>.</div>
+      <form id="f-2fa-off" style="display:flex;flex-direction:column;gap:12px">
+        <p class="text-muted" style="font-size:.85rem">Pour la désactiver, confirmez avec votre mot de passe et un code actuel.</p>
+        <div class="fg"><label>Mot de passe</label><input type="password" id="off-pwd" required autocomplete="current-password"></div>
+        <div class="fg"><label>Code de vérification</label><input id="off-code" required maxlength="6" inputmode="numeric"></div>
+        <div class="modal-footer"><button type="button" class="btn btn-outline" onclick="closeModal()">Fermer</button>
+          <button class="btn btn-danger" type="submit">Désactiver</button></div>
+      </form>`, { narrow: true });
+    $('#f-2fa-off').onsubmit = async e => {
+      e.preventDefault();
+      try { await api2faDesactiver($('#off-pwd').value, $('#off-code').value); toast('Double authentification désactivée', 'success'); closeModal(); }
+      catch (err) { toast(err.message, 'error'); }
+    };
+    return;
+  }
+  openModal('Activer la double authentification', `
+    <div class="alert alert-info" style="margin-bottom:12px">Même si votre mot de passe est volé, personne ne pourra se connecter sans votre téléphone.</div>
+    <div style="margin-bottom:12px"><b>1.</b> Installez une application d'authentification (Google Authenticator, Microsoft Authenticator, Aegis…).</div>
+    <button class="btn btn-primary" id="btn-2fa-go">Commencer</button>`, { narrow: true });
+  $('#btn-2fa-go').onclick = async () => {
+    try {
+      const p = await api2faPreparer();
+      openModal('Activer la double authentification', `
+        <div style="margin-bottom:8px"><b>2.</b> Scannez ce QR code avec l'application :</div>
+        <div style="text-align:center">${genererQrSvg(p.uri, 5, 4)}</div>
+        <div class="text-muted" style="font-size:.8rem;text-align:center;margin:6px 0 12px">Ou saisissez la clé : <code>${p.secret}</code></div>
+        <form id="f-2fa-on" style="display:flex;flex-direction:column;gap:12px">
+          <div class="fg"><label><b>3.</b> Saisissez le code à 6 chiffres affiché</label><input id="on-code" required maxlength="6" inputmode="numeric" autocomplete="one-time-code"></div>
+          <div class="modal-footer"><button type="button" class="btn btn-outline" onclick="closeModal()">Annuler</button>
+            <button class="btn btn-primary" type="submit">Activer</button></div>
+        </form>`, { narrow: true });
+      $('#f-2fa-on').onsubmit = async e => {
+        e.preventDefault();
+        try {
+          const r = await api2faActiver($('#on-code').value);
+          openModal('Codes de secours', `
+            <div class="alert alert-warning" style="margin-bottom:12px">Notez ces codes dans un endroit sûr. Chacun ne sert qu'une fois, si vous perdez votre téléphone. <b>Ils ne seront plus affichés.</b></div>
+            <pre style="font-size:1.1rem;line-height:1.8;text-align:center">${r.codes_secours.join('\n')}</pre>
+            <div class="modal-footer"><button class="btn btn-primary" onclick="closeModal()">J'ai noté mes codes</button></div>`, { narrow: true });
+        } catch (err) { toast(err.message, 'error'); }
+      };
+    } catch (err) { toast(err.message, 'error'); }
+  };
+}
+window.show2faModal = show2faModal;
 
 /* ── Raccourci Escape ── */
 document.addEventListener('keydown', e => {

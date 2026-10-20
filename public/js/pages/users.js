@@ -19,6 +19,7 @@ async function pageUsers() {
               ${u.role!=='admin'?`<button class="btn btn-outline btn-xs" onclick="modalPermissions(${u.id}, '${escJs(u.full_name)}')" title="Gérer les permissions par module">🔐</button>`:''}
               ${u.role==='parent'?`<button class="btn btn-outline btn-xs" onclick="modalEnfantsParent(${u.id}, '${escJs(u.full_name)}')" title="Gérer les enfants liés">👨‍👩‍👧</button>`:''}
               <button class="btn btn-outline btn-xs" onclick="modalResetPwd(${u.id}, '${escJs(u.username)}')">🔑</button>
+              <button class="btn btn-outline btn-xs" title="Retirer la double authentification (téléphone perdu)" onclick="reset2fa(${u.id}, '${escJs(u.username)}')">🛡️</button>
               <button class="btn btn-danger btn-xs" onclick="deleteUser(${u.id})">🗑</button>
             </div></td>
           </tr>`).join('') : `<tr><td colspan="8">${emptyHtml('👥','Aucun utilisateur')}</td></tr>`;
@@ -174,6 +175,12 @@ async function deleteUser(id) {
 window.modalAddUser = modalAddUser;
 window.modalEditUser = modalEditUser;
 window.modalResetPwd = modalResetPwd;
+async function reset2fa(id, username) {
+  if (!confirmDel(`Retirer la double authentification de ${username} ? Le compte sera protégé par son seul mot de passe jusqu'à réactivation.`)) return;
+  try { await apiReset2fa(id); toast('Double authentification retirée', 'success'); }
+  catch (err) { toast(err.message, 'error'); }
+}
+window.reset2fa = reset2fa;
 window.deleteUser = deleteUser;
 
 async function modalEnfantsParent(userId, nomParent) {
