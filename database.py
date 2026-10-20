@@ -617,6 +617,24 @@ CREATE TABLE IF NOT EXISTS paiements_en_ligne (
 );
 CREATE INDEX IF NOT EXISTS idx_paiements_en_ligne_ecole ON paiements_en_ligne(ecole_id, statut, created_at);
 
+CREATE TABLE IF NOT EXISTS paiements_om_declares (
+  ecole_id        INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id              TEXT PRIMARY KEY,
+  eleve_id        TEXT NOT NULL,
+  montant         REAL NOT NULL,
+  transaction_id  TEXT NOT NULL,
+  telephone       TEXT,
+  statut          TEXT NOT NULL DEFAULT 'a_valider',
+  declare_par     TEXT,
+  valide_par      TEXT,
+  valide_le       TEXT,
+  numero_recu     TEXT,
+  motif_rejet     TEXT,
+  created_at      TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_om_declares_transaction ON paiements_om_declares(ecole_id, transaction_id);
+CREATE INDEX IF NOT EXISTS idx_om_declares_statut ON paiements_om_declares(ecole_id, statut, created_at);
+
 CREATE TABLE IF NOT EXISTS fournisseurs (
   ecole_id      INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id            TEXT PRIMARY KEY,
