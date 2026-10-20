@@ -482,6 +482,8 @@ const apiGenPaiements  = (b)     => apiFetch('/paiements/generer', { method: 'PO
 const apiCreatePaiement= (b)     => apiFetch('/paiements', { method: 'POST', body: b });
 const apiDeletePaiement= (id, motif) => apiFetch(`/paiements/${id}`, { method: 'DELETE', body: { motif } });
 const apiGetPaiementsSupprimes = () => apiFetch('/paiements-supprimes');
+const apiGetImpayes = (qs = '') => apiFetch('/paiements-impayes' + (qs ? '?' + qs : ''));
+const apiEnregistrerRelance = (eleveId, body) => apiFetch(`/paiements-impayes/${eleveId}/relance`, { method: 'POST', body });
 const apiVerserPaiement= (id,b)  => apiFetch(`/paiements/${id}/verser`, {
   method: 'POST', body: b,
   descriptionHorsLigne: `Versement de ${b.montant||0} GNF`,

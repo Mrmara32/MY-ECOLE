@@ -50,6 +50,7 @@ async function pagePaiements() {
         <span class="card-title">💰 Paiements & Frais de scolarité</span>
         <div class="card-actions">
           ${['admin','directeur','comptable'].includes(currentUser.role)?`<button class="btn btn-outline btn-sm" onclick="modalPaiementsSupprimes()" title="Paiements supprimés : qui, quand, pourquoi">🗂 Supprimés</button>`:''}
+          ${['admin','directeur','comptable'].includes(currentUser.role)?`<button class="btn btn-outline btn-sm" onclick="modalRelances()" title="Parents à relancer par WhatsApp ou SMS">📣 Relances</button>`:''}
           <button class="btn btn-outline btn-sm" onclick="modalGenPaiements()">⚡ Générer échéances</button>
           <button class="btn btn-primary btn-sm" onclick="modalBaremes()">⚙ Barèmes</button>
         </div>
@@ -317,3 +318,119 @@ window.modalEditBareme = modalEditBareme;
 window.delBareme = delBareme;
 window.delPaiement = delPaiement;
 window.modalPaiementsSupprimes = modalPaiementsSupprimes;
+
+/* ---------- Relances d'impayés (WhatsApp / SMS / appel, sans abonnement) ---------- */
+const RELANCE_MODELE_DEFAUT =
+  "Bonjour {parent}, {ecole} vous rappelle que la scolarité de {eleve} ({classe}) présente un solde de {montant}. " +
+  "Merci de bien vouloir régulariser. Cordialement.";
+let _relances = [];
+let _nomEcoleRelance = '';
+
+// Numéro guinéen → format international sans « + » (exigé par WhatsApp) : 6XXXXXXXX → 224 6XXXXXXXX.
+function numeroInternational(tel) {
+  let n = String(tel || '').replace(/[^\d+]/g, '');
+  if (n.startsWith('+')) n = n.slice(1);
+  else if (n.startsWith('00')) n = n.slice(2);
+  n = n.replace(/\D/g, '');
+  if (n.length === 9) n = '224' + n;
+  return n.length >= 11 ? n : '';
+}
+
+function messageRelance(el, modele) {
+  const parent = el.contact && el.contact.nom ? el.contact.nom : 'Madame, Monsieur';
+  const montant = fmtMoney(el.reste_en_retard > 0 ? el.reste_en_retard : el.reste);
+  return modele
+    .replaceAll('{parent}', parent)
+    .replaceAll('{eleve}', `${el.prenom} ${el.nom}`)
+    .replaceAll('{classe}', el.classe || '')
+    .replaceAll('{montant}', montant)
+    .replaceAll('{ecole}', _nomEcoleRelance || 'Groupe scolaire');
+}
+
+async function modalRelances() {
+  openModal('📣 Relances des impayés', loadingHtml, { wide: true });
+  try {
+    const [impayes, parametres] = await Promise.all([apiGetImpayes(), apiGetSettings().catch(() => ({}))]);
+    _relances = impayes;
+    _nomEcoleRelance = (parametres && parametres.ecole_nom) || '';
+  } catch (e) { $('#modal-body').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`; return; }
+  let modele = RELANCE_MODELE_DEFAUT;
+  try { modele = localStorage.getItem('gs_modele_relance') || modele; } catch (e) { /* stockage indisponible */ }
+  const classes = [...new Set(_relances.map(r => r.classe).filter(Boolean))].sort();
+  $('#modal-body').innerHTML = `
+    <div class="alert alert-info" style="font-size:12px">Choisissez un parent : WhatsApp ou SMS s'ouvre avec le message déjà écrit,
+      il ne reste qu'à l'envoyer. Chaque relance est enregistrée dans le journal.</div>
+    <div class="fg"><label>Message type — {parent} {eleve} {classe} {montant} {ecole}</label>
+      <textarea id="rel-modele" rows="3">${esc(modele)}</textarea></div>
+    <div class="filters">
+      <div class="fg grow"><label>Recherche</label><input id="rel-q" placeholder="Nom, prénom, matricule…"></div>
+      <div class="fg"><label>Classe</label><select id="rel-cls"><option value="">Toutes</option>${classes.map(c => `<option>${esc(c)}</option>`).join('')}</select></div>
+      <div class="fg"><label>Afficher</label><select id="rel-retard">
+        <option value="1">En retard seulement</option><option value="0">Tous les soldes</option></select></div>
+    </div>
+    <div id="rel-resume" class="text-muted" style="font-size:12px;margin:6px 0"></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Élève</th><th class="text-right">Solde</th><th>Parent à contacter</th><th>Dernière relance</th><th>Relancer</th></tr></thead>
+      <tbody id="rel-corps"></tbody>
+    </table></div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Fermer</button></div>`;
+
+  const dessiner = () => {
+    const q = $('#rel-q').value.toLowerCase().trim();
+    const cls = $('#rel-cls').value;
+    const retardSeul = $('#rel-retard').value === '1';
+    const liste = _relances.filter(r =>
+      (!cls || r.classe === cls) && (!retardSeul || r.reste_en_retard > 0) &&
+      (!q || `${r.nom} ${r.prenom} ${r.matricule || ''}`.toLowerCase().includes(q)));
+    const total = liste.reduce((s, r) => s + (retardSeul ? r.reste_en_retard : r.reste), 0);
+    $('#rel-resume').textContent = `${liste.length} élève(s) · ${fmtMoney(total)} à recouvrer`;
+    $('#rel-corps').innerHTML = liste.length ? liste.map(r => {
+      const i = _relances.indexOf(r);
+      const intl = r.contact ? numeroInternational(r.contact.telephone) : '';
+      const actions = r.contact ? `
+        ${intl ? `<button class="btn btn-ok btn-xs" onclick="envoyerRelance(${i},'whatsapp')">WhatsApp</button>` : ''}
+        <button class="btn btn-outline btn-xs" onclick="envoyerRelance(${i},'sms')">SMS</button>
+        <button class="btn btn-outline btn-xs" onclick="envoyerRelance(${i},'appel')">Appeler</button>
+        <button class="btn btn-outline btn-xs" onclick="envoyerRelance(${i},'copie')">Copier</button>`
+        : '<span class="text-muted" style="font-size:12px">Aucun numéro enregistré</span>';
+      return `<tr>
+        <td><strong>${esc(r.prenom)} ${esc(r.nom)}</strong><br><span class="text-muted" style="font-size:11px">${esc(r.matricule || '')} · ${esc(r.classe || '')}</span></td>
+        <td class="mono text-right text-err">${fmtMoney(r.reste)}${r.reste_en_retard > 0 && r.reste_en_retard !== r.reste
+          ? `<br><span style="font-size:11px">dont ${fmtMoney(r.reste_en_retard)} en retard</span>` : ''}</td>
+        <td>${r.contact ? `${esc(r.contact.nom || r.contact.lien)} <span class="text-muted" style="font-size:11px">(${esc(r.contact.lien)})</span><br><span class="mono" style="font-size:12px">${esc(r.contact.telephone)}</span>` : '—'}</td>
+        <td id="rel-der-${i}">${r.derniere_relance ? `${fmtDate(r.derniere_relance.slice(0, 10))}${r.nb_relances > 1 ? ` <span class="text-muted" style="font-size:11px">(${r.nb_relances}×)</span>` : ''}` : '<span class="text-muted">Jamais</span>'}</td>
+        <td><div class="td-actions">${actions}</div></td></tr>`;
+    }).join('') : `<tr><td colspan="5">${emptyHtml('✅', 'Aucun impayé pour ce filtre')}</td></tr>`;
+  };
+  ['#rel-q'].forEach(s => $(s).addEventListener('input', dessiner));
+  ['#rel-cls', '#rel-retard'].forEach(s => $(s).addEventListener('change', dessiner));
+  $('#rel-modele').addEventListener('change', e => {
+    try { localStorage.setItem('gs_modele_relance', e.target.value); } catch (err) { /* sans importance */ }
+  });
+  dessiner();
+}
+
+async function envoyerRelance(i, canal) {
+  const el = _relances[i];
+  if (!el || !el.contact) return;
+  const modeleSaisi = $('#rel-modele');
+  const texte = messageRelance(el, (modeleSaisi && modeleSaisi.value.trim()) || RELANCE_MODELE_DEFAUT);
+  const intl = numeroInternational(el.contact.telephone);
+  const tel = String(el.contact.telephone).replace(/[^\d+]/g, '');
+  if (canal === 'whatsapp') window.open(`https://wa.me/${intl}?text=${encodeURIComponent(texte)}`, '_blank', 'noopener');
+  else if (canal === 'sms') window.location.href = `sms:${tel}?body=${encodeURIComponent(texte)}`;
+  else if (canal === 'appel') window.location.href = `tel:${tel}`;
+  else {
+    try { await navigator.clipboard.writeText(texte); toast('Message copié', 'success'); }
+    catch (e) { toast('Copie impossible : sélectionnez le message à la main', 'error'); return; }
+  }
+  try {
+    await apiEnregistrerRelance(el.eleve_id, { canal, reste: el.reste });
+    el.derniere_relance = new Date().toISOString();
+    el.nb_relances = (el.nb_relances || 0) + 1;
+    const cellule = $(`#rel-der-${i}`);
+    if (cellule) cellule.innerHTML = `${fmtDate(el.derniere_relance.slice(0, 10))} <span class="text-muted" style="font-size:11px">(${el.nb_relances}×)</span>`;
+  } catch (e) { toast('Relance faite, mais non enregistrée dans le journal : ' + e.message, 'warning'); }
+}
+window.modalRelances = modalRelances;
+window.envoyerRelance = envoyerRelance;

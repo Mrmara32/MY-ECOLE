@@ -1456,8 +1456,7 @@ def run_migrations():
         except Exception as e:
             print(f"[migration] Erreur lors du rattrapage des catégories de réinscription : {e}")
 
-    _rattacher_a_la_bonne_ecole()
-    _creer_index_par_ecole()
+    appliquer_migrations_versionnees()
 
 
 def _rattacher_a_la_bonne_ecole():
@@ -1503,6 +1502,70 @@ def _creer_index_par_ecole():
         except Exception as e:
             print(f"[migration] Index {nom_index} non créé : {e}")
     db.commit()
+
+
+# --- Migrations versionnées ------------------------------------------------------------
+# Les anciennes migrations ci-dessus (colonnes ajoutées, tables reconstruites) vérifient
+# l'état de la base à CHAQUE démarrage : elles restent en place, inchangées, et forment la
+# « version 0 ». Toute évolution FUTURE de la base s'ajoute ici : une ligne
+# (numéro, description, fonction) à la fin de la liste, jamais au milieu. Le numéro
+# appliqué est mémorisé dans la base (PRAGMA user_version) : chaque étape ne s'exécute
+# qu'UNE fois, dans l'ordre, et une copie de sécurité de la base est faite avant.
+MIGRATIONS_VERSIONNEES = [
+    (1, "Rattacher chaque ligne à l'école de son élève", _rattacher_a_la_bonne_ecole),
+    (2, "Index par école sur les grosses tables", _creer_index_par_ecole),
+]
+
+
+def version_base():
+    return db.execute("PRAGMA user_version").fetchone()[0]
+
+
+def _copie_avant_migration(ancienne, nouvelle):
+    """Copie cohérente de la base juste avant d'appliquer des migrations (sauf base neuve)."""
+    try:
+        a_des_donnees = db.execute("SELECT 1 FROM users LIMIT 1").fetchone()
+    except Exception:
+        a_des_donnees = None
+    if not a_des_donnees:
+        return None
+    dossier = os.path.join(DATA_DIR, 'sauvegardes')
+    os.makedirs(dossier, exist_ok=True)
+    chemin = os.path.join(dossier, f"avant-migration-v{ancienne}-vers-v{nouvelle}.db")
+    source = sqlite3.connect(DB_PATH, timeout=DELAI_ATTENTE_VERROU_S)
+    try:
+        cible = sqlite3.connect(chemin)
+        try:
+            source.backup(cible)
+        finally:
+            cible.close()
+    finally:
+        source.close()
+    return chemin
+
+
+def appliquer_migrations_versionnees():
+    actuelle = version_base()
+    en_attente = sorted((m for m in MIGRATIONS_VERSIONNEES if m[0] > actuelle), key=lambda m: m[0])
+    if not en_attente:
+        return
+    try:
+        chemin = _copie_avant_migration(actuelle, en_attente[-1][0])
+        if chemin:
+            print(f"[migration] Copie de sécurité avant migration : {chemin}", flush=True)
+    except Exception as e:
+        print(f"[migration] Copie de sécurité impossible ({e}) — migration poursuivie", flush=True)
+    for numero, description, fonction in en_attente:
+        try:
+            fonction()
+            db.execute(f"PRAGMA user_version = {int(numero)}")
+            db.commit()
+            print(f"[migration] v{numero} appliquée : {description}", flush=True)
+        except Exception as e:
+            db.rollback()
+            print(f"[migration] v{numero} ÉCHEC ({description}) : {e} — les suivantes sont reportées "
+                  f"au prochain démarrage", flush=True)
+            break
 
 
 def init_db():
