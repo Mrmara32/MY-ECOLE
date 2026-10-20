@@ -107,3 +107,40 @@ def test_solde_regle_entre_temps_va_en_verification(client, entetes, creer_eleve
         assert client.post(f"/api/paiements/{p['id']}/verser", json={'montant': m}, headers=entetes).status_code == 200
     etat['statut'] = 'SUCCESS'
     assert client.post(f'/api/orange-money/verifier/{rid}', headers=entetes).get_json()['statut'] == 'a_verifier'
+
+
+# ───────────── paiement marchand par QR ─────────────
+def test_declaration_validation_et_doublon(client, entetes, creer_eleve, creer_paiement):
+    e, p1, p2 = _dossier(client, entetes, creer_eleve, creer_paiement)
+    r = client.post('/api/orange-money/declarations', json={'eleve_id': e['id'], 'montant': 400000, 'transaction_id': 'MP261020.2345.A12345'}, headers=entetes)
+    assert r.status_code == 201 and r.get_json()['statut'] == 'a_valider'
+    assert _reste(client, entetes, e['id']) == 500000  # pas encore encaissé
+    # même numéro de transaction : refusé, même écrit autrement
+    assert client.post('/api/orange-money/declarations', json={'eleve_id': e['id'], 'montant': 400000, 'transaction_id': 'mp261020.2345.a12345'}, headers=entetes).status_code == 409
+    did = r.get_json()['id']
+    assert len(client.get('/api/orange-money/declarations?statut=a_valider', headers=entetes).get_json()) == 1
+    v = client.post(f'/api/orange-money/declarations/{did}/valider', headers=entetes)
+    assert v.status_code == 200 and v.get_json()['numero_recu'].startswith('REC-')
+    assert _reste(client, entetes, e['id']) == 100000
+    assert client.post(f'/api/orange-money/declarations/{did}/valider', headers=entetes).status_code == 409  # une seule fois
+    assert _reste(client, entetes, e['id']) == 100000
+
+
+def test_encaissement_direct_rejet_et_controles(client, entetes, creer_eleve, creer_paiement):
+    e, *_ = _dossier(client, entetes, creer_eleve, creer_paiement)
+    r = client.post('/api/orange-money/declarations', json={'eleve_id': e['id'], 'montant': 500000, 'transaction_id': 'TX-DIRECT-001', 'valider': True}, headers=entetes)
+    assert r.status_code == 201 and r.get_json()['statut'] == 'valide' and _reste(client, entetes, e['id']) == 0
+    assert client.post('/api/orange-money/declarations', json={'eleve_id': e['id'], 'montant': 5000, 'transaction_id': 'ab'}, headers=entetes).status_code == 400
+    e2, *_ = _dossier(client, entetes, creer_eleve, creer_paiement)
+    did = client.post('/api/orange-money/declarations', json={'eleve_id': e2['id'], 'montant': 5000, 'transaction_id': 'TX-REJET-002'}, headers=entetes).get_json()['id']
+    assert client.post(f'/api/orange-money/declarations/{did}/rejeter', json={'motif': 'x'}, headers=entetes).status_code == 400
+    assert client.post(f'/api/orange-money/declarations/{did}/rejeter', json={'motif': 'Transaction introuvable chez Orange'}, headers=entetes).status_code == 200
+    assert client.post(f'/api/orange-money/declarations/{did}/valider', headers=entetes).status_code == 409
+    assert _reste(client, entetes, e2['id']) == 500000
+    assert client.post('/api/orange-money/declarations', json={}).status_code == 401
+
+
+def test_config_marchand(client, entetes):
+    r = client.put('/api/orange-money/config', json={'nom': 'GS El Hadji Mountaga Djely', 'code': '123456', 'instructions': 'Scannez le QR'}, headers=entetes)
+    assert r.status_code == 200 and r.get_json()['code'] == '123456'
+    assert client.get('/api/orange-money/config', headers=entetes).get_json()['nom'].startswith('GS El Hadji')

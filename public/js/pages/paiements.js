@@ -50,6 +50,7 @@ async function pagePaiements() {
         <span class="card-title">💰 Paiements & Frais de scolarité</span>
         <div class="card-actions">
           ${['admin','directeur','comptable'].includes(currentUser.role)?`<button class="btn btn-outline btn-sm" onclick="modalPaiementsSupprimes()" title="Paiements supprimés : qui, quand, pourquoi">🗂 Supprimés</button>`:''}
+          ${['admin','directeur','comptable','secretaire'].includes(currentUser.role)?`<button class="btn btn-outline btn-sm" style="border-color:#ff7900;color:#ff7900" onclick="modalOrangeMoney()" title="Paiements reçus par Orange Money (QR marchand de l'école)">🟠 Orange Money</button>`:''}
           ${['admin','directeur','comptable'].includes(currentUser.role)?`<button class="btn btn-outline btn-sm" onclick="modalRelances()" title="Parents à relancer par WhatsApp ou SMS">📣 Relances</button>`:''}
           <button class="btn btn-outline btn-sm" onclick="modalGenPaiements()">⚡ Générer échéances</button>
           <button class="btn btn-primary btn-sm" onclick="modalBaremes()">⚙ Barèmes</button>
@@ -322,7 +323,7 @@ window.modalPaiementsSupprimes = modalPaiementsSupprimes;
 /* ---------- Relances d'impayés (WhatsApp / SMS / appel, sans abonnement) ---------- */
 const RELANCE_MODELE_DEFAUT =
   "Bonjour {parent}, {ecole} vous rappelle que la scolarité de {eleve} ({classe}) présente un solde de {montant}. " +
-  "Merci de bien vouloir régulariser. Cordialement.";
+  "Merci de bien vouloir régulariser. {paiement} Cordialement.";
 let _relances = [];
 let _nomEcoleRelance = '';
 
@@ -334,16 +335,20 @@ function messageRelance(el, modele) {
     .replaceAll('{eleve}', `${el.prenom} ${el.nom}`)
     .replaceAll('{classe}', el.classe || '')
     .replaceAll('{montant}', montant)
-    .replaceAll('{ecole}', _nomEcoleRelance || 'Groupe scolaire');
+    .replaceAll('{ecole}', _nomEcoleRelance || 'Groupe scolaire')
+    .replaceAll('{paiement}', _omConfigRelance && (_omConfigRelance.qr_url || _omConfigRelance.code)
+      ? `Vous pouvez payer par Orange Money (Paiement marchand${_omConfigRelance.code ? ', code ' + _omConfigRelance.code : ''}${_omConfigRelance.nom ? ' : ' + _omConfigRelance.nom : ''}).` : '')
+    .replace(/ {2,}/g, ' ').trim();
 }
 
-let _waAutoRel = false, _smsAutoRel = false, _omRel = false;
+let _waAutoRel = false, _smsAutoRel = false, _omRel = false, _omConfigRelance = null;
 async function modalRelances() {
   openModal('📣 Relances des impayés', loadingHtml, { wide: true });
   try {
     const [impayes, parametres] = await Promise.all([apiGetImpayes(), apiGetSettings().catch(() => ({}))]);
     _waAutoRel = await whatsappAutoActif();
     _smsAutoRel = await smsAutoActif();
+    _omConfigRelance = await apiFetch('/orange-money/config').catch(() => null);
     _omRel = await orangeMoneyActif() && ['admin', 'directeur', 'comptable'].includes(currentUser.role);
     _relances = impayes;
     _nomEcoleRelance = (parametres && parametres.ecole_nom) || '';
@@ -382,7 +387,7 @@ async function modalRelances() {
       const i = _relances.indexOf(r);
       const intl = r.contact ? numeroInternational(r.contact.telephone) : '';
       const actions = r.contact ? `
-        ${_omRel ? `<button class="btn btn-outline btn-xs" style="border-color:#ff7900;color:#ff7900" onclick="lienOrangeMoney(${i})">🟠 Orange Money</button>` : ''}
+        ${_omRel ? `<button class="btn btn-outline btn-xs" style="border-color:#ff7900;color:#ff7900" onclick="lienOrangeMoney(${i})">🟠 Lien de paiement</button>` : ''}
         ${intl && _smsAutoRel ? `<button class="btn btn-primary btn-xs" onclick="envoyerRelanceSmsAuto(${i})">📨 SMS auto</button>` : ''}
         ${intl && _waAutoRel ? `<button class="btn btn-primary btn-xs" onclick="envoyerRelanceAuto(${i})">📤 Auto</button>` : ''}
         ${intl ? `<button class="btn btn-ok btn-xs" onclick="envoyerRelance(${i},'whatsapp')">WhatsApp</button>` : ''}
@@ -484,3 +489,140 @@ async function lienOrangeMoney(i) {
     </div>`);
 }
 window.lienOrangeMoney = lienOrangeMoney;
+
+
+/* ---------- Orange Money : paiement marchand par QR ----------
+   Le parent scanne le QR « Paiement marchand » de l'école avec son application Orange Money, puis
+   reçoit un SMS avec un numéro de transaction. On l'enregistre ici : il est unique, le versement
+   et le reçu suivent. */
+let _omConfig = {}, _omEleves = [];
+const OM_ONGLETS = [['encaisser', 'Enregistrer un paiement'], ['valider', 'À valider'], ['qr', 'QR de l\'école']];
+
+async function modalOrangeMoney(onglet = 'encaisser') {
+  openModal('🟠 Orange Money', loadingHtml, { wide: true });
+  try {
+    [_omConfig, _omEleves] = await Promise.all([apiFetch('/orange-money/config'), apiGetEleves()]);
+  } catch (e) { $('#modal-body').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`; return; }
+  omAfficher(onglet);
+}
+
+function omAfficher(onglet) {
+  const gestion = ['admin', 'directeur', 'comptable'].includes(currentUser.role);
+  $('#modal-body').innerHTML = `
+    <div class="tabs" style="margin-bottom:12px">${OM_ONGLETS.filter(o => gestion || o[0] !== 'valider').map(o =>
+      `<div class="tab ${o[0] === onglet ? 'active' : ''}" onclick="omAfficher('${o[0]}')">${o[1]}</div>`).join('')}</div>
+    <div id="om-corps"></div>`;
+  ({ encaisser: omEncaisser, valider: omValider, qr: omQr })[onglet]();
+}
+
+function omEncaisser() {
+  const gestion = ['admin', 'directeur', 'comptable'].includes(currentUser.role);
+  $('#om-corps').innerHTML = `
+    <div class="alert alert-info" style="font-size:12px">Le parent a payé en scannant le QR de l'école. Recopiez le <strong>numéro de transaction</strong>
+      du SMS de confirmation Orange Money (ou de votre application Orange Money Marchand). Un même numéro ne peut être enregistré qu'une fois.</div>
+    <datalist id="om-eleves">${_omEleves.map(e => `<option value="${esc((e.matricule || '') + ' — ' + e.prenom + ' ' + e.nom)}"></option>`).join('')}</datalist>
+    <div class="form-2">
+      <div class="fg"><label>Élève</label><input id="om-eleve" list="om-eleves" placeholder="Matricule ou nom…"></div>
+      <div class="fg"><label>Montant payé (GNF)</label><input id="om-montant" type="number" min="1000"></div>
+      <div class="fg"><label>N° de transaction</label><input id="om-trans" placeholder="ex. MP261020.2345.A12345"></div>
+      <div class="fg"><label>Téléphone du payeur (facultatif)</label><input id="om-tel"></div>
+    </div>
+    ${gestion ? `<label style="display:flex;gap:8px;align-items:center;margin:8px 0"><input type="checkbox" id="om-valider" checked> J'ai vérifié le paiement chez Orange : l'enregistrer tout de suite et émettre le reçu</label>` : '<div class="text-muted" style="font-size:12px;margin:8px 0">Le paiement sera à valider par la comptabilité.</div>'}
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Fermer</button>
+      <button class="btn btn-primary" onclick="omEnregistrer()">Enregistrer</button></div>`;
+}
+
+async function omEnregistrer() {
+  const saisie = $('#om-eleve').value.trim();
+  const eleve = _omEleves.find(e => ((e.matricule || '') + ' — ' + e.prenom + ' ' + e.nom) === saisie);
+  if (!eleve) return toast('Choisissez un élève dans la liste proposée', 'error');
+  try {
+    const r = await apiFetch('/orange-money/declarations', { method: 'POST', body: {
+      eleve_id: eleve.id, montant: $('#om-montant').value, transaction_id: $('#om-trans').value,
+      telephone: $('#om-tel').value, valider: $('#om-valider') ? $('#om-valider').checked : false } });
+    toast(r.statut === 'valide' ? `Paiement enregistré — reçu ${r.numero_recu}`
+      : r.statut === 'a_verifier' ? 'Paiement reçu mais aucun solde à imputer : à vérifier' : 'Enregistré : en attente de validation', 'success');
+    closeModal();
+    if (typeof pagePaiements === 'function') pagePaiements();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function omValider() {
+  $('#om-corps').innerHTML = loadingHtml;
+  let liste;
+  try { liste = await apiFetch('/orange-money/declarations?statut=a_valider'); }
+  catch (e) { $('#om-corps').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`; return; }
+  $('#om-corps').innerHTML = liste.length ? `<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Élève</th><th>Montant</th><th>N° transaction</th><th></th></tr></thead><tbody>
+    ${liste.map(d => `<tr><td>${fmtDate(String(d.created_at).slice(0, 10))}</td><td>${esc(d.prenom)} ${esc(d.nom)}<br><span class="text-muted" style="font-size:11px">${esc(d.classe || '')}</span></td>
+      <td class="mono">${fmtMoney(d.montant)}</td><td class="mono">${esc(d.transaction_id)}</td>
+      <td><button class="btn btn-ok btn-xs" onclick="omDecider('${escJs(d.id)}','valider')">✔ Valider</button>
+          <button class="btn btn-danger btn-xs" onclick="omDecider('${escJs(d.id)}','rejeter')">✖ Rejeter</button></td></tr>`).join('')}
+    </tbody></table></div>` : emptyHtml('✅', 'Aucun paiement en attente de validation');
+}
+
+async function omDecider(id, action) {
+  try {
+    if (action === 'valider') {
+      const r = await apiFetch(`/orange-money/declarations/${id}/valider`, { method: 'POST' });
+      toast(`Validé — reçu ${r.numero_recu}`, 'success');
+    } else {
+      const motif = prompt('Motif du rejet (ex. transaction introuvable chez Orange) :');
+      if (!motif) return;
+      await apiFetch(`/orange-money/declarations/${id}/rejeter`, { method: 'POST', body: { motif } });
+      toast('Rejeté', 'success');
+    }
+    omValider();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function omQr() {
+  const admin = ['admin', 'directeur'].includes(currentUser.role);
+  const c = _omConfig;
+  $('#om-corps').innerHTML = `
+    <div style="text-align:center">
+      ${c.qr_url ? `<img src="${esc(c.qr_url)}" style="max-width:320px;max-height:320px;border:1px solid #E5E7EB;border-radius:12px"><br>` : '<div class="text-muted" style="margin:20px 0">Aucun QR enregistré</div>'}
+      <div style="margin:10px 0"><strong>${esc(c.nom || '')}</strong>${c.code ? `<br>Code marchand : <span class="mono">${esc(c.code)}</span>` : ''}</div>
+      <div class="text-muted" style="font-size:13px;white-space:pre-line">${esc(c.instructions || '')}</div>
+      ${c.qr_url ? `<button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="omImprimerQr()">🖨 Imprimer l'affiche</button>` : ''}
+    </div>
+    ${admin ? `<hr><div class="form-section-title">Réglages (administrateur)</div>
+      <div class="form-2">
+        <div class="fg"><label>Nom du compte marchand</label><input id="omc-nom" value="${esc(c.nom || '')}"></div>
+        <div class="fg"><label>Code marchand (facultatif)</label><input id="omc-code" value="${esc(c.code || '')}"></div>
+      </div>
+      <div class="fg"><label>Instructions affichées sur l'affiche et dans les relances</label>
+        <textarea id="omc-instr" rows="3" placeholder="Ouvrez Orange Money → Paiement marchand → Scanner le code QR. Gardez le SMS de confirmation.">${esc(c.instructions || '')}</textarea></div>
+      <div class="flex gap-2" style="flex-wrap:wrap">
+        <label class="btn btn-outline btn-sm" style="cursor:pointer">📷 Importer le QR (capture « Ma carte QR »)<input type="file" id="omc-fichier" accept="image/*" style="display:none"></label>
+        <button class="btn btn-primary btn-sm" onclick="omSauverConfig()">Enregistrer</button>
+      </div>` : ''}`;
+  const f = $('#omc-fichier');
+  if (f) f.addEventListener('change', async e => {
+    if (!e.target.files[0]) return;
+    const fd = new FormData(); fd.append('qr', e.target.files[0]);
+    try { const r = await apiUpload('/orange-money/qr', fd); _omConfig.qr_url = r.qr_url; toast('QR enregistré', 'success'); omQr(); }
+    catch (err) { toast(err.message, 'error'); }
+  });
+}
+
+async function omSauverConfig() {
+  try {
+    _omConfig = await apiFetch('/orange-money/config', { method: 'PUT', body: { nom: $('#omc-nom').value, code: $('#omc-code').value, instructions: $('#omc-instr').value } });
+    _omConfigRelance = null;
+    toast('Enregistré', 'success'); omQr();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function omImprimerQr() {
+  const c = _omConfig;
+  const w = window.open('', '_blank');
+  if (!w) return toast('Autorisez les fenêtres pour imprimer', 'error');
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>Payer par Orange Money</title><body style="font-family:Arial,sans-serif;text-align:center;padding:30px">
+    <h1 style="color:#ff7900">Payez la scolarité avec Orange Money</h1><h2>${esc(c.nom || '')}</h2>
+    <img src="${esc(c.qr_url)}" style="width:360px"><p style="font-size:20px">${c.code ? 'Code marchand : <b>' + esc(c.code) + '</b>' : ''}</p>
+    <p style="font-size:18px;white-space:pre-line">${esc(c.instructions || 'Orange Money → Paiement marchand → Scanner le code QR.\nGardez le SMS de confirmation et présentez-le à l\'école.')}</p>
+    <script>onload=()=>print()<\/script></body>`);
+  w.document.close();
+}
+window.modalOrangeMoney = modalOrangeMoney; window.omAfficher = omAfficher; window.omEnregistrer = omEnregistrer;
+window.omDecider = omDecider; window.omSauverConfig = omSauverConfig; window.omImprimerQr = omImprimerQr;
