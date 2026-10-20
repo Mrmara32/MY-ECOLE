@@ -140,6 +140,13 @@ def demarrer_sauvegardes_automatiques(intervalle_s=3600):
                     print(f"[sauvegarde] Copie du jour créée : {chemin}", flush=True)
             except Exception as e:
                 print(f"[sauvegarde] Échec de la copie automatique : {e}", flush=True)
+            try:
+                import sauvegarde_externe
+                envoye = sauvegarde_externe.envoyer_si_besoin()
+                if envoye:
+                    print(f"[sauvegarde] Copie envoyée hors serveur : {envoye}", flush=True)
+            except Exception as e:
+                print(f"[sauvegarde] Échec de l'envoi hors serveur (nouvel essai dans 1 h) : {e}", flush=True)
             time.sleep(intervalle_s)
 
     threading.Thread(target=boucle, name='sauvegardes-automatiques', daemon=True).start()

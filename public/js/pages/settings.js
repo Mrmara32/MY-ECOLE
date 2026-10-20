@@ -327,6 +327,7 @@ async function afficherCarteSauvegardes() {
       <div class="alert alert-info mb-4">Une copie complète est faite <strong>automatiquement chaque jour</strong> sur le serveur.
         Pensez aussi à <strong>télécharger régulièrement une sauvegarde</strong> et à la ranger hors du serveur
         (clé USB, Google Drive…) : c'est la seule protection en cas de perte totale du serveur ou du poste.</div>
+      <div id="hors-serveur" class="mb-4"></div>
       <div id="liste-sauvegardes">${loadingHtml}</div>
     </div>`;
   $('#content').appendChild(carte);
@@ -340,7 +341,15 @@ async function afficherCarteSauvegardes() {
   };
 
   try {
-    const { sauvegardes, conservees } = await apiFetch('/systeme/sauvegardes');
+    const { sauvegardes, conservees, hors_serveur: hs } = await apiFetch('/systeme/sauvegardes');
+    $('#hors-serveur').innerHTML = !hs.configure
+      ? `<div class="alert alert-warn"><b>Copie automatique hors serveur : non activée.</b> Sur Render (Environment), renseignez
+         ${hs.manquantes.map(v => `<code>${esc(v)}</code>`).join(', ')}. Mode d'emploi dans le fichier <code>sauvegarde_externe.py</code>.</div>`
+      : `<div class="alert ${hs.derniere_erreur && !hs.dernier_envoi ? 'alert-danger' : 'alert-ok'}">
+         <b>Copie automatique hors serveur : activée</b> (chiffrée).
+         ${hs.dernier_envoi ? ` Dernier envoi réussi : ${esc(hs.dernier_envoi)}.` : ' Aucun envoi réussi pour l\'instant.'}
+         ${hs.derniere_erreur ? `<br>⚠ Dernière erreur (${esc(hs.derniere_erreur_le || '')}) : ${esc(hs.derniere_erreur)}` : ''}
+         <div style="margin-top:8px"><button class="btn btn-outline btn-xs" onclick="essaiEnvoiHorsServeur(this)">📤 Envoyer une copie maintenant (test)</button></div></div>`;
     const taille = (o) => o > 1048576 ? `${(o / 1048576).toFixed(1)} Mo` : `${Math.max(1, Math.round(o / 1024))} Ko`;
     $('#liste-sauvegardes').innerHTML = sauvegardes.length ? `
       <div class="text-muted mb-3" style="font-size:12px">Copies automatiques conservées sur le serveur : les ${conservees} derniers jours.</div>
@@ -362,6 +371,14 @@ async function telechargerSauvegarde(nom) {
   catch (err) { toast(err.message, 'error'); }
 }
 window.telechargerSauvegarde = telechargerSauvegarde;
+
+async function essaiEnvoiHorsServeur(bouton) {
+  bouton.disabled = true; bouton.textContent = '⏳ Envoi…';
+  try { const r = await apiFetch('/systeme/sauvegardes/hors-serveur/essai', { method: 'POST' }); toast('Copie envoyée : ' + r.nom, 'success'); }
+  catch (err) { toast(err.message, 'error'); }
+  finally { bouton.disabled = false; bouton.textContent = '📤 Envoyer une copie maintenant (test)'; }
+}
+window.essaiEnvoiHorsServeur = essaiEnvoiHorsServeur;
 
 function applyBranding(s) {
   if (s.ecole_nom) {
