@@ -295,10 +295,11 @@ async function choisirEnfant(eleveId) {
   const zone = document.getElementById('dash-contenu');
   zone.innerHTML = `<p class="empty">Chargement…</p>`;
 
-  const [notes, absences, devoirs, resultats] = await Promise.all([
+  const [notes, absences, devoirs, resultats, viescolaire] = await Promise.all([
     apiFetch('/notes?eleve_id=' + eleveId).catch(() => []),
     apiFetch('/absences?eleve_id=' + eleveId).catch(() => []),
     apiFetch('/devoirs?classe=' + encodeURIComponent(ENFANT_ACTIF.classe || '')).catch(() => []),
+    apiFetch('/discipline?eleve_id=' + eleveId).catch(() => []),
     // Résultats officiels calculés par l'école (coefficients, rang, mention) pour chaque période
     Promise.all(['1', '2', '3', 'annee'].map(per =>
       apiFetch('/bulletins/eleve/' + eleveId + '?periode=' + per).then(r => ({ per, r })).catch(() => ({ per, r: null })))),
@@ -343,6 +344,11 @@ async function choisirEnfant(eleveId) {
         <button id="btn-imprimer" onclick="window.print()">🖨️ Imprimer ce relevé</button>
       ` : '<p class="empty">Aucune note enregistrée pour le moment.</p>'}
     </div>
+
+    ${viescolaire.length ? `<div class="section-card"><h2>🧑‍⚖️ Vie scolaire</h2>
+      <table><thead><tr><th>Date</th><th>Nature</th><th>Motif</th><th>Suite donnée</th></tr></thead><tbody>${viescolaire.map(f => `
+        <tr><td>${fmtDate(f.date_fait)}</td><td>${({felicitations:'🏆 Félicitations',observation:'Observation',avertissement:'⚠️ Avertissement',retenue:'Retenue',blame:'Blâme',exclusion_temporaire:'Exclusion temporaire'})[f.type] || esc(f.type)}${f.nb_jours ? ' (' + f.nb_jours + ' j)' : ''}</td>
+        <td>${esc(f.motif)}</td><td>${esc(f.sanction || '—')}</td></tr>`).join('')}</tbody></table></div>` : ''}
 
     <div class="section-card">
       <h2>📅 Absences ${nbAbsInjust ? `<span class="badge badge-injust">${nbAbsInjust} non justifiée${nbAbsInjust>1?'s':''}</span>` : ''}</h2>

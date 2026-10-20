@@ -346,6 +346,23 @@ CREATE TABLE IF NOT EXISTS notes (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Discipline et vie scolaire : observations, sanctions, félicitations, par élève.
+CREATE TABLE IF NOT EXISTS discipline (
+  ecole_id        INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id              TEXT PRIMARY KEY,
+  eleve_id        TEXT NOT NULL REFERENCES eleves(id) ON DELETE CASCADE,
+  date_fait       TEXT NOT NULL,
+  type            TEXT NOT NULL CHECK(type IN ('felicitations','observation','avertissement','retenue','blame','exclusion_temporaire')),
+  motif           TEXT NOT NULL,
+  description     TEXT,
+  sanction        TEXT,
+  nb_jours        INTEGER DEFAULT 0,
+  visible_parents INTEGER DEFAULT 1,
+  enregistre_par  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at      TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_discipline_eleve ON discipline(ecole_id, eleve_id, date_fait);
+
 -- Échecs de connexion (blocage temporaire anti force brute, voir securite.py).
 CREATE TABLE IF NOT EXISTS echecs_connexion (
   cle          TEXT PRIMARY KEY,
