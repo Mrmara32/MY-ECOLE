@@ -56,7 +56,10 @@ function renderAbsEleves(absences, eleves) {
   <div class="card">
     <div class="card-header">
       <span class="card-title">📅 Absences & Retards des élèves</span>
-      <button class="btn btn-primary btn-sm" onclick="modalAbsence()">+ Enregistrer</button>
+      <div class="card-actions">
+        <button class="btn btn-outline btn-sm" id="btn-prevenir-tous" style="display:none" onclick="prevenirTousAuto()" title="Envoie le message à tous les parents de la liste affichée qui n'ont pas encore été prévenus">📤 Prévenir tous (auto)</button>
+        <button class="btn btn-primary btn-sm" onclick="modalAbsence()">+ Enregistrer</button>
+      </div>
     </div>
     <div class="filters">
       <div class="fg grow"><label>Recherche</label><input id="q-abs" placeholder="Nom, prénom, matricule…"></div>
@@ -76,6 +79,7 @@ function renderAbsEleves(absences, eleves) {
   let curr = absences;
   getPaginator('abs-eleves').onChange = () => render(curr);
   render(curr);
+  afficherBoutonPrevenirTous();
 
   window.filterAbs = async () => {
     const deb = $('#f-adeb').value;
@@ -349,3 +353,36 @@ async function envoyerSmsAutoAbsence(id) {
   } catch (e) { toast(e.message, 'error'); }
 }
 window.envoyerSmsAutoAbsence = envoyerSmsAutoAbsence;
+
+
+/* Prévient d'un coup tous les parents de la liste affichée (WhatsApp automatique, sinon SMS automatique).
+   Un envoi à la fois : une erreur n'empêche pas les suivants, trois erreurs de suite arrêtent tout. */
+async function afficherBoutonPrevenirTous() {
+  const b = $('#btn-prevenir-tous');
+  if (!b || !['admin', 'directeur', 'secretaire'].includes(currentUser.role)) return;
+  if (await whatsappAutoActif() || await smsAutoActif()) b.style.display = '';
+}
+
+async function prevenirTousAuto() {
+  const wa = await whatsappAutoActif();
+  const a_prevenir = _absAffichees.filter(a => a.contact && !a.parent_prevenu_le && numeroInternational(a.contact.telephone));
+  if (!a_prevenir.length) return toast('Aucun parent à prévenir dans cette liste (déjà prévenus, ou sans numéro)', 'info');
+  if (!confirm(`Envoyer ${a_prevenir.length} message(s) automatiquement par ${wa ? 'WhatsApp' : 'SMS'} ?\nChaque message est facturé par l'opérateur.`)) return;
+  const modele = ($('#abs-modele') && $('#abs-modele').value.trim()) || (() => { try { return localStorage.getItem('gs_modele_absence'); } catch (e) { return null; } })() || ABS_MODELE_DEFAUT;
+  let ok = 0, echecs = 0, consecutifs = 0, derniereErreur = '';
+  const b = $('#btn-prevenir-tous'); b.disabled = true;
+  for (const a of a_prevenir) {
+    b.textContent = `⏳ ${ok + echecs + 1}/${a_prevenir.length}…`;
+    try {
+      if (wa) await apiWhatsappAbsence(a.id); else await apiSmsAbsence(a.id, messageAbsence(a, modele));
+      a.parent_prevenu_le = new Date().toISOString(); ok++; consecutifs = 0;
+    } catch (e) {
+      echecs++; consecutifs++; derniereErreur = e.message;
+      if (consecutifs >= 3) break;
+    }
+  }
+  b.disabled = false; b.textContent = '📤 Prévenir tous (auto)';
+  toast(`${ok} parent(s) prévenu(s)` + (echecs ? `, ${echecs} échec(s) : ${derniereErreur}` : ''), echecs ? 'warning' : 'success');
+  filterAbs();
+}
+window.prevenirTousAuto = prevenirTousAuto;
