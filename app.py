@@ -286,6 +286,8 @@ def create_app():
     from routes.discipline_routes import bp as discipline_bp
     from routes.import_eleves_routes import bp as import_eleves_bp
     from routes.pointage_routes import bp as pointage_bp, bp_zk as pointage_zk_bp
+    from routes.whatsapp_routes import bp as whatsapp_bp
+    from routes.sms_routes import bp as sms_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
@@ -314,6 +316,8 @@ def create_app():
     app.register_blueprint(import_eleves_bp)
     app.register_blueprint(pointage_bp)
     app.register_blueprint(pointage_zk_bp)
+    app.register_blueprint(whatsapp_bp)
+    app.register_blueprint(sms_bp)
 
     # Copie automatique quotidienne de la base (voir sauvegarde.py)
     sauvegarde.demarrer_sauvegardes_automatiques()

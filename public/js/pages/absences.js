@@ -283,6 +283,8 @@ async function modalPrevenirParent(id) {
   let modele = ABS_MODELE_DEFAUT;
   try { modele = localStorage.getItem('gs_modele_absence') || modele; } catch (e) { /* stockage indisponible */ }
   const intl = numeroInternational(a.contact.telephone);
+  const auto = intl && await whatsappAutoActif();
+  const autoSms = intl && await smsAutoActif();
   openModal('📲 Prévenir le parent', `
     <div class="alert alert-info"><strong>${esc(a.prenom)} ${esc(a.nom)}</strong> — ${a.type === 'retard' ? 'Retard' : 'Absence'} du ${fmtDate(a.date_abs)}<br>
       ${esc(a.contact.nom || a.contact.lien)} <span class="text-muted">(${esc(a.contact.lien)})</span> · <span class="mono">${esc(a.contact.telephone)}</span></div>
@@ -290,6 +292,8 @@ async function modalPrevenirParent(id) {
       <textarea id="abs-modele" rows="4">${esc(modele)}</textarea></div>
     <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
       <button class="btn btn-outline" onclick="closeModal()">Fermer</button>
+      ${auto ? `<button class="btn btn-primary" onclick="envoyerWhatsappAutoAbsence('${escJs(id)}')">📤 Envoyer automatiquement</button>` : ''}
+      ${autoSms ? `<button class="btn btn-primary" onclick="envoyerSmsAutoAbsence('${escJs(id)}')">📨 SMS automatique</button>` : ''}
       ${intl ? `<button class="btn btn-ok" onclick="envoyerPrevenirParent('${escJs(id)}','whatsapp')">WhatsApp</button>` : ''}
       <button class="btn btn-primary" onclick="envoyerPrevenirParent('${escJs(id)}','sms')">SMS</button>
       <button class="btn btn-outline" onclick="envoyerPrevenirParent('${escJs(id)}','appel')">Appeler</button>
@@ -320,3 +324,28 @@ async function envoyerPrevenirParent(id, canal) {
 }
 window.modalPrevenirParent = modalPrevenirParent;
 window.envoyerPrevenirParent = envoyerPrevenirParent;
+
+
+async function envoyerWhatsappAutoAbsence(id) {
+  const a = _absAffichees.find(x => x.id === id);
+  if (!a || !confirm(`Envoyer le message WhatsApp à ${a.contact.nom || a.contact.lien} ?`)) return;
+  try {
+    await apiWhatsappAbsence(id);
+    a.parent_prevenu_le = new Date().toISOString();
+    toast('Message WhatsApp envoyé', 'success'); closeModal();
+  } catch (e) { toast(e.message, 'error'); }
+}
+window.envoyerWhatsappAutoAbsence = envoyerWhatsappAutoAbsence;
+
+
+async function envoyerSmsAutoAbsence(id) {
+  const a = _absAffichees.find(x => x.id === id);
+  if (!a || !confirm(`Envoyer le SMS à ${a.contact.nom || a.contact.lien} ?`)) return;
+  const message = messageAbsence(a, ($('#abs-modele').value || '').trim() || ABS_MODELE_DEFAUT);
+  try {
+    await apiSmsAbsence(id, message);
+    a.parent_prevenu_le = new Date().toISOString();
+    toast('SMS envoyé', 'success'); closeModal();
+  } catch (e) { toast(e.message, 'error'); }
+}
+window.envoyerSmsAutoAbsence = envoyerSmsAutoAbsence;

@@ -337,10 +337,13 @@ function messageRelance(el, modele) {
     .replaceAll('{ecole}', _nomEcoleRelance || 'Groupe scolaire');
 }
 
+let _waAutoRel = false, _smsAutoRel = false;
 async function modalRelances() {
   openModal('📣 Relances des impayés', loadingHtml, { wide: true });
   try {
     const [impayes, parametres] = await Promise.all([apiGetImpayes(), apiGetSettings().catch(() => ({}))]);
+    _waAutoRel = await whatsappAutoActif();
+    _smsAutoRel = await smsAutoActif();
     _relances = impayes;
     _nomEcoleRelance = (parametres && parametres.ecole_nom) || '';
   } catch (e) { $('#modal-body').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`; return; }
@@ -378,6 +381,8 @@ async function modalRelances() {
       const i = _relances.indexOf(r);
       const intl = r.contact ? numeroInternational(r.contact.telephone) : '';
       const actions = r.contact ? `
+        ${intl && _smsAutoRel ? `<button class="btn btn-primary btn-xs" onclick="envoyerRelanceSmsAuto(${i})">📨 SMS auto</button>` : ''}
+        ${intl && _waAutoRel ? `<button class="btn btn-primary btn-xs" onclick="envoyerRelanceAuto(${i})">📤 Auto</button>` : ''}
         ${intl ? `<button class="btn btn-ok btn-xs" onclick="envoyerRelance(${i},'whatsapp')">WhatsApp</button>` : ''}
         <button class="btn btn-outline btn-xs" onclick="envoyerRelance(${i},'sms')">SMS</button>
         <button class="btn btn-outline btn-xs" onclick="envoyerRelance(${i},'appel')">Appeler</button>
@@ -424,3 +429,30 @@ async function envoyerRelance(i, canal) {
 }
 window.modalRelances = modalRelances;
 window.envoyerRelance = envoyerRelance;
+
+
+async function envoyerRelanceAuto(i) {
+  const el = _relances[i];
+  if (!el || !confirm(`Envoyer la relance WhatsApp à ${el.contact.nom || el.contact.lien} (${fmtMoney(el.reste)}) ?`)) return;
+  try {
+    await apiWhatsappRelance(el.eleve_id);
+    el.derniere_relance = new Date().toISOString(); el.nb_relances = (el.nb_relances || 0) + 1;
+    const c = $('#rel-der-' + i); if (c) c.textContent = fmtDate(el.derniere_relance.slice(0, 10));
+    toast('Relance WhatsApp envoyée', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+window.envoyerRelanceAuto = envoyerRelanceAuto;
+
+
+async function envoyerRelanceSmsAuto(i) {
+  const el = _relances[i];
+  if (!el || !confirm(`Envoyer la relance par SMS à ${el.contact.nom || el.contact.lien} (${fmtMoney(el.reste)}) ?`)) return;
+  const message = messageRelance(el, ($('#rel-modele').value || '').trim() || RELANCE_MODELE_DEFAUT);
+  try {
+    await apiSmsRelance(el.eleve_id, message);
+    el.derniere_relance = new Date().toISOString(); el.nb_relances = (el.nb_relances || 0) + 1;
+    const c = $('#rel-der-' + i); if (c) c.textContent = fmtDate(el.derniere_relance.slice(0, 10));
+    toast('Relance SMS envoyée', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+window.envoyerRelanceSmsAuto = envoyerRelanceSmsAuto;
