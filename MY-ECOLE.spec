@@ -35,7 +35,7 @@ bloc_analyse = Analysis(
         'routes.fournisseurs_routes', 'routes.logistique_routes', 'routes.permissions_routes',
         'routes.systeme_routes', 'routes.resultats_routes', 'routes.discipline_routes', 'double_authentification', 'base_sante', 'pg_compat', 'pg_migration', 'psycopg', 'bulletins', 'routes.import_eleves_routes', 'import_eleves',
         'routes.pointage_routes',
-        'permissions', 'offline_sync', 'licence', 'email_service', 'sauvegarde', 'sauvegarde_externe', 'releve_bancaire', 'contact_parent',
+        'permissions', 'offline_sync', 'licence', 'email_service', 'sauvegarde', 'sauvegarde_externe', 'whatsapp_service', 'sms_service', 'routes.whatsapp_routes', 'routes.sms_routes', 'releve_bancaire', 'contact_parent',
         # Vérification des licences par clé publique (licence.py).
         'cryptography.hazmat.primitives.asymmetric.ed25519',
         'engineio.async_drivers.threading',

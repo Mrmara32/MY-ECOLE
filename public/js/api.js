@@ -233,6 +233,20 @@ const apiPointageDefinirCode = b => apiFetch('/pointage/codes', { method: 'PUT',
 const apiPointageCodesAuto = type => apiFetch('/pointage/codes/auto', { method: 'POST', body: { type } });
 const apiPointageBadges = (type, classe) => apiFetch('/pointage/badges?type=' + type + (classe ? '&classe=' + encodeURIComponent(classe) : ''));
 const apiPointageScan = contenu => apiFetch('/pointage/scan', { method: 'POST', body: { contenu } });
+let _waAutoActif = null;
+const whatsappAutoActif = async () => {
+  if (_waAutoActif === null) { try { _waAutoActif = !!(await apiFetch('/whatsapp/statut')).actif; } catch (e) { _waAutoActif = false; } }
+  return _waAutoActif;
+};
+const apiWhatsappAbsence = id => apiFetch('/whatsapp/absence/' + encodeURIComponent(id), { method: 'POST' });
+const apiWhatsappRelance = id => apiFetch('/whatsapp/relance/' + encodeURIComponent(id), { method: 'POST' });
+let _smsAutoActif = null;
+const smsAutoActif = async () => {
+  if (_smsAutoActif === null) { try { _smsAutoActif = !!(await apiFetch('/sms/statut')).actif; } catch (e) { _smsAutoActif = false; } }
+  return _smsAutoActif;
+};
+const apiSmsAbsence = (id, message) => apiFetch('/sms/absence/' + encodeURIComponent(id), { method: 'POST', body: { message } });
+const apiSmsRelance = (id, message) => apiFetch('/sms/relance/' + encodeURIComponent(id), { method: 'POST', body: { message } });
 const apiPointageParametres = () => apiFetch('/pointage/parametres');
 const apiPointageSauverParametres = b => apiFetch('/pointage/parametres', { method: 'PUT', body: b });
 const apiPointageManuel = b => apiFetch('/pointage/manuel', { method: 'POST', body: b });
