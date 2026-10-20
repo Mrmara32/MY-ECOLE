@@ -104,6 +104,20 @@ def reset_password(user_id):
     return jsonify({'success': True})
 
 
+@bp.route('/<int:user_id>/reset-2fa', methods=['POST'])
+@require_auth
+@require_role('admin')
+def reset_2fa(user_id):
+    """Téléphone perdu et codes de secours épuisés : l'administrateur retire la double authentification."""
+    u = db.execute("SELECT id, username FROM users WHERE id=? AND ecole_id=?", (user_id, g.user['ecole_id'])).fetchone()
+    if not u:
+        return jsonify({'error': 'Introuvable'}), 404
+    db.execute("UPDATE users SET totp_actif=0, totp_secret=NULL, codes_secours=NULL, totp_dernier_pas=0 WHERE id=?", (user_id,))
+    db.commit()
+    log_action(g.user, 'reinitialisation_2fa', 'utilisateur', str(user_id), {'username': u['username']})
+    return jsonify({'success': True})
+
+
 @bp.route('/<int:user_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin')

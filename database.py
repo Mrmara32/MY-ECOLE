@@ -1053,6 +1053,10 @@ MIGRATIONS = {
         'email_confirme': "INTEGER DEFAULT 0",  # pour les comptes parents avec confirmation par e-mail
         'jeton_confirmation': "TEXT",
         'doit_changer_mdp': "INTEGER DEFAULT 0",  # mot de passe provisoire : à changer à la prochaine connexion
+        'totp_secret': "TEXT",                    # double authentification (voir double_authentification.py)
+        'totp_actif': "INTEGER DEFAULT 0",
+        'totp_dernier_pas': "INTEGER DEFAULT 0",  # dernier code accepté : un code ne sert qu'une fois
+        'codes_secours': "TEXT",                  # empreintes (SHA-256) des codes de secours restants
     },
     'notes': {
         'annee_scolaire': "TEXT",  # sans elle, les notes d'une année se mélangeraient à celles de la suivante
