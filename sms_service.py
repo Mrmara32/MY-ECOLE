@@ -79,8 +79,10 @@ def numero_international(tel):
 
 def nettoyer(texte):
     """Texte prêt pour un SMS : apostrophes/guillemets simples, accents hors alphabet SMS retirés."""
+    texte = re.sub(r'«[ \u00a0\u202f]*', '"', str(texte or ''))
+    texte = re.sub(r'[ \u00a0\u202f]*»', '"', texte)
     sortie = []
-    for c in str(texte or ''):
+    for c in texte:
         if c in _REMPLACEMENTS:
             sortie.append(_REMPLACEMENTS[c])
             continue
