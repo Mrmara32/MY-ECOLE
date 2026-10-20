@@ -51,6 +51,7 @@ async function apiFetch(path, opts = {}) {
 
   if (res.status === 401) { authLogout(); throw new Error('Session expirée'); }
   const data = await res.json().catch(() => ({}));
+  if (!res.ok && data.code === 'MOT_DE_PASSE_A_CHANGER' && typeof showPwdModal === 'function') showPwdModal(true);
   if (!res.ok) throw new Error((data.error || `Erreur ${res.status}`) + (data.detail ? '\n\n' + data.detail : ''));
   if (estLecture && typeof offlineSauverCache === 'function') offlineSauverCache(path, data);
   return data;

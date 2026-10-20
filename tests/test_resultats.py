@@ -115,7 +115,11 @@ def test_parent_voit_son_enfant_mais_pas_la_classe(client, entetes, creer_eleve,
     database.db.execute("INSERT INTO parents_eleves (user_id, eleve_id) VALUES (?,?)", (r.get_json()['id'], mon['id']))
     database.db.commit()
     tok = client.post('/api/auth/login', json={'username': 'parent-g', 'password': 'Parent-Test-1'}).get_json()['token']
-    h = {'Authorization': f'Bearer {tok}'}
+    # compte créé par l'administrateur : mot de passe provisoire, à changer avant toute autre action
+    r = client.post('/api/auth/change-password', json={'oldPassword': 'Parent-Test-1', 'newPassword': 'Parent-Final-2'},
+                    headers={'Authorization': f'Bearer {tok}'})
+    assert r.status_code == 200, r.get_json()
+    h = {'Authorization': f"Bearer {r.get_json()['token']}"}
     assert client.get(f'/api/bulletins/classe/{c}', headers=h).status_code == 403
     assert client.get(f"/api/bulletins/eleve/{autre['id']}", headers=h).status_code == 403
     r = client.get(f"/api/bulletins/eleve/{mon['id']}", headers=h)

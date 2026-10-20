@@ -19,7 +19,7 @@ import sys
 import time
 import random
 import string
-from werkzeug.security import generate_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # GS_DATA_DIR peut être défini par le launcher desktop (dossier utilisateur).
 # Sinon : à côté du véritable exécutable si l'application est empaquetée avec
@@ -344,6 +344,14 @@ CREATE TABLE IF NOT EXISTS notes (
   note_max   REAL DEFAULT 20,
   date_note  TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Échecs de connexion (blocage temporaire anti force brute, voir securite.py).
+CREATE TABLE IF NOT EXISTS echecs_connexion (
+  cle          TEXT PRIMARY KEY,
+  nombre       INTEGER NOT NULL DEFAULT 0,
+  debut        TEXT NOT NULL,
+  bloque_jusqu TEXT
 );
 
 -- Matières enseignées dans chaque classe, avec leur coefficient (moyenne générale pondérée).
@@ -1027,6 +1035,7 @@ MIGRATIONS = {
         'est_super_admin': "INTEGER DEFAULT 0",  # accès à la supervision de toutes les écoles clientes
         'email_confirme': "INTEGER DEFAULT 0",  # pour les comptes parents avec confirmation par e-mail
         'jeton_confirmation': "TEXT",
+        'doit_changer_mdp': "INTEGER DEFAULT 0",  # mot de passe provisoire : à changer à la prochaine connexion
     },
     'ecoles': {
         'email_confirme': "INTEGER DEFAULT 0",
@@ -1645,6 +1654,24 @@ def appliquer_migrations_versionnees():
             break
 
 
+MOTS_DE_PASSE_PAR_DEFAUT_PUBLICS = ('Admin@2025!',)
+
+
+def signaler_mots_de_passe_par_defaut():
+    """Comptes administrateurs qui ont encore un mot de passe PUBLIÉ dans le code (ex. celui d'une
+    installation ancienne) : ils passent en « mot de passe provisoire » et devront le changer à la
+    prochaine connexion. Retourne le nombre de comptes signalés."""
+    n = 0
+    for u in db.execute("SELECT id, password_hash FROM users WHERE role='admin' AND COALESCE(doit_changer_mdp,0)=0").fetchall():
+        if any(check_password_hash(u['password_hash'], m) for m in MOTS_DE_PASSE_PAR_DEFAUT_PUBLICS):
+            db.execute("UPDATE users SET doit_changer_mdp=1 WHERE id=?", (u['id'],))
+            n += 1
+    if n:
+        db.commit()
+        print(f"[securite] {n} compte(s) administrateur avec le mot de passe par défaut : changement obligatoire à la prochaine connexion.", flush=True)
+    return n
+
+
 def init_db():
     db.executescript(SCHEMA)
     db.commit()
@@ -1729,8 +1756,11 @@ def init_db():
         password = os.environ.get('ADMIN_PASSWORD', 'Admin@2025!')
         pwd_hash = generate_password_hash(password)
         db.execute(
-            "INSERT INTO users (ecole_id,username,password_hash,full_name,role,email,est_super_admin) VALUES (?,?,?,?,?,?,?)",
-            (1, username, pwd_hash, 'Administrateur Principal', 'admin', 'admin@ecole.com', 1),
+            "INSERT INTO users (ecole_id,username,password_hash,full_name,role,email,est_super_admin,doit_changer_mdp) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            # mot de passe par défaut connu de tous (publié dans le code) : changement obligatoire à la 1re connexion
+            (1, username, pwd_hash, 'Administrateur Principal', 'admin', 'admin@ecole.com', 1,
+             0 if os.environ.get('ADMIN_PASSWORD') else 1),
         )
         db.commit()
         print("\n" + "=" * 48)
@@ -1739,6 +1769,8 @@ def init_db():
         print(f"  Mot de passe : {password}")
         print("  Changez ce mot de passe rapidement !")
         print("=" * 48 + "\n")
+
+    signaler_mots_de_passe_par_defaut()
 
 
 def ecole_id_depuis_code(code_ecole, defaut=1):

@@ -75,7 +75,7 @@ async function modalAddUser() {
       </div>
       <div class="form-2">
         <div class="fg"><label>Identifiant (login)*</label><input name="username" required placeholder="m.camara"></div>
-        <div class="fg"><label>Mot de passe*</label><input type="password" name="password" required minlength="6" placeholder="Min. 6 caractères"></div>
+        <div class="fg"><label>Mot de passe*</label><input type="password" name="password" required minlength="8" placeholder="8 caractères min., lettres et chiffres"></div>
       </div>
       <div class="form-2">
         <div class="fg"><label>Rôle*</label><select name="role" required>
@@ -148,8 +148,8 @@ async function modalEditUser(id) {
 async function modalResetPwd(id, username) {
   openModal(`Réinitialiser le mot de passe — ${username}`, `
     <form id="f-rpwd">
-      <div class="fg mb-3"><label>Nouveau mot de passe (min. 6 car.)</label>
-        <input type="password" id="new-pwd" required minlength="6" placeholder="Nouveau mot de passe">
+      <div class="fg mb-3"><label>Nouveau mot de passe (8 car. min., lettres et chiffres)</label>
+        <input type="password" id="new-pwd" required minlength="8" placeholder="Nouveau mot de passe">
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline" onclick="closeModal()">Annuler</button>

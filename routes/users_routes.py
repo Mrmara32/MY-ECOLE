@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, g
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from database import db, rows_to_list, row_to_dict, log_action, gen_id
+from securite import erreur_mot_de_passe
 from auth import require_auth, require_role
 
 bp = Blueprint('users_routes', __name__, url_prefix='/api/users')
@@ -34,13 +35,13 @@ def create_user():
         return jsonify({'error': 'Champs requis'}), 400
     if role not in ROLES:
         return jsonify({'error': 'Rôle invalide'}), 400
-    if len(password) < 6:
-        return jsonify({'error': 'Mot de passe trop court'}), 400
+    if erreur_mot_de_passe(password):
+        return jsonify({'error': erreur_mot_de_passe(password)}), 400
     if db.execute("SELECT id FROM users WHERE ecole_id=? AND username=?", (g.user['ecole_id'], username)).fetchone():
         return jsonify({'error': 'Identifiant déjà pris'}), 409
 
     cur = db.execute(
-        "INSERT INTO users (ecole_id,username,password_hash,full_name,role,email,telephone,civilite) VALUES (?,?,?,?,?,?,?,?)",
+        "INSERT INTO users (ecole_id,username,password_hash,full_name,role,email,telephone,civilite,doit_changer_mdp) VALUES (?,?,?,?,?,?,?,?,1)",
         (g.user['ecole_id'], username, generate_password_hash(password), full_name, role, email, telephone, civilite),
     )
     db.commit()
@@ -90,12 +91,13 @@ def update_user(user_id):
 def reset_password(user_id):
     body = request.get_json(silent=True) or {}
     new_password = body.get('newPassword')
-    if not new_password or len(new_password) < 6:
-        return jsonify({'error': 'Min. 6 caractères'}), 400
+    if not new_password or erreur_mot_de_passe(new_password):
+        return jsonify({'error': erreur_mot_de_passe(new_password)}), 400
     u = db.execute("SELECT id, username FROM users WHERE id=? AND ecole_id=?", (user_id, g.user['ecole_id'])).fetchone()
     if not u:
         return jsonify({'error': 'Introuvable'}), 404
-    db.execute("UPDATE users SET password_hash=? WHERE id=? AND ecole_id=?",
+    # Mot de passe fixé par l'administrateur = provisoire : l'utilisateur devra le changer à sa prochaine connexion.
+    db.execute("UPDATE users SET password_hash=?, doit_changer_mdp=1 WHERE id=? AND ecole_id=?",
                (generate_password_hash(new_password), user_id, g.user['ecole_id']))
     db.commit()
     log_action(g.user, 'reinitialisation_mdp', 'utilisateur', str(user_id), {'username': u['username']})

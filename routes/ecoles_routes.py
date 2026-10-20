@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify, g
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from database import db, gen_id, rows_to_list, row_to_dict, log_action
+from securite import erreur_mot_de_passe
 from auth import require_auth, require_super_admin
 from email_service import generer_jeton, envoyer_confirmation_ecole
 
@@ -63,8 +64,8 @@ def inscription_ecole():
 
     if not nom_ecole or not admin_full_name or not admin_username or not admin_password:
         return jsonify({'error': "Nom de l'école, nom de l'administrateur, identifiant et mot de passe sont requis"}), 400
-    if len(admin_password) < 6:
-        return jsonify({'error': 'Le mot de passe doit contenir au moins 6 caractères'}), 400
+    if erreur_mot_de_passe(admin_password):
+        return jsonify({'error': erreur_mot_de_passe(admin_password)}), 400
     if not email_contact or '@' not in email_contact:
         return jsonify({'error': "Une adresse e-mail valide est requise pour confirmer votre inscription"}), 400
 
