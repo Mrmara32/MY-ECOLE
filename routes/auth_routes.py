@@ -10,6 +10,17 @@ from database import log_action
 bp = Blueprint('auth_routes', __name__, url_prefix='/api/auth')
 
 
+def _journaliser_securite(action, username, code_ecole):
+    """Trace les échecs de connexion (détection d'attaques) sans jamais enregistrer de mot de passe."""
+    from database import ecole_id_depuis_code
+    try:
+        ecole = ecole_id_depuis_code(code_ecole) if code_ecole else 1
+        log_action({'id': None, 'name': str(username)[:80], 'ecole_id': ecole}, action, 'securite', None,
+                   {'ip': securite.adresse_client()})
+    except Exception:
+        pass
+
+
 @bp.route('/login', methods=['POST'])
 def login_route():
     body = request.get_json(silent=True) or {}
@@ -33,6 +44,7 @@ def login_route():
     if result == 'compte_desactive':
         return jsonify({'error': "Ce compte a été désactivé — contactez votre administration."}), 403
     if not result:
+        _journaliser_securite('echec_connexion', username, code_ecole)
         securite.enregistrer_echec(cles)
         return jsonify({'error': 'Identifiant, mot de passe ou établissement incorrect'}), 401
     # Double authentification : mot de passe correct, mais le compte exige aussi un code.
@@ -49,12 +61,15 @@ def login_route():
         else:
             reste = da.consommer_code_secours(u['codes_secours'], code)
             if reste is None:
+                _journaliser_securite('echec_2fa', username, code_ecole)
                 securite.enregistrer_echec(cles)
                 return jsonify({'error': 'Code de vérification incorrect', 'requires_2fa': True}), 401
             db.execute("UPDATE users SET codes_secours=? WHERE id=?", (reste, u['id']))
             db.commit()
             result['user']['codes_secours_restants'] = len(__import__('json').loads(reste))
     securite.effacer_echecs(cles[0])
+    log_action({'id': result['user']['id'], 'name': result['user']['full_name'], 'ecole_id': result['user']['ecole_id']},
+               'connexion', 'securite', None, {'ip': securite.adresse_client()})
     return jsonify(result)
 
 

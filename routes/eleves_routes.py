@@ -20,6 +20,21 @@ FIELDS_SANTE = ['groupe_sanguin', 'allergies', 'maladies_chroniques', 'medicamen
                 'medecin_nom', 'medecin_telephone', 'assurance_nom', 'assurance_numero', 'vaccins']
 ALL_FIELDS = FIELDS_BASE + FIELDS_FILIATION + FIELDS_SANTE
 ALLOWED_EXT = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
+import securite_http
+
+
+def _minimiser(d):
+    """Minimisation des données : chacun ne voit des informations de santé que ce que son rôle exige.
+    Direction et secrétariat : tout. Enseignant : l'essentiel pour la sécurité de l'élève (allergies,
+    maladies chroniques, handicap, médicaments). Comptable et autres : aucune donnée de santé."""
+    role = g.user['role']
+    if role in ('admin', 'directeur', 'secretaire'):
+        return d
+    gardes = ('allergies', 'maladies_chroniques', 'handicap', 'medicaments') if role == 'enseignant' else ()
+    for c in FIELDS_SANTE:
+        if c in d and c not in gardes:
+            d[c] = None
+    return d
 
 
 def next_matricule():
@@ -59,7 +74,7 @@ def list_eleves():
     sql += " ORDER BY nom, prenom"
 
     rows = db.execute(sql, params).fetchall()
-    return jsonify(rows_to_list(rows))
+    return jsonify([_minimiser(d) for d in rows_to_list(rows)])
 
 
 @bp.route('/meta/classes', methods=['GET'])
@@ -79,7 +94,7 @@ def get_eleve(eleve_id):
     row = db.execute("SELECT * FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id'])).fetchone()
     if not row:
         return jsonify({'error': 'Introuvable'}), 404
-    return jsonify(row_to_dict(row))
+    return jsonify(_minimiser(row_to_dict(row)))
 
 
 ROLES_INSCRIPTION_DIRECTE = ('admin', 'directeur', 'secretaire', 'comptable')
@@ -259,8 +274,8 @@ def upload_photo(eleve_id):
     if not file or file.filename == '':
         return jsonify({'error': 'Pas de fichier'}), 400
     ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in ALLOWED_EXT:
-        return jsonify({'error': 'Format non supporté'}), 400
+    if ext not in ALLOWED_EXT or not securite_http.est_image(file):
+        return jsonify({'error': 'Format non supporté : le fichier doit être une vraie image (PNG, JPEG, GIF ou WebP)'}), 400
 
     if not db.execute("SELECT id FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Élève introuvable'}), 404

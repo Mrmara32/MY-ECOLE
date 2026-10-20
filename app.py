@@ -132,7 +132,9 @@ def create_app():
     app.config['MAX_CONTENT_LENGTH'] = 60 * 1024 * 1024  # 60 Mo max (photos + courtes vidéos)
     app.config['APP_VERSION'] = calculer_version_interface()
     print(f"[version] Interface MY-ECOLE : {app.config['APP_VERSION']}", flush=True)
-    CORS(app)
+    import securite_http
+    CORS(app, origins=securite_http.origines_cors())
+    securite_http.installer_en_tetes(app)
 
     # ── Écritures une par une, lectures en parallèle (voir database.verrou_ecritures) ──
     # Exception : l'envoi d'un relevé par e-mail n'écrit rien en base ; il ne doit
@@ -230,6 +232,12 @@ def create_app():
     def serve_preinscription(code_ecole=None):
         return send_from_directory(PUBLIC_DIR, 'preinscription.html')
 
+    # ── Politique de protection des données personnelles (publique) ──
+    @app.route('/confidentialite.html')
+    @app.route('/confidentialite')
+    def serve_confidentialite():
+        return send_from_directory(PUBLIC_DIR, 'confidentialite.html')
+
     # ── Espace parents (connexion propre au compte parent, requise dans la page) ──
     @app.route('/espace-parents.html')
     @app.route('/espace-parents')
@@ -288,6 +296,7 @@ def create_app():
     from routes.discipline_routes import bp as discipline_bp
     from routes.bibliotheque_routes import bp as bibliotheque_bp
     from routes.examens_routes import bp as examens_bp
+    from routes.donnees_personnelles_routes import bp as donnees_perso_bp
     from routes.import_eleves_routes import bp as import_eleves_bp
     from routes.pointage_routes import bp as pointage_bp, bp_zk as pointage_zk_bp
     from routes.whatsapp_routes import bp as whatsapp_bp
@@ -320,6 +329,7 @@ def create_app():
     app.register_blueprint(discipline_bp)
     app.register_blueprint(bibliotheque_bp)
     app.register_blueprint(examens_bp)
+    app.register_blueprint(donnees_perso_bp)
     app.register_blueprint(import_eleves_bp)
     app.register_blueprint(pointage_bp)
     app.register_blueprint(pointage_zk_bp)

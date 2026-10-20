@@ -1,6 +1,7 @@
 import os
 from flask import Blueprint, request, jsonify, current_app, g
 from werkzeug.utils import secure_filename
+import securite_http
 
 from database import db, get_settings, log_action
 from auth import require_auth, require_role, ecole_id_optionnelle
@@ -74,8 +75,8 @@ def upload_logo():
     if not file or file.filename == '':
         return jsonify({'error': 'Aucun fichier reçu'}), 400
     ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in ALLOWED_EXT:
-        return jsonify({'error': 'Format non supporté'}), 400
+    if ext not in ALLOWED_EXT or not securite_http.est_image(file):
+        return jsonify({'error': 'Format non supporté : le fichier doit être une vraie image (PNG, JPEG, GIF ou WebP)'}), 400
 
     import time, random
     fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
@@ -97,8 +98,8 @@ def upload_cachet():
     if not file or file.filename == '':
         return jsonify({'error': 'Aucun fichier reçu'}), 400
     ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in ALLOWED_EXT:
-        return jsonify({'error': 'Format non supporté'}), 400
+    if ext not in ALLOWED_EXT or not securite_http.est_image(file):
+        return jsonify({'error': 'Format non supporté : le fichier doit être une vraie image (PNG, JPEG, GIF ou WebP)'}), 400
 
     import time, random
     fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
@@ -120,8 +121,8 @@ def upload_signature_directeur():
     if not file or file.filename == '':
         return jsonify({'error': 'Aucun fichier reçu'}), 400
     ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in ALLOWED_EXT:
-        return jsonify({'error': 'Format non supporté'}), 400
+    if ext not in ALLOWED_EXT or not securite_http.est_image(file):
+        return jsonify({'error': 'Format non supporté : le fichier doit être une vraie image (PNG, JPEG, GIF ou WebP)'}), 400
 
     import time, random
     fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
@@ -143,8 +144,8 @@ def upload_fond():
     if not file or file.filename == '':
         return jsonify({'error': 'Aucun fichier reçu'}), 400
     ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in ALLOWED_EXT:
-        return jsonify({'error': 'Format non supporté'}), 400
+    if ext not in ALLOWED_EXT or not securite_http.est_image(file):
+        return jsonify({'error': 'Format non supporté : le fichier doit être une vraie image (PNG, JPEG, GIF ou WebP)'}), 400
 
     import time, random
     fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
@@ -176,8 +177,8 @@ def ajouter_image_carousel():
     if not file or file.filename == '':
         return jsonify({'error': 'Aucun fichier reçu'}), 400
     ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in ALLOWED_EXT:
-        return jsonify({'error': 'Format non supporté'}), 400
+    if ext not in ALLOWED_EXT or not securite_http.est_image(file):
+        return jsonify({'error': 'Format non supporté : le fichier doit être une vraie image (PNG, JPEG, GIF ou WebP)'}), 400
 
     import time, random, json
     fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
