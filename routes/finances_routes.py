@@ -762,6 +762,40 @@ def enregistrer_relance(eleve_id):
     return jsonify({'ok': True})
 
 
+def appliquer_versement(ecole_id, pai, montant, date_vers, moyen_paiement, reference, numero_recu, recu_par):
+    """Enregistre un versement sur un paiement : ligne de versement, montant payé et statut,
+    écriture comptable. À appeler APRÈS debut_ecriture_exclusive() et avec `pai` relu dans ce
+    verrou ; l'appelant valide (commit). Partagé par l'encaissement en caisse et le paiement
+    Orange Money, pour que les deux produisent exactement les mêmes écritures."""
+    p_id = pai['id']
+    vid = gen_id('v')
+    db.execute(
+        "INSERT INTO versements (id,ecole_id,paiement_id,eleve_id,date_vers,montant,moyen_paiement,reference,recu_par) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (vid, ecole_id, p_id, pai['eleve_id'], date_vers, montant, moyen_paiement, reference, recu_par),
+    )
+    new_paye = round(pai['montant_paye'] + montant)
+    statut = 'paye' if new_paye >= round(pai['montant_du']) - 1 else ('partiel' if new_paye > 0 else 'a_payer')
+    db.execute("UPDATE paiements SET montant_paye=?, statut=? WHERE id=?", (new_paye, statut, p_id))
+
+    eleve = db.execute("SELECT nom,prenom,matricule FROM eleves WHERE id=?", (pai['eleve_id'],)).fetchone()
+    tid = gen_id('t')
+    # Catégorie comptable alignée sur le type réel du paiement (l'ancienne version
+    # regroupait à tort "réinscription" et les tranches de scolarité sous le même
+    # libellé générique "Frais de scolarité", les rendant invisibles dans la Balance).
+    CATEGORIES_FRAIS = {
+        'inscription': "Frais d'inscription",
+        'reinscription': 'Frais de réinscription',
+    }
+    categorie_frais = CATEGORIES_FRAIS.get(pai['type_frais'], 'Frais de scolarité')
+    db.execute(
+        "INSERT INTO transactions (id,ecole_id,type,date_op,description,categorie,moyen_paiement,montant,reference,eleve_id) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (tid, ecole_id, 'entree', date_vers, f"{pai['libelle']} — {eleve['prenom']} {eleve['nom']} ({eleve['matricule']})",
+         categorie_frais, moyen_paiement, montant, numero_recu, pai['eleve_id']),
+    )
+
+
 @bp.route('/paiements/<p_id>/verser', methods=['POST'])
 @require_auth
 @require_role(*FIN_CREATE_ROLES)
@@ -798,32 +832,8 @@ def verser_paiement(p_id):
     date_vers = body.get('date_vers') or datetime.now().strftime('%Y-%m-%d')
     moyen_paiement = body.get('moyen_paiement', 'Espèces')
 
-    vid = gen_id('v')
-    db.execute(
-        "INSERT INTO versements (id,ecole_id,paiement_id,eleve_id,date_vers,montant,moyen_paiement,reference,recu_par) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
-        (vid, g.user['ecole_id'], p_id, pai['eleve_id'], date_vers, montant, moyen_paiement, body.get('reference'), g.user['id']),
-    )
-    new_paye = round(pai['montant_paye'] + montant)
-    statut = 'paye' if new_paye >= round(pai['montant_du']) - 1 else ('partiel' if new_paye > 0 else 'a_payer')
-    db.execute("UPDATE paiements SET montant_paye=?, statut=? WHERE id=?", (new_paye, statut, p_id))
-
-    eleve = db.execute("SELECT nom,prenom,matricule FROM eleves WHERE id=?", (pai['eleve_id'],)).fetchone()
-    tid = gen_id('t')
-    # Catégorie comptable alignée sur le type réel du paiement (l'ancienne version
-    # regroupait à tort "réinscription" et les tranches de scolarité sous le même
-    # libellé générique "Frais de scolarité", les rendant invisibles dans la Balance).
-    CATEGORIES_FRAIS = {
-        'inscription': "Frais d'inscription",
-        'reinscription': 'Frais de réinscription',
-    }
-    categorie_frais = CATEGORIES_FRAIS.get(pai['type_frais'], 'Frais de scolarité')
-    db.execute(
-        "INSERT INTO transactions (id,ecole_id,type,date_op,description,categorie,moyen_paiement,montant,reference,eleve_id) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?)",
-        (tid, g.user['ecole_id'], 'entree', date_vers, f"{pai['libelle']} — {eleve['prenom']} {eleve['nom']} ({eleve['matricule']})",
-         categorie_frais, moyen_paiement, montant, numero_recu, pai['eleve_id']),
-    )
+    appliquer_versement(g.user['ecole_id'], pai, montant, date_vers, moyen_paiement,
+                        body.get('reference'), numero_recu, g.user['id'])
     db.commit()
 
     row = db.execute("SELECT * FROM paiements WHERE id=?", (p_id,)).fetchone()

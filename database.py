@@ -600,6 +600,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_pointages_doublon
   ON pointages(ecole_id, COALESCE(appareil_id, ''), code, horodatage);
 CREATE INDEX IF NOT EXISTS idx_pointages_ecole_date ON pointages(ecole_id, horodatage);
 
+CREATE TABLE IF NOT EXISTS paiements_en_ligne (
+  ecole_id      INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id            TEXT PRIMARY KEY,
+  eleve_id      TEXT NOT NULL,
+  montant       REAL NOT NULL,
+  order_id      TEXT NOT NULL UNIQUE,
+  pay_token     TEXT,
+  notif_token   TEXT,
+  payment_url   TEXT,
+  statut        TEXT NOT NULL DEFAULT 'en_attente',
+  numero_recu   TEXT,
+  cree_par      TEXT,
+  created_at    TEXT DEFAULT CURRENT_TIMESTAMP,
+  confirme_le   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_paiements_en_ligne_ecole ON paiements_en_ligne(ecole_id, statut, created_at);
+
 CREATE TABLE IF NOT EXISTS fournisseurs (
   ecole_id      INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id            TEXT PRIMARY KEY,

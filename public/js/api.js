@@ -247,6 +247,12 @@ const smsAutoActif = async () => {
 };
 const apiSmsAbsence = (id, message) => apiFetch('/sms/absence/' + encodeURIComponent(id), { method: 'POST', body: { message } });
 const apiSmsRelance = (id, message) => apiFetch('/sms/relance/' + encodeURIComponent(id), { method: 'POST', body: { message } });
+let _omActif = null;
+const orangeMoneyActif = async () => {
+  if (_omActif === null) { try { _omActif = !!(await apiFetch('/orange-money/statut')).actif; } catch (e) { _omActif = false; } }
+  return _omActif;
+};
+const apiOrangeMoneyLien = (eleve_id, montant) => apiFetch('/orange-money/lien', { method: 'POST', body: { eleve_id, montant } });
 const apiPointageParametres = () => apiFetch('/pointage/parametres');
 const apiPointageSauverParametres = b => apiFetch('/pointage/parametres', { method: 'PUT', body: b });
 const apiPointageManuel = b => apiFetch('/pointage/manuel', { method: 'POST', body: b });
