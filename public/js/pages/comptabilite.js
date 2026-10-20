@@ -271,7 +271,7 @@ async function modalTransaction(typeDefaut = 'entree') {
         imprimerRecu({
           type: 'sortie', nom: beneficiaire, description: fd.description || fd.categorie,
           montant: fd.montant, date: fd.date_op, moyenPaiement: fd.moyen_paiement,
-          reference: fd.reference, recuPar: currentUser?.full_name,
+          reference: res.reference || fd.reference, recuPar: currentUser?.full_name,
         });
       }
     }

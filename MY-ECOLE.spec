@@ -33,7 +33,8 @@ bloc_analyse = Analysis(
         'routes.salles_routes', 'routes.paie_routes', 'routes.candidatures_routes',
         'routes.parent_routes', 'routes.ecoles_routes', 'routes.licence_routes',
         'routes.fournisseurs_routes', 'routes.logistique_routes', 'routes.permissions_routes',
-        'permissions', 'offline_sync', 'licence', 'email_service',
+        'routes.systeme_routes',
+        'permissions', 'offline_sync', 'licence', 'email_service', 'sauvegarde', 'releve_bancaire',
         # Vérification des licences par clé publique (licence.py).
         'cryptography.hazmat.primitives.asymmetric.ed25519',
         'engineio.async_drivers.threading',
@@ -49,6 +50,8 @@ bloc_analyse = Analysis(
         'matplotlib', 'scipy', 'PIL', 'Pillow', 'kiwisolver', 'lxml', 'yaml',
         'PyQt5', 'PyQt6', 'PySide2', 'PySide6', 'tkinter', 'IPython', 'notebook',
         'pytest', 'sphinx',
+        # pandas n'est plus utilisé (relevés bancaires lus par releve_bancaire.py)
+        'pandas', 'numpy',
     ],
     noarchive=False,
     optimize=0,

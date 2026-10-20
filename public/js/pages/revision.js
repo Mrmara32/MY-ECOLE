@@ -444,13 +444,14 @@ function modalPayerRevision(participantId, nom, reste) {
     }
 
     try {
-      await apiPayerRevisionParticipant(participantId, fd);
+      const resultat = await apiPayerRevisionParticipant(participantId, fd);
       toast('Paiement enregistré ✅','success');
       ouvrirCours(_revCoursActuel.id);
       pageRevision();
       imprimerRecu({
         type: 'entree', nom, description: `Cours de révision`, montant: fd.montant,
-        date: today(), moyenPaiement: fd.moyen_paiement, reference: fd.reference, recuPar: currentUser?.full_name,
+        date: today(), moyenPaiement: fd.moyen_paiement, reference: resultat?.numero_recu || fd.reference,
+        recuPar: currentUser?.full_name,
       });
     } catch(err) { toast(err.message,'error'); }
   };

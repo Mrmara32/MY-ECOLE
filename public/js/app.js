@@ -94,6 +94,19 @@ async function initLogin() {
     _timerBrandingLogin = setTimeout(() => _appliquerBrandingLogin(valeur), 400);
   });
 
+  // Code établissement pré-rempli : depuis le lien de l'école (…/?ecole=CODE, utilisé
+  // par le bouton « Espace personnel » du site vitrine) ou, à défaut, le dernier code
+  // utilisé sur cet appareil — le personnel des écoles clientes n'a plus à le
+  // retaper à chaque connexion.
+  const _codeDepuisLien = new URLSearchParams(window.location.search).get('ecole');
+  let _codeMemorise = null;
+  try { _codeMemorise = localStorage.getItem('gs_code_ecole'); } catch (_) { /* stockage indisponible */ }
+  const _codeInitial = (_codeDepuisLien || _codeMemorise || '').trim();
+  if (_codeInitial && $('#l-code-ecole') && !$('#l-code-ecole').value) {
+    $('#l-code-ecole').value = _codeInitial;
+    _appliquerBrandingLogin(_codeInitial);
+  }
+
   $('#login-form').addEventListener('submit', async e => {
     e.preventDefault();
     const username = $('#l-user').value.trim();
@@ -108,6 +121,10 @@ async function initLogin() {
       apiSetToken(token);
       currentUser = user;
       localStorage.setItem('gs_user', JSON.stringify(user));
+      try {
+        if (codeEcole) localStorage.setItem('gs_code_ecole', codeEcole);
+        else localStorage.removeItem('gs_code_ecole');
+      } catch (_) { /* stockage indisponible : simple confort, sans conséquence */ }
       await startApp();
       const civ = user.civilite ? user.civilite + ' ' : '';
       toast(`Bienvenue ${civ}${user.full_name || user.username} 👋`, 'success');

@@ -566,6 +566,8 @@ function avecCodeEcole(url) {
 if (CODE_ECOLE) {
   document.querySelectorAll('a[href="/postuler.html"]').forEach(a => a.href = `/ecole/${CODE_ECOLE}/postuler`);
   document.querySelectorAll('a[href="/preinscription.html"]').forEach(a => a.href = `/ecole/${CODE_ECOLE}/preinscription`);
+  // « Espace personnel » : la page de connexion s'ouvre avec le code de CETTE école déjà rempli.
+  document.querySelectorAll('a.staff-link[href="/"]').forEach(a => a.href = `/?ecole=${encodeURIComponent(CODE_ECOLE)}`);
 }
 
 async function chargerInfosEcole() {

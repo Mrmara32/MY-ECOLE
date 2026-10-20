@@ -225,6 +225,33 @@ document.addEventListener('DOMContentLoaded', offlineMajIndicateur);
    pour qu'elle se charge même sans aucune connexion) ── */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('Service Worker non enregistré :', e));
+    // Si la page était déjà gérée par un Service Worker et qu'un NOUVEAU prend la
+    // main, c'est qu'une nouvelle version de l'application vient d'être installée :
+    // on le signale, et l'utilisateur recharge quand il le souhaite (sans perdre
+    // une saisie en cours).
+    const dejaGeree = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (dejaGeree) afficherBandeauNouvelleVersion();
+    });
+    navigator.serviceWorker.register('/sw.js')
+      .then((enregistrement) => {
+        // Onglet resté ouvert toute la journée : vérification toutes les 30 minutes.
+        setInterval(() => { if (navigator.onLine) enregistrement.update().catch(() => {}); }, 30 * 60 * 1000);
+      })
+      .catch((e) => console.warn('Service Worker non enregistré :', e));
   });
 }
+
+function afficherBandeauNouvelleVersion() {
+  if (document.getElementById('bandeau-nouvelle-version')) return;
+  const bandeau = document.createElement('div');
+  bandeau.id = 'bandeau-nouvelle-version';
+  bandeau.setAttribute('role', 'status');
+  bandeau.innerHTML = '<span>✨ Une nouvelle version de MY-ECOLE est disponible.</span>'
+    + '<button type="button" class="btn-recharger">Recharger</button>'
+    + '<button type="button" class="btn-plus-tard" aria-label="Plus tard">✕</button>';
+  bandeau.querySelector('.btn-recharger').onclick = () => window.location.reload();
+  bandeau.querySelector('.btn-plus-tard').onclick = () => bandeau.remove();
+  document.body.appendChild(bandeau);
+}
+window.afficherBandeauNouvelleVersion = afficherBandeauNouvelleVersion;

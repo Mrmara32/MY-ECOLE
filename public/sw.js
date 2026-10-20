@@ -6,12 +6,19 @@
    ce fichier ne s'occupe que des fichiers statiques de l'application.
    ============================================================ */
 
-const CACHE_NOM = 'my-ecole-shell-v1';
+// __VERSION__ est remplacé par le serveur (app.py) par l'empreinte des fichiers de
+// l'interface : chaque déploiement qui modifie l'interface crée donc un NOUVEAU
+// cache, et l'ancien est supprimé — plus aucun utilisateur ne reste bloqué sur une
+// ancienne version des écrans.
+const CACHE_NOM = 'my-ecole-shell-__VERSION__';
 
 const FICHIERS_A_PRECACHER = [
   '/', '/index.html', '/css/style.css?v=2',
   '/js/i18n.js', '/js/api.js', '/js/offline.js', '/js/ui.js', '/js/app.js',
-  '/js/vendor/qrcode.min.js',
+  // Bibliothèques servies par l'application elle-même (et non plus par Internet) :
+  // graphiques, exports PDF/PNG et QR codes fonctionnent aussi sans connexion.
+  '/js/vendor/qrcode.min.js', '/js/vendor/chart.umd.min.js',
+  '/js/vendor/html2canvas.min.js', '/js/vendor/jspdf.umd.min.js',
   '/js/pages/dashboard.js', '/js/pages/users.js', '/js/pages/settings.js', '/js/pages/ecoles.js',
   '/js/pages/personnel.js', '/js/pages/eleves.js', '/js/pages/notes.js', '/js/pages/devoirs.js',
   '/js/pages/emploi.js', '/js/pages/seances.js', '/js/pages/absences.js', '/js/pages/paiements.js',
@@ -23,7 +30,11 @@ const FICHIERS_A_PRECACHER = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NOM).then((cache) => cache.addAll(FICHIERS_A_PRECACHER)).then(() => self.skipWaiting())
+    caches.open(CACHE_NOM)
+      // cache: 'reload' : télécharge les fichiers frais du serveur, jamais une
+      // ancienne copie gardée par le navigateur.
+      .then((cache) => cache.addAll(FICHIERS_A_PRECACHER.map((url) => new Request(url, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -43,6 +54,9 @@ self.addEventListener('fetch', (event) => {
   // (cache de lecture + file d'attente de synchronisation). Le Service Worker
   // ne doit pas s'en mêler, sous peine de conflits entre deux caches différents.
   if (url.pathname.startsWith('/api/')) return;
+
+  // Seules les lectures (GET) sont mises en cache.
+  if (event.request.method !== 'GET') return;
 
   // Uniquement les requêtes de même origine (jamais les CDN externes type
   // Google Fonts ou jsDelivr, gérés par le navigateur lui-même).

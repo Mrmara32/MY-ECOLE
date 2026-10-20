@@ -203,20 +203,26 @@ def valider_preinscription(eleve_id):
         montant = float(body.get('montant')) if body.get('montant') not in (None, '') else None
     except (TypeError, ValueError):
         montant = None
+    numero_recu = None
     if montant and montant > 0:
         tid = gen_id('t')
         date_op = body.get('date_paiement') or __import__('datetime').datetime.now().strftime('%Y-%m-%d')
+        numero_recu = (body.get('reference') or '').strip() or next_numero_recu(g.user['ecole_id'])
+        # ecole_id précisé : sans lui, la recette tombait dans la comptabilité de l'école n°1.
         db.execute(
-            "INSERT INTO transactions (id,type,date_op,description,categorie,moyen_paiement,montant,reference,eleve_id,cree_par,statut_validation) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (tid, 'entree', date_op, f"Frais d'inscription — {e['prenom']} {e['nom']} ({e['matricule']})",
+            "INSERT INTO transactions (id,ecole_id,type,date_op,description,categorie,moyen_paiement,montant,reference,eleve_id,cree_par,statut_validation) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (tid, g.user['ecole_id'], 'entree', date_op, f"Frais d'inscription — {e['prenom']} {e['nom']} ({e['matricule']})",
              "Frais d'inscription", body.get('moyen_paiement', 'Espèces'), montant,
-             body.get('reference') or next_numero_recu(g.user['ecole_id']), eleve_id, g.user['id'], 'auto'),
+             numero_recu, eleve_id, g.user['id'], 'auto'),
         )
         db.commit()
 
     row = db.execute("SELECT * FROM eleves WHERE id=?", (eleve_id,)).fetchone()
-    return jsonify(row_to_dict(row))
+    resultat = row_to_dict(row)
+    if numero_recu:
+        resultat['numero_recu'] = numero_recu
+    return jsonify(resultat)
 
 
 @bp.route('/<eleve_id>', methods=['PUT'])

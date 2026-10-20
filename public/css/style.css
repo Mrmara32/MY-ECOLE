@@ -285,6 +285,18 @@ tr:hover td{background:var(--g0)}
 .toast.warn{border-left-color:var(--c-warn)}
 @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
 
+/* Bandeau « Nouvelle version disponible » (voir js/offline.js) */
+#bandeau-nouvelle-version{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:2100;
+  display:flex;align-items:center;gap:12px;max-width:calc(100% - 32px);
+  background:var(--sb);color:#fff;padding:10px 12px 10px 16px;border-radius:var(--r2);
+  box-shadow:var(--sh-lg);font-size:13px;animation:slideUp .25s}
+#bandeau-nouvelle-version .btn-recharger{background:var(--c-accent);color:var(--g9);border:none;
+  border-radius:var(--r);padding:7px 14px;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap}
+#bandeau-nouvelle-version .btn-recharger:hover{background:var(--c-accent-d)}
+#bandeau-nouvelle-version .btn-plus-tard{background:transparent;color:rgba(255,255,255,.7);border:none;
+  font-size:15px;cursor:pointer;padding:4px 6px}
+#bandeau-nouvelle-version .btn-plus-tard:hover{color:#fff}
+
 /* ============================================================
    EMPTY STATE
 ============================================================ */

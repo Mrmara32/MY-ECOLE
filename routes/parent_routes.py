@@ -46,7 +46,8 @@ def inscription_parent():
         (ecole_id, username, generate_password_hash(password), nom_complet, 'parent', email, jeton),
     )
     user_id = cur.lastrowid
-    db.execute("INSERT INTO parents_eleves (id,user_id,eleve_id) VALUES (?,?,?)", (gen_id('pe'), user_id, eleve['id']))
+    db.execute("INSERT INTO parents_eleves (id,ecole_id,user_id,eleve_id) VALUES (?,?,?,?)",
+               (gen_id('pe'), ecole_id, user_id, eleve['id']))
     db.commit()
 
     nom_ecole_row = db.execute("SELECT nom, code FROM ecoles WHERE id=?", (ecole_id,)).fetchone()

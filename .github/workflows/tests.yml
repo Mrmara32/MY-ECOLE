@@ -1,0 +1,25 @@
+# Lance automatiquement les tests de MY-ECOLE à chaque envoi sur GitHub.
+# Résultat visible dans l'onglet « Actions » du dépôt : coche verte = tout va bien,
+# croix rouge = un parcours essentiel (connexion, inscription, paiement…) est cassé :
+# ne pas déployer en l'état.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Installer les dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+      - name: Lancer les tests
+        run: python -m pytest -q

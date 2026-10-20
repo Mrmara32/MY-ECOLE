@@ -4,6 +4,14 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 
+/* Bibliothèques d'export image/PDF servies par l'application elle-même (et non plus
+   par Internet) : les exports fonctionnent aussi hors connexion, y compris sur la
+   version installée sur un poste sans Internet. Adresse ABSOLUE obligatoire : les
+   fenêtres d'impression sont des documents « blob: », dans lesquels une adresse
+   relative ne mène nulle part. */
+const URL_HTML2CANVAS = `${window.location.origin}/js/vendor/html2canvas.min.js`;
+const URL_JSPDF = `${window.location.origin}/js/vendor/jspdf.umd.min.js`;
+
 /* Ouvre un document HTML généré dynamiquement (carte, reçu, bulletin, relevé…)
    dans une nouvelle fenêtre/onglet, prêt à être imprimé ou partagé.
    IMPORTANT : n'utilise PAS window.open('', '_blank') + document.write(), qui
@@ -556,7 +564,7 @@ function finaliserCarteImprimable(win, selector, filename) {
       // s'exécute JAMAIS dans un navigateur (comportement standard du DOM). Il faut
       // la créer via createElement + appendChild pour qu'elle soit réellement chargée.
       const script = win.document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      script.src = URL_HTML2CANVAS;
       script.onload = () => {
         btnPng.disabled = false; btnPng.textContent = '📥 PNG';
         btnJpeg.disabled = false; btnJpeg.textContent = '📷 JPEG';
@@ -709,12 +717,12 @@ function finaliserDocumentPartageable(win, selector, options = {}) {
       // page PDF). Créés via createElement (jamais via innerHTML, qui n'exécute pas les
       // <script> insérés — piège classique déjà rencontré sur les cartes).
       const s1 = win.document.createElement('script');
-      s1.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      s1.src = URL_HTML2CANVAS;
       s1.onload = surChargement;
       s1.onerror = () => { btnPdf.textContent = '⚠ Indisponible'; };
       win.document.head.appendChild(s1);
       const s2 = win.document.createElement('script');
-      s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      s2.src = URL_JSPDF;
       s2.onload = surChargement;
       s2.onerror = () => { btnPdf.textContent = '⚠ Indisponible'; };
       win.document.head.appendChild(s2);

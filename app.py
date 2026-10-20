@@ -5,11 +5,13 @@ Remplace la version Node.js pour éviter les problèmes de compilation native
 """
 import os
 import sys
+import hashlib
+import secrets
 import traceback
 import webbrowser
 import threading
 from datetime import datetime
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, Response, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -37,16 +39,130 @@ os.makedirs(LOGS_DIR, exist_ok=True)
 ERROR_LOG_PATH = os.path.join(LOGS_DIR, 'erreurs.log')
 
 
+def calculer_version_interface():
+    """Empreinte courte de tous les fichiers de l'interface (public/). Elle change
+    toute seule dès qu'un fichier de l'interface est modifié : c'est elle qui permet
+    aux navigateurs de savoir qu'une nouvelle version a été déployée (voir sw.js)."""
+    empreinte = hashlib.sha1()
+    for dossier, sous_dossiers, fichiers in os.walk(PUBLIC_DIR):
+        sous_dossiers.sort()
+        for nom in sorted(fichiers):
+            chemin = os.path.join(dossier, nom)
+            empreinte.update(os.path.relpath(chemin, PUBLIC_DIR).replace(os.sep, '/').encode('utf-8'))
+            with open(chemin, 'rb') as f:
+                empreinte.update(f.read())
+    return empreinte.hexdigest()[:10]
+
+
+def diagnostic_stockage(emplacements):
+    """Affiche au démarrage (journaux Render / fenêtre noire) où sont réellement rangées
+    les données. Sur Render, seul le disque persistant survit aux redéploiements : un
+    dossier resté sur le disque système de l'application est EFFACÉ à chaque mise à
+    jour — d'où l'avertissement explicite si c'est le cas."""
+    sur_render = bool(os.environ.get('RENDER'))
+    try:
+        disque_application = os.stat(BASE_DIR).st_dev
+    except OSError:
+        disque_application = None
+    for libelle, chemin, variable in emplacements:
+        persistant = None
+        if sur_render and disque_application is not None:
+            try:
+                persistant = os.stat(chemin).st_dev != disque_application
+            except OSError:
+                persistant = False
+        if persistant is False:
+            print(f"[stockage] ⚠️  {libelle} : {chemin} — NON PERSISTANT (effacé à chaque déploiement). "
+                  f"Définir la variable d'environnement {variable} vers le disque Render (/var/data/...).", flush=True)
+        else:
+            print(f"[stockage] {libelle} : {chemin}" + ("  (disque persistant ✔)" if persistant else ""), flush=True)
+
+
+def _reference_erreur():
+    """Code court à communiquer au support : il figure aussi dans les journaux,
+    ce qui permet de retrouver immédiatement le détail technique de l'erreur."""
+    return f"ERR-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2).upper()}"
+
+
+def _journaliser_erreur(titre, reference, methode, chemin):
+    horodatage = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    message_complet = (f"\n{'='*70}\n[{horodatage}] {titre} {reference} sur {methode} {chemin}\n{'='*70}\n"
+                       f"{traceback.format_exc()}")
+    # 1) Toujours affiché dans la console (journaux Render / fenêtre noire)
+    print(message_complet, file=sys.stderr, flush=True)
+    # 2) Toujours conservé dans un fichier, pour pouvoir le retrouver et le transmettre au support
+    try:
+        with open(ERROR_LOG_PATH, 'a', encoding='utf-8') as f:
+            f.write(message_complet)
+    except Exception:
+        pass  # ne jamais faire planter la réponse d'erreur à cause de la journalisation elle-même
+
+
+def _reponse_erreur_interne(reference):
+    detail = f"Si le problème persiste, communiquez ce code au support technique (Actif System Groupe) : {reference}"
+    if not os.environ.get('RENDER'):
+        # Version installée sur un poste : le fichier de journal est accessible sur place.
+        detail += " — le détail complet est enregistré dans le fichier logs/erreurs.log."
+    return jsonify({
+        'error': "Une erreur inattendue s'est produite : l'opération n'a pas pu aboutir.",
+        'detail': detail,
+        'reference': reference,
+    }), 500
+
+
 def create_app():
     # Initialiser la base de données (doit être fait avant d'importer les routes,
-    # car elles importent `db` déjà connecté depuis database.py)
+    # car elles importent `db` depuis database.py)
     import database
     database.init_db()
+
+    import sauvegarde
+    diagnostic_stockage([
+        ('Base de données', database.DATA_DIR, 'GS_DATA_DIR'),
+        ('Fichiers téléversés (photos, logos, CV)', UPLOAD_DIR, 'GS_UPLOADS_DIR'),
+        ('Journaux d\'erreurs', LOGS_DIR, 'GS_LOGS_DIR'),
+        ('Sauvegardes automatiques', sauvegarde.preparer_dossier(), 'GS_DATA_DIR'),
+    ])
 
     app = Flask(__name__, static_folder=None)
     app.config['UPLOAD_DIR'] = UPLOAD_DIR
     app.config['MAX_CONTENT_LENGTH'] = 60 * 1024 * 1024  # 60 Mo max (photos + courtes vidéos)
+    app.config['APP_VERSION'] = calculer_version_interface()
+    print(f"[version] Interface MY-ECOLE : {app.config['APP_VERSION']}", flush=True)
     CORS(app)
+
+    # ── Écritures une par une, lectures en parallèle (voir database.verrou_ecritures) ──
+    # Exception : l'envoi d'un relevé par e-mail n'écrit rien en base ; il ne doit
+    # pas faire attendre les autres pendant l'échange avec le serveur d'e-mail.
+    SANS_VERROU_ECRITURE = {'finances_routes.envoyer_releve_email'}
+    ATTENTE_MAX_VERROU_S = 90
+
+    @app.before_request
+    def ecritures_une_par_une():
+        from flask import request, g
+        if request.method in ('GET', 'HEAD', 'OPTIONS') or request.endpoint in SANS_VERROU_ECRITURE:
+            return None
+        # Le contenu envoyé (formulaire, fichier, photo) est d'abord entièrement reçu :
+        # une connexion lente ou un gros fichier ne bloque pas les autres utilisateurs.
+        if request.mimetype in ('multipart/form-data', 'application/x-www-form-urlencoded'):
+            _ = request.form
+        else:
+            request.get_data(cache=True)
+        if not database.verrou_ecritures.acquire(timeout=ATTENTE_MAX_VERROU_S):
+            return jsonify({'error': "Le serveur est très sollicité en ce moment : merci de réessayer dans un instant."}), 503
+        g.verrou_ecritures_pris = True
+        return None
+
+    # Fin de chaque requête : valide les écritures restées en attente, ou les annule
+    # si la requête a échoué (voir database.terminer_requete), puis libère le verrou.
+    @app.teardown_request
+    def finaliser_base(erreur=None):
+        from flask import g
+        try:
+            database.terminer_requete(erreur)
+        finally:
+            if g.pop('verrou_ecritures_pris', False):
+                database.verrou_ecritures.release()
 
     # ── Fichiers statiques (équivalent express.static) ──
     @app.route('/uploads/<path:filename>')
@@ -61,13 +177,20 @@ def create_app():
     def serve_js(filename):
         return send_from_directory(os.path.join(PUBLIC_DIR, 'js'), filename)
 
+    with open(os.path.join(PUBLIC_DIR, 'sw.js'), encoding='utf-8') as f:
+        contenu_service_worker = f.read().replace('__VERSION__', app.config['APP_VERSION'])
+
     @app.route('/sw.js')
     def serve_service_worker():
         # Servi depuis la racine (et non /js/) pour que son "scope" par défaut
         # couvre bien TOUTE l'application (nécessaire pour intercepter /, /css/…
         # et pas seulement les fichiers sous /js/).
-        response = send_from_directory(PUBLIC_DIR, 'sw.js')
+        # Le numéro de version de l'interface y est inséré : à chaque déploiement qui
+        # modifie l'interface, le navigateur détecte un nouveau Service Worker, remet
+        # son cache à jour et l'application propose « Nouvelle version — Recharger ».
+        response = Response(contenu_service_worker, mimetype='application/javascript')
         response.headers['Service-Worker-Allowed'] = '/'
+        response.headers['Cache-Control'] = 'no-cache'
         return response
 
     # ── Page publique de candidature enseignant (accessible sans connexion) ──
@@ -112,11 +235,17 @@ def create_app():
     def serve_nos_ecoles():
         return send_from_directory(PUBLIC_DIR, 'nos-ecoles.html')
 
-    # ── Santé (publique) ──
+    # ── Santé (publique) ── utilisée par Render pour vérifier que le service répond
+    # (Health Check Path = /api/health) : vérifie aussi que la base de données répond.
     @app.route('/api/health')
     def health():
-        import datetime
-        return jsonify({'ok': True, 'ts': datetime.datetime.now(datetime.timezone.utc).isoformat()})
+        from datetime import timezone
+        try:
+            database.db.execute("SELECT 1").fetchone()
+        except Exception:
+            return jsonify({'ok': False, 'error': 'Base de données indisponible'}), 503
+        return jsonify({'ok': True, 'ts': datetime.now(timezone.utc).isoformat(),
+                        'version': app.config['APP_VERSION']})
 
     # ── Blueprints (routes API) ──
     from routes.auth_routes import bp as auth_bp
@@ -140,6 +269,7 @@ def create_app():
     from routes.fournisseurs_routes import bp as fournisseurs_bp
     from routes.logistique_routes import bp as logistique_bp
     from routes.permissions_routes import bp as permissions_bp
+    from routes.systeme_routes import bp as systeme_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
@@ -162,6 +292,10 @@ def create_app():
     app.register_blueprint(fournisseurs_bp)
     app.register_blueprint(logistique_bp)
     app.register_blueprint(permissions_bp)
+    app.register_blueprint(systeme_bp)
+
+    # Copie automatique quotidienne de la base (voir sauvegarde.py)
+    sauvegarde.demarrer_sauvegardes_automatiques()
 
     # ── Page principale + SPA fallback ──
     @app.route('/')
@@ -176,32 +310,17 @@ def create_app():
         return send_from_directory(PUBLIC_DIR, 'index.html')
 
     # ── Erreurs ──
+    # L'utilisateur reçoit un message clair en français et un code de référence ; le
+    # détail technique complet (trace) part dans les journaux, retrouvable grâce à ce code.
+    # Les écritures en cours sont annulées : une opération interrompue par une erreur
+    # n'est jamais enregistrée à moitié.
     @app.errorhandler(500)
     def server_error(e):
         from flask import request
-        # Récupère la VRAIE exception d'origine (Flask enveloppe souvent l'erreur
-        # réelle dans l'objet HTTPException générique) pour ne rien perdre du détail.
-        original = getattr(e, 'original_exception', None) or e
-        trace_txt = traceback.format_exc()
-        horodatage = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        entete = f"\n{'='*70}\n[{horodatage}] ERREUR 500 sur {request.method} {request.path}\n{'='*70}\n"
-        message_complet = entete + trace_txt
-
-        # 1) Toujours affiché dans la console (fenêtre noire) pour un diagnostic immédiat
-        print(message_complet, file=sys.stderr)
-
-        # 2) Toujours conservé dans un fichier, pour pouvoir le retrouver et le transmettre au support
-        try:
-            with open(ERROR_LOG_PATH, 'a', encoding='utf-8') as f:
-                f.write(message_complet)
-        except Exception:
-            pass  # ne jamais faire planter la réponse d'erreur à cause de la journalisation elle-même
-
-        return jsonify({
-            'error': str(original) or 'Erreur serveur interne',
-            'detail': "Le détail complet de cette erreur a été enregistré dans le fichier logs/erreurs.log — "
-                      "merci de le transmettre au support technique (Actif System Groupe) si le problème persiste.",
-        }), 500
+        database.annuler_transaction_en_cours()
+        reference = _reference_erreur()
+        _journaliser_erreur('ERREUR 500', reference, request.method, request.path)
+        return _reponse_erreur_interne(reference)
 
     # ── Filet de sécurité global : capture même les exceptions qui ne passeraient pas
     # par errorhandler(500) (comportement qui varie selon les versions de Flask/Werkzeug) ──
@@ -211,19 +330,10 @@ def create_app():
         if isinstance(e, HTTPException):
             return e
         from flask import request
-        trace_txt = traceback.format_exc()
-        horodatage = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        message_complet = f"\n{'='*70}\n[{horodatage}] EXCEPTION NON GÉRÉE sur {request.method} {request.path}\n{'='*70}\n{trace_txt}"
-        print(message_complet, file=sys.stderr)
-        try:
-            with open(ERROR_LOG_PATH, 'a', encoding='utf-8') as f:
-                f.write(message_complet)
-        except Exception:
-            pass
-        return jsonify({
-            'error': str(e) or 'Erreur serveur interne',
-            'detail': "Le détail complet de cette erreur a été enregistré dans le fichier logs/erreurs.log.",
-        }), 500
+        database.annuler_transaction_en_cours()
+        reference = _reference_erreur()
+        _journaliser_erreur('EXCEPTION NON GÉRÉE', reference, request.method, request.path)
+        return _reponse_erreur_interne(reference)
 
     # ── Logging simple des requêtes ──
     @app.after_request

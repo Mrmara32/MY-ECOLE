@@ -303,8 +303,65 @@ async function pageSettings() {
         catch(err) { toast(err.message, 'error'); }
       };
     }
+    afficherCarteSauvegardes();
   } catch(e) { $('#content').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`; }
 }
+
+/* ── Sauvegardes de la base (super-administrateur uniquement) ──
+   Une copie est faite automatiquement chaque jour sur le serveur ; la copie à
+   télécharger est celle à conserver HORS du serveur (clé USB, Google Drive…). */
+async function afficherCarteSauvegardes() {
+  if (!currentUser?.est_super_admin || $('#carte-sauvegardes')) return;
+  const carte = document.createElement('div');
+  carte.className = 'card';
+  carte.id = 'carte-sauvegardes';
+  carte.style.marginTop = '20px';
+  carte.innerHTML = `
+    <div class="card-header">
+      <span class="card-title">💾 Sauvegardes de la base de données</span>
+      <div class="card-actions">
+        <button class="btn btn-primary btn-sm" id="btn-sauvegarde-maintenant">⬇ Télécharger une sauvegarde maintenant</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="alert alert-info mb-4">Une copie complète est faite <strong>automatiquement chaque jour</strong> sur le serveur.
+        Pensez aussi à <strong>télécharger régulièrement une sauvegarde</strong> et à la ranger hors du serveur
+        (clé USB, Google Drive…) : c'est la seule protection en cas de perte totale du serveur ou du poste.</div>
+      <div id="liste-sauvegardes">${loadingHtml}</div>
+    </div>`;
+  $('#content').appendChild(carte);
+
+  $('#btn-sauvegarde-maintenant').onclick = async (e) => {
+    const bouton = e.currentTarget;
+    bouton.disabled = true; bouton.textContent = '⏳ Préparation…';
+    try { await apiTelechargerFichier('/systeme/sauvegardes/maintenant', 'my-ecole-sauvegarde.zip'); toast('Sauvegarde téléchargée', 'success'); }
+    catch (err) { toast(err.message, 'error'); }
+    finally { bouton.disabled = false; bouton.textContent = '⬇ Télécharger une sauvegarde maintenant'; }
+  };
+
+  try {
+    const { sauvegardes, conservees } = await apiFetch('/systeme/sauvegardes');
+    const taille = (o) => o > 1048576 ? `${(o / 1048576).toFixed(1)} Mo` : `${Math.max(1, Math.round(o / 1024))} Ko`;
+    $('#liste-sauvegardes').innerHTML = sauvegardes.length ? `
+      <div class="text-muted mb-3" style="font-size:12px">Copies automatiques conservées sur le serveur : les ${conservees} derniers jours.</div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Copie du</th><th>Taille</th><th></th></tr></thead>
+        <tbody>${sauvegardes.map(sv => `<tr>
+          <td>${esc(sv.date)}</td><td>${taille(sv.taille)}</td>
+          <td><button class="btn btn-outline btn-xs" onclick="telechargerSauvegarde('${escJs(sv.nom)}')">⬇ Télécharger</button></td>
+        </tr>`).join('')}</tbody>
+      </table></div>`
+      : `<div class="text-muted" style="font-size:13px">La première copie automatique sera créée dans l'heure qui suit le démarrage du serveur.</div>`;
+  } catch (err) {
+    $('#liste-sauvegardes').innerHTML = `<div class="alert alert-danger">${esc(err.message)}</div>`;
+  }
+}
+
+async function telechargerSauvegarde(nom) {
+  try { await apiTelechargerFichier(`/systeme/sauvegardes/${encodeURIComponent(nom)}`, nom); }
+  catch (err) { toast(err.message, 'error'); }
+}
+window.telechargerSauvegarde = telechargerSauvegarde;
 
 function applyBranding(s) {
   if (s.ecole_nom) {
