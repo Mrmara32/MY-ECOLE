@@ -5,6 +5,7 @@ from database import db, gen_id, rows_to_list, row_to_dict, log_action
 from auth import require_auth, require_role
 from permissions import require_permission
 from offline_sync import idempotent
+from routes.pointage_routes import heures_pointees
 
 bp = Blueprint('paie_routes', __name__, url_prefix='/api/paie')
 
@@ -33,6 +34,11 @@ def _calculer_montant(personnel, mois):
             if h_manuel > 0:
                 h = h_manuel
                 source = 'manuel'
+        if h == 0:
+            h_pointe = heures_pointees(personnel['ecole_id'], personnel['id'], mois)
+            if h_pointe > 0:
+                h = h_pointe
+                source = 'pointage'
         taux = personnel['taux_horaire'] or 0
         return {'type_remuneration': 'horaire', 'heures': h, 'taux_horaire': taux, 'salaire_base': round(h * taux), 'source_heures': source}
     else:

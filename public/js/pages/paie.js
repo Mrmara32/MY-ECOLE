@@ -15,7 +15,7 @@ async function pagePaieList(mois = null) {
         <td>${elevePhoto({photo_url:p.photo_url, prenom:p.prenom, nom:p.nom}, 32)}</td>
         <td><strong>${esc(p.prenom)} ${esc(p.nom)}</strong><br><span class="text-muted" style="font-size:11px">${esc(p.poste||'')}</span></td>
         <td><span class="badge ${p.type_remuneration==='horaire'?'bdg-info':'bdg-gray'}">${p.type_remuneration==='horaire'?'Horaire':'Mensuel'}</span></td>
-        <td class="text-center">${p.type_remuneration==='horaire' ? `${p.heures||0}h × ${fmtMoney(p.taux_horaire||0)}${p.source_heures==='seances'?' <span class="badge bdg-ok" style="font-size:9px" title="Heures issues des séances validées">séances</span>':(p.heures>0?' <span class="badge bdg-gray" style="font-size:9px" title="Saisie manuelle historique">manuel</span>':'')}` : '—'}</td>
+        <td class="text-center">${p.type_remuneration==='horaire' ? `${p.heures||0}h × ${fmtMoney(p.taux_horaire||0)}${p.source_heures==='seances'?' <span class="badge bdg-ok" style="font-size:9px" title="Heures issues des séances validées">séances</span>':(p.source_heures==='pointage'?' <span class="badge bdg-ok" style="font-size:9px" title="Heures de présence issues du pointage">pointage</span>':p.heures>0?' <span class="badge bdg-gray" style="font-size:9px" title="Saisie manuelle historique">manuel</span>':'')}` : '—'}</td>
         <td class="text-right">${p.prime_revision>0 ? `<span class="badge bdg-ok">+${fmtMoney(p.prime_revision)}</span>` : '—'}</td>
         <td class="mono text-right fw-600">${fmtMoney(p.salaire_base + (p.prime_revision||0))}</td>
         <td><span class="badge ${p.deja_paye?'bdg-ok':'bdg-warn'}">${p.deja_paye?'✔ Payé':'À payer'}</span></td>
