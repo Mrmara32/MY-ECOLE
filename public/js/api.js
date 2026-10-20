@@ -768,10 +768,13 @@ const apiDeleteRevisionEvaluation = (eId) => apiFetch(`/cours-revision/evaluatio
 /* ── Résultats scolaires (coefficients, bulletins, fin d'année) ── */
 const apiGetMatieresClasse   = (classe) => apiFetch('/matieres-classe?classe=' + encodeURIComponent(classe));
 const apiSetMatieresClasse   = (classe, matieres) => apiFetch('/matieres-classe', { method:'PUT', body:{ classe, matieres } });
-const apiGetBulletinsClasse  = (classe, periode) => apiFetch('/bulletins/classe/' + encodeURIComponent(classe) + '?periode=' + periode);
-const apiGetBulletinEleve    = (id, periode) => apiFetch('/bulletins/eleve/' + encodeURIComponent(id) + '?periode=' + periode);
+const _qAnnee = (a) => a ? '&annee_scolaire=' + encodeURIComponent(a) : '';
+const apiGetBulletinsClasse  = (classe, periode, annee) => apiFetch('/bulletins/classe/' + encodeURIComponent(classe) + '?periode=' + periode + _qAnnee(annee));
+const apiGetAnnees           = () => apiFetch('/bulletins/annees');
+const apiGetParcours         = (id) => apiFetch('/eleves/' + encodeURIComponent(id) + '/parcours');
+const apiGetBulletinEleve    = (id, periode, annee) => apiFetch('/bulletins/eleve/' + encodeURIComponent(id) + '?periode=' + periode + _qAnnee(annee));
 const apiSetAppreciation     = (eleve_id, periode, appreciation) => apiFetch('/bulletins/appreciation', { method:'PUT', body:{ eleve_id, periode, appreciation } });
-const apiGetFinAnnee         = (classe) => apiFetch('/fin-annee/' + encodeURIComponent(classe));
+const apiGetFinAnnee         = (classe, annee) => apiFetch('/fin-annee/' + encodeURIComponent(classe) + (annee ? '?annee_scolaire=' + encodeURIComponent(annee) : ''));
 const apiSaveDecisions       = (annee_scolaire, classe, decisions) => apiFetch('/fin-annee/decisions', { method:'POST', body:{ annee_scolaire, classe, decisions } });
 const apiProposerReinscriptions = (annee_scolaire, nouvelle_annee) => apiFetch('/fin-annee/reinscriptions', { method:'POST', body:{ annee_scolaire, nouvelle_annee } });
 

@@ -314,6 +314,7 @@ async function ficheEleve(id) {
       <button class="btn btn-outline" onclick="closeModal()">Fermer</button>
       <button class="btn btn-primary" onclick="closeModal();modalEleve('${escJs(id)}')">✏️ Modifier</button>
       <button class="btn btn-accent" onclick="closeModal();imprimerBulletin('${escJs(id)}')">🖨 Bulletin</button>
+      ${['admin','directeur','secretaire'].includes(currentUser?.role) ? `<button class="btn btn-outline" onclick="closeModal();modalParcours('${escJs(id)}')">📚 Parcours scolaire</button>` : ''}
       ${['admin','directeur','secretaire'].includes(currentUser?.role) ? `<button class="btn btn-outline" onclick="closeModal();imprimerAttestation('${escJs(id)}')">📄 Attestation de scolarité</button>` : ''}
     </div>
   `, { wide: true });
@@ -338,7 +339,7 @@ window.delEleve = delEleve;
 window.switchFicheTab = switchFicheTab;
 
 /* ── BULLETIN ── */
-async function imprimerBulletin(eleveId, tri = 1) {
+async function imprimerBulletin(eleveId, tri = 1, annee = '') {
   tri = String(tri);
   const libellePeriode = tri === 'annee' ? 'ANNÉE SCOLAIRE (moyenne annuelle)' : `TRIMESTRE ${tri}`;
   const eleve = await apiGetEleve(eleveId);
@@ -346,7 +347,7 @@ async function imprimerBulletin(eleveId, tri = 1) {
   // Tous les calculs (coefficients, moyenne de classe, rang, mention) viennent du serveur :
   // le bulletin imprimé, l'écran des notes et le portail parents affichent donc les mêmes chiffres.
   let res;
-  try { res = await apiGetBulletinEleve(eleveId, tri); }
+  try { res = await apiGetBulletinEleve(eleveId, tri, annee); }
   catch (e) { toast(e.message, 'error'); return; }
   const l = res.eleve;
   const statsMat = Object.fromEntries(res.matieres.map(m => [m.matiere, m]));
@@ -389,7 +390,7 @@ async function imprimerBulletin(eleveId, tri = 1) {
     ${settings.ecole_adresse?`<p>${settings.ecole_adresse}</p>`:''}
     ${settings.ecole_telephone?`<p>Tél : ${settings.ecole_telephone}</p>`:''}
     <h2 style="margin-top:8px;font-size:15px;color:#374151">BULLETIN DE NOTES — ${libellePeriode}</h2>
-    <p style="font-size:12px;color:#555">Année scolaire : ${settings.annee_scolaire||eleve.annee_scolaire||'—'}</p>
+    <p style="font-size:12px;color:#555">Année scolaire : ${res.annee_scolaire||settings.annee_scolaire||eleve.annee_scolaire||'—'}</p>
   </div>
   <div class="info-grid">
     <div><strong>Nom & Prénom :</strong> ${eleve.prenom} ${eleve.nom}</div>
@@ -762,3 +763,19 @@ async function imprimerAttestation(eleveId) {
   });
 }
 window.imprimerAttestation = imprimerAttestation;
+
+
+/* ===================== PARCOURS SCOLAIRE (historique pluriannuel) ===================== */
+async function modalParcours(eleveId) {
+  let p;
+  try { p = await apiGetParcours(eleveId); } catch (e) { toast(e.message, 'error'); return; }
+  const lib = { admis: '✅ Admis(e)', redouble: '🔁 Redouble', exclu: '⛔ Exclu(e)' };
+  openModal(`Parcours scolaire — ${p.eleve.prenom} ${p.eleve.nom}`, `
+    <p class="text-muted" style="font-size:12px">Classe actuelle : <strong>${esc(p.eleve.classe || '—')}</strong> · Décisions du conseil de classe enregistrées, année par année.</p>
+    ${p.annees.length ? `<div class="tbl-wrap"><table><thead><tr><th>Année</th><th>Classe</th><th>Moyenne annuelle</th><th>Décision</th><th>Classe suivante</th></tr></thead><tbody>
+      ${p.annees.map(a => `<tr><td>${esc(a.annee_scolaire)}</td><td>${esc(a.classe_origine)}</td><td>${a.moyenne_annuelle != null ? a.moyenne_annuelle.toFixed(2) + ' / 20' : '—'}</td>
+        <td>${lib[a.decision] || esc(a.decision)}</td><td>${esc(a.classe_suivante || '—')}</td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="empty">Aucune décision de fin d\'année enregistrée pour cet élève.</p>'}
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Fermer</button></div>`);
+}
+window.modalParcours = modalParcours;

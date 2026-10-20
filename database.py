@@ -1054,6 +1054,9 @@ MIGRATIONS = {
         'jeton_confirmation': "TEXT",
         'doit_changer_mdp': "INTEGER DEFAULT 0",  # mot de passe provisoire : à changer à la prochaine connexion
     },
+    'notes': {
+        'annee_scolaire': "TEXT",  # sans elle, les notes d'une année se mélangeraient à celles de la suivante
+    },
     'ecoles': {
         'email_confirme': "INTEGER DEFAULT 0",
         'jeton_confirmation': "TEXT",
@@ -1614,9 +1617,19 @@ def _creer_index_par_ecole():
 # (numéro, description, fonction) à la fin de la liste, jamais au milieu. Le numéro
 # appliqué est mémorisé dans la base (PRAGMA user_version) : chaque étape ne s'exécute
 # qu'UNE fois, dans l'ordre, et une copie de sécurité de la base est faite avant.
+def _rattacher_notes_a_l_annee():
+    """Les notes enregistrées avant l'introduction de l'année scolaire appartiennent, à ce jour, à l'année
+    en cours de leur école (celle du paramètre « annee_scolaire »)."""
+    for e in db.execute("SELECT DISTINCT ecole_id FROM notes WHERE annee_scolaire IS NULL").fetchall():
+        r = db.execute("SELECT valeur FROM settings WHERE ecole_id=? AND cle='annee_scolaire'", (e['ecole_id'],)).fetchone()
+        if r and r['valeur']:
+            db.execute("UPDATE notes SET annee_scolaire=? WHERE ecole_id=? AND annee_scolaire IS NULL", (r['valeur'], e['ecole_id']))
+
+
 MIGRATIONS_VERSIONNEES = [
     (1, "Rattacher chaque ligne à l'école de son élève", _rattacher_a_la_bonne_ecole),
     (2, "Index par école sur les grosses tables", _creer_index_par_ecole),
+    (3, "Rattacher les notes existantes à l'année scolaire en cours de leur école", _rattacher_notes_a_l_annee),
 ]
 
 
