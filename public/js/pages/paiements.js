@@ -36,7 +36,7 @@ async function pagePaiements() {
           <td><span class="badge ${SCOLOR[p.statut]||'bdg-gray'}">${SLABEL[p.statut]||p.statut}</span></td>
           <td><div class="td-actions">
             ${p.statut!=='paye' && ['admin','comptable'].includes(currentUser.role)?`<button class="btn btn-ok btn-xs" onclick="modalVerser('${escJs(p.id)}','${escJs(p.prenom)} ${escJs(p.nom)}',${p.montant_du-p.montant_paye},'${escJs(p.libelle||'Scolarité')}')">💰 Payer</button>`:''}
-            ${currentUser.role==='admin'?`<button class="btn btn-danger btn-xs" onclick="delPaiement('${escJs(p.id)}')">🗑</button>`:''}
+            ${currentUser.role==='admin'?`<button class="btn btn-danger btn-xs" title="Supprimer (motif obligatoire)" onclick="delPaiement('${escJs(p.id)}','${escJs(p.prenom)} ${escJs(p.nom)}','${escJs(p.libelle||p.type_frais||'Paiement')}',${Number(p.montant_du)||0},${Number(p.montant_paye)||0})">🗑</button>`:''}
           </div></td>
         </tr>`;
       }).join('') : `<tr><td colspan="9">${emptyHtml('💰','Aucun paiement')}</td></tr>`;
@@ -49,6 +49,7 @@ async function pagePaiements() {
       <div class="card-header">
         <span class="card-title">💰 Paiements & Frais de scolarité</span>
         <div class="card-actions">
+          ${['admin','directeur','comptable'].includes(currentUser.role)?`<button class="btn btn-outline btn-sm" onclick="modalPaiementsSupprimes()" title="Paiements supprimés : qui, quand, pourquoi">🗂 Supprimés</button>`:''}
           <button class="btn btn-outline btn-sm" onclick="modalGenPaiements()">⚡ Générer échéances</button>
           <button class="btn btn-primary btn-sm" onclick="modalBaremes()">⚙ Barèmes</button>
         </div>
@@ -121,11 +122,13 @@ function modalVerser(paiementId, eleveName, reste, libelle = 'Scolarité') {
     const fd = Object.fromEntries(new FormData(e.target));
     fd.montant = parseFloat(fd.montant);
     try {
-      await apiVerserPaiement(paiementId, fd);
+      const resultat = await apiVerserPaiement(paiementId, fd);
       toast('Paiement enregistré ✅','success'); closeModal(); pagePaiements();
       imprimerRecu({
         type: 'entree', nom: eleveName, description: libelle, montant: fd.montant,
-        date: fd.date_vers || today(), moyenPaiement: fd.moyen_paiement, reference: fd.reference,
+        date: fd.date_vers || today(), moyenPaiement: fd.moyen_paiement,
+        // Numéro officiel attribué par le serveur (le même qu'en comptabilité)
+        reference: resultat?.numero_recu || fd.reference,
         recuPar: currentUser?.full_name,
       });
     }
@@ -256,10 +259,55 @@ async function delBareme(id) {
   catch(e) { toast(e.message,'error'); }
 }
 
-async function delPaiement(id) {
-  if (!confirmDel('Supprimer cette ligne de paiement ?')) return;
-  try { await apiDeletePaiement(id); toast('Supprimé','success'); pagePaiements(); }
-  catch(e) { toast(e.message,'error'); }
+function delPaiement(id, eleveNom = '', libelle = 'Paiement', montantDu = 0, montantPaye = 0) {
+  const avertissement = montantPaye > 0
+    ? `<div class="alert alert-warn">⚠️ <strong>${fmtMoney(montantPaye)}</strong> ont déjà été encaissés sur ce paiement.
+         Les versements seront archivés avec la ligne ; les recettes déjà passées en comptabilité (et leurs reçus) ne sont pas modifiées.</div>`
+    : '';
+  openModal('Supprimer une ligne de paiement', `
+    <form id="f-delpai" style="display:flex;flex-direction:column;gap:14px">
+      <div class="alert alert-info"><strong>${esc(eleveNom)}</strong> — ${esc(libelle)} · dû : ${fmtMoney(montantDu)}</div>
+      ${avertissement}
+      <div class="fg">
+        <label>Motif de la suppression*</label>
+        <input name="motif" required minlength="5" placeholder="Ex : paiement créé en double, mauvais élève, erreur de montant…">
+      </div>
+      <p class="text-muted" style="font-size:12px;margin:0">Le paiement et ses versements sont conservés dans l'archive
+        « 🗂 Supprimés », avec votre nom, la date et ce motif.</p>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal()">Annuler</button>
+        <button type="submit" class="btn btn-danger">🗑 Supprimer</button>
+      </div>
+    </form>`, { narrow: true });
+  $('#f-delpai').onsubmit = async e => {
+    e.preventDefault();
+    const motif = new FormData(e.target).get('motif').trim();
+    if (motif.length < 5) { toast('Précisez le motif (au moins 5 caractères)', 'error'); return; }
+    try { await apiDeletePaiement(id, motif); toast('Paiement supprimé et archivé', 'success'); closeModal(); pagePaiements(); }
+    catch(err) { toast(err.message, 'error'); }
+  };
+}
+
+async function modalPaiementsSupprimes() {
+  openModal('🗂 Paiements supprimés', loadingHtml, { wide: true });
+  try {
+    const lignes = await apiGetPaiementsSupprimes();
+    const corps = lignes.length ? lignes.map(l => `<tr>
+        <td>${fmtDate((l.supprime_le || '').slice(0, 10))}</td>
+        <td>${esc(l.eleve_nom || '—')}</td>
+        <td>${esc(l.libelle || '—')}</td>
+        <td class="mono text-right">${fmtMoney(l.montant_du)}</td>
+        <td class="mono text-right">${fmtMoney(l.montant_paye)}${l.nb_versements ? `<br><span class="text-muted" style="font-size:11px">${l.nb_versements} versement(s)</span>` : ''}</td>
+        <td>${esc(l.supprime_par_nom || '—')}</td>
+        <td>${esc(l.motif)}</td>
+      </tr>`).join('') : `<tr><td colspan="7">${emptyHtml('🗂', 'Aucun paiement supprimé')}</td></tr>`;
+    $('#modal-body').innerHTML = `
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Date</th><th>Élève</th><th>Libellé</th><th class="text-right">Dû</th><th class="text-right">Déjà payé</th><th>Supprimé par</th><th>Motif</th></tr></thead>
+        <tbody>${corps}</tbody>
+      </table></div>
+      <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Fermer</button></div>`;
+  } catch (e) { $('#modal-body').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`; }
 }
 window.modalVerser = modalVerser;
 window.modalGenPaiements = modalGenPaiements;
@@ -268,3 +316,4 @@ window.modalAddBareme = modalAddBareme;
 window.modalEditBareme = modalEditBareme;
 window.delBareme = delBareme;
 window.delPaiement = delPaiement;
+window.modalPaiementsSupprimes = modalPaiementsSupprimes;

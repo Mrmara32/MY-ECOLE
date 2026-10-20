@@ -121,6 +121,7 @@ def approuver_candidature(c_id):
     # Crée le compte de connexion (inactif jusqu'à confirmation par e-mail) avec
     # l'identifiant et le mot de passe choisis par le candidat lui-même à la soumission.
     compte_cree = False
+    email_a_envoyer = None
     if c['username_souhaite'] and c['password_hash']:
         deja_pris = db.execute(
             "SELECT 1 FROM users WHERE ecole_id=? AND username=?", (g.user['ecole_id'], c['username_souhaite'])
@@ -137,10 +138,12 @@ def approuver_candidature(c_id):
             ecole_row = db.execute("SELECT nom, code FROM ecoles WHERE id=?", (g.user['ecole_id'],)).fetchone()
             nom_ecole = ecole_row['nom'] if ecole_row else 'votre école'
             code_ecole = ecole_row['code'] if ecole_row else None
-            envoyer_confirmation_enseignant(c['email'], c['prenom'], nom_ecole, code_ecole, jeton)
+            email_a_envoyer = (c['email'], c['prenom'], nom_ecole, code_ecole, jeton)
             compte_cree = True
 
     db.commit()
+    if email_a_envoyer:
+        envoyer_confirmation_enseignant(*email_a_envoyer)
     log_action(g.user, 'approbation', 'candidature', c_id,
                {'nom': f"{c['prenom']} {c['nom']}", 'matieres': c['matieres'], 'compte_cree': compte_cree})
     row = db.execute("SELECT * FROM candidatures_enseignants WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id'])).fetchone()

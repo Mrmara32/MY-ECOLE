@@ -16,3 +16,4 @@ logs/
 *.pem
 cle_privee*
 data/cle_jwt_locale.txt
+.pytest_cache/

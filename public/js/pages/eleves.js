@@ -660,13 +660,13 @@ function modalValiderPreinscription(eleveId, nom) {
     const fd = Object.fromEntries(new FormData(e.target));
     if (fd.montant) fd.montant = parseFloat(fd.montant); else delete fd.montant;
     try {
-      await apiValiderPreinscription(eleveId, fd);
+      const resultat = await apiValiderPreinscription(eleveId, fd);
       toast('Préinscription validée ✅ — Élève actif','success');
       closeModal();
       if (fd.montant) {
         imprimerRecu({
           type: 'entree', nom, description: "Frais d'inscription", montant: fd.montant,
-          date: fd.date_paiement, moyenPaiement: fd.moyen_paiement, reference: fd.reference,
+          date: fd.date_paiement, moyenPaiement: fd.moyen_paiement, reference: resultat?.numero_recu || fd.reference,
           recuPar: currentUser?.full_name,
         });
       }

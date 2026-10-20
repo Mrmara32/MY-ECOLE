@@ -33,10 +33,109 @@ else:
 os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, 'ecole.db')
 
-db = sqlite3.connect(DB_PATH, check_same_thread=False)
-db.row_factory = sqlite3.Row
-db.execute("PRAGMA journal_mode = WAL")
-db.execute("PRAGMA foreign_keys = ON")
+
+# ================================================================
+# CONNEXION À LA BASE — une connexion PAR FIL D'EXÉCUTION (thread)
+# ----------------------------------------------------------------
+# Auparavant, une connexion unique était partagée par toutes les requêtes. Dès que
+# deux requêtes arrivaient en même temps, la validation (commit) de l'une pouvait
+# enregistrer à moitié le travail de l'autre, ou provoquer l'erreur « cannot commit -
+# no transaction is active » (reproduit par tests/test_parcours.py). Cela obligeait
+# aussi le serveur à traiter les requêtes une par une : un simple envoi d'e-mail
+# bloquait toute l'école pendant plusieurs secondes.
+#
+# Désormais, chaque thread du serveur possède sa propre connexion. L'objet `db`
+# reste utilisable exactement comme avant (`from database import db`, puis
+# db.execute(...), db.commit()) : il redirige simplement vers la connexion du
+# thread courant.
+# ================================================================
+_local = threading.local()
+DELAI_ATTENTE_VERROU_S = 30  # attente max. si un autre thread est en train d'écrire
+
+# Les requêtes qui MODIFIENT des données (POST/PUT/DELETE) passent une par une, comme
+# avant ; seules les lectures (affichage des pages, listes, tableaux de bord) se font
+# en parallèle. Le code existant a été écrit pour un traitement une-par-une des
+# écritures (« vérifier puis modifier » : déjà payé ?, déjà validé ?…) : ce verrou
+# garantit qu'il continue de fonctionner exactement comme prévu — deux clics
+# simultanés sur « Payer » ne peuvent pas encaisser deux fois. Voir app.py.
+verrou_ecritures = threading.Lock()
+
+
+def _ouvrir_connexion():
+    conn = sqlite3.connect(DB_PATH, timeout=DELAI_ATTENTE_VERROU_S)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute(f"PRAGMA busy_timeout = {DELAI_ATTENTE_VERROU_S * 1000}")
+    return conn
+
+
+def connexion_courante():
+    """Connexion SQLite propre au thread courant (créée au premier besoin)."""
+    conn = getattr(_local, 'conn', None)
+    if conn is None:
+        conn = _ouvrir_connexion()
+        _local.conn = conn
+    return conn
+
+
+class _ConnexionDuThread:
+    """Se comporte comme une connexion sqlite3 ordinaire, mais chaque thread
+    travaille sur sa propre connexion (voir explication ci-dessus)."""
+
+    def __getattr__(self, nom):
+        return getattr(connexion_courante(), nom)
+
+    def __setattr__(self, nom, valeur):
+        setattr(connexion_courante(), nom, valeur)
+
+
+db = _ConnexionDuThread()
+
+
+def terminer_requete(erreur=None):
+    """Appelée automatiquement à la fin de CHAQUE requête HTTP (voir app.py).
+    Les écritures restées en attente sont validées — comme le faisait l'ancienne
+    connexion partagée au commit suivant — sauf si la requête a échoué : elles
+    sont alors annulées, pour ne jamais enregistrer une opération à moitié faite."""
+    conn = getattr(_local, 'conn', None)
+    if conn is None:
+        return
+    try:
+        if conn.in_transaction:
+            if erreur is not None:
+                conn.rollback()
+            else:
+                conn.commit()
+    except Exception as e:
+        print(f"[base] Fin de requête : impossible de finaliser la transaction ({e})")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
+def debut_ecriture_exclusive():
+    """Démarre une transaction en prenant IMMÉDIATEMENT le verrou d'écriture de la
+    base (BEGIN IMMEDIATE). À utiliser avant un « lire puis modifier » sur une même
+    donnée (ex : montant déjà payé d'un paiement) : deux requêtes simultanées
+    s'exécutent alors l'une après l'autre au lieu de s'écraser mutuellement."""
+    conn = connexion_courante()
+    if conn.in_transaction:
+        conn.commit()
+    conn.execute("BEGIN IMMEDIATE")
+
+
+def annuler_transaction_en_cours():
+    """Annule les écritures non validées du thread courant (utilisé par les
+    gestionnaires d'erreur : une opération interrompue par une erreur ne doit
+    pas être enregistrée à moitié)."""
+    conn = getattr(_local, 'conn', None)
+    if conn is not None and conn.in_transaction:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
 
 
 def gen_id(prefix='id'):
@@ -813,6 +912,27 @@ CREATE TABLE IF NOT EXISTS permissions_utilisateur (
   modifie_le     TEXT DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(user_id, module)
 );
+
+-- Archive des paiements supprimés : une suppression ne fait plus disparaître
+-- l'information. Le paiement et TOUS ses versements sont copiés ici (colonne
+-- donnees, au format JSON), avec l'auteur, la date et le motif obligatoire.
+CREATE TABLE IF NOT EXISTS paiements_supprimes (
+  id               TEXT PRIMARY KEY,
+  ecole_id         INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  paiement_id      TEXT NOT NULL,
+  eleve_id         TEXT,
+  eleve_nom        TEXT,
+  libelle          TEXT,
+  montant_du       REAL,
+  montant_paye     REAL,
+  nb_versements    INTEGER DEFAULT 0,
+  donnees          TEXT NOT NULL,
+  motif            TEXT NOT NULL,
+  supprime_par     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  supprime_par_nom TEXT,
+  supprime_le      TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_paiements_supprimes_ecole ON paiements_supprimes(ecole_id, supprime_le);
 """
 
 
@@ -1336,6 +1456,54 @@ def run_migrations():
         except Exception as e:
             print(f"[migration] Erreur lors du rattrapage des catégories de réinscription : {e}")
 
+    _rattacher_a_la_bonne_ecole()
+    _creer_index_par_ecole()
+
+
+def _rattacher_a_la_bonne_ecole():
+    """Rattrapage : la validation d'une préinscription enregistrait la recette
+    correspondante sans préciser l'école — elle tombait donc par erreur dans la
+    comptabilité de l'école n°1. Idem pour le lien parent ↔ élève. On rend chaque
+    ligne à l'école de l'élève concerné (sans effet si tout est déjà correct)."""
+    for table in ('transactions', 'parents_eleves'):
+        try:
+            cur = db.execute(f"""
+                UPDATE {table} SET ecole_id = (SELECT e.ecole_id FROM eleves e WHERE e.id = {table}.eleve_id)
+                WHERE ecole_id = 1 AND eleve_id IS NOT NULL
+                  AND EXISTS (SELECT 1 FROM eleves e WHERE e.id = {table}.eleve_id AND e.ecole_id <> 1)""")
+            if cur.rowcount:
+                print(f"[migration] {cur.rowcount} ligne(s) de {table} rattachée(s) à leur véritable école")
+            db.commit()
+        except Exception as e:
+            print(f"[migration] Erreur lors du rattachement des lignes de {table} : {e}")
+
+
+# Index commençant par ecole_id : chaque écran ne lit que les données de SON école ;
+# sans ces index, la base parcourt les données de TOUTES les écoles à chaque
+# affichage, ce qui ralentit l'application au fur et à mesure qu'elle grossit.
+INDEX_PAR_ECOLE = [
+    ('idx_eleves_ecole_classe',       'eleves',        ('ecole_id', 'classe')),
+    ('idx_paiements_ecole_eleve',     'paiements',     ('ecole_id', 'eleve_id')),
+    ('idx_paiements_ecole_statut',    'paiements',     ('ecole_id', 'statut')),
+    ('idx_versements_ecole_paiement', 'versements',    ('ecole_id', 'paiement_id')),
+    ('idx_transactions_ecole_date',   'transactions',  ('ecole_id', 'date_op')),
+    ('idx_notes_ecole_eleve',         'notes',         ('ecole_id', 'eleve_id')),
+    ('idx_absences_ecole_date',       'absences',      ('ecole_id', 'date_abs')),
+    ('idx_journal_audit_ecole_date',  'journal_audit', ('ecole_id', 'created_at')),
+]
+
+
+def _creer_index_par_ecole():
+    for nom_index, table, colonnes in INDEX_PAR_ECOLE:
+        try:
+            existantes = {r['name'] for r in db.execute(f"PRAGMA table_info({table})").fetchall()}
+            if not set(colonnes) <= existantes:
+                continue
+            db.execute(f"CREATE INDEX IF NOT EXISTS {nom_index} ON {table}({', '.join(colonnes)})")
+        except Exception as e:
+            print(f"[migration] Index {nom_index} non créé : {e}")
+    db.commit()
+
 
 def init_db():
     db.executescript(SCHEMA)
@@ -1454,12 +1622,16 @@ def next_sequence(nom, prefixe, largeur, ecole_id=1):
     appelants, pour une garantie totale d'unicité même sous forte charge
     concurrente (contrairement à un calcul basé sur le dernier enregistrement créé).
     Chaque école a sa propre numérotation, indépendante des autres."""
-    row = db.execute("SELECT valeur FROM sequences WHERE ecole_id=? AND nom=?", (ecole_id, nom)).fetchone()
-    valeur = (row['valeur'] if row else 0) + 1
+    # Incrément ATOMIQUE réalisé par la base elle-même (valeur = valeur + 1) : même
+    # si deux requêtes arrivent au même instant, chacune obtient un numéro différent.
+    # (L'ancienne version lisait la valeur puis la réécrivait : sans file d'attente,
+    # deux reçus pouvaient recevoir le même numéro.)
     db.execute(
-        "INSERT INTO sequences (ecole_id, nom, valeur) VALUES (?,?,?) ON CONFLICT(ecole_id, nom) DO UPDATE SET valeur=?",
-        (ecole_id, nom, valeur, valeur),
+        "INSERT INTO sequences (ecole_id, nom, valeur) VALUES (?,?,1) "
+        "ON CONFLICT(ecole_id, nom) DO UPDATE SET valeur = valeur + 1",
+        (ecole_id, nom),
     )
+    valeur = db.execute("SELECT valeur FROM sequences WHERE ecole_id=? AND nom=?", (ecole_id, nom)).fetchone()['valeur']
     db.commit()
     return prefixe + str(valeur).zfill(largeur)
 

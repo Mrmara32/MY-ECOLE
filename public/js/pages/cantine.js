@@ -137,11 +137,11 @@ async function payerAbon(id, nom, montant, mois) {
   const moyen = prompt('Moyen de paiement :', 'Espèces');
   if (!moyen) return;
   try {
-    await apiPayerAbon(id, { moyen_paiement: moyen });
+    const resultat = await apiPayerAbon(id, { moyen_paiement: moyen });
     toast('Paiement enregistré','success'); pageCantine();
     imprimerRecu({
       type: 'entree', nom: nom || 'Élève', description: `Cantine — ${mois||''}`, montant: montant||0,
-      date: today(), moyenPaiement: moyen, recuPar: currentUser?.full_name,
+      date: today(), moyenPaiement: moyen, reference: resultat?.numero_recu, recuPar: currentUser?.full_name,
     });
   }
   catch(e) { toast(e.message,'error'); }

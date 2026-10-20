@@ -1,7 +1,7 @@
 from datetime import datetime
 from flask import Blueprint, request, jsonify, g
 
-from database import db, gen_id, rows_to_list, row_to_dict, log_action, next_numero_recu
+from database import db, gen_id, rows_to_list, row_to_dict, log_action, next_numero_recu, debut_ecriture_exclusive
 from auth import require_auth, require_role
 from offline_sync import idempotent
 from permissions import require_permission
@@ -235,6 +235,15 @@ def payer_participant(p_id):
     if not p:
         return jsonify({'error': 'Participant introuvable'}), 404
 
+    # Numéro de reçu officiel attribué d'abord (renvoyé à l'écran pour le reçu imprimé),
+    # puis verrou d'écriture : deux encaissements simultanés ne s'écrasent plus.
+    numero_recu = (body.get('reference') or '').strip() or next_numero_recu(g.user['ecole_id'])
+    debut_ecriture_exclusive()
+    p = db.execute(
+        """SELECT rp.*, c.titre as cours_titre, c.prix as prix_cours
+           FROM revision_participants rp JOIN cours_revision c ON c.id=rp.cours_id WHERE rp.id=? AND rp.ecole_id=?""", (p_id, g.user['ecole_id'])
+    ).fetchone()
+
     # Le cours de révision est un forfait MENSUEL RÉCURRENT (pas un montant dû unique) :
     # un participant règle le même montant chaque mois, donc le cumul versé peut librement
     # dépasser le prix d'un seul mois — aucune limite maximale n'est imposée ici.
@@ -252,12 +261,15 @@ def payer_participant(p_id):
         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         (tid, g.user['ecole_id'], 'entree', date_vers, f"Cours de révision « {p['cours_titre']} » — {p['prenom']} {p['nom']}",
          'Cours de révision', body.get('moyen_paiement', 'Espèces'), montant,
-         body.get('reference') or next_numero_recu(g.user['ecole_id']), p['eleve_id'], g.user['id'], 'auto'),
+         numero_recu, p['eleve_id'], g.user['id'], 'auto'),
     )
     db.commit()
-    log_action(g.user, 'versement', 'cours_revision', p_id, {'montant': montant, 'participant': f"{p['prenom']} {p['nom']}"})
+    log_action(g.user, 'versement', 'cours_revision', p_id, {'montant': montant, 'participant': f"{p['prenom']} {p['nom']}",
+                                                             'numero_recu': numero_recu})
     row = db.execute("SELECT * FROM revision_participants WHERE id=?", (p_id,)).fetchone()
-    return jsonify(row_to_dict(row))
+    resultat = row_to_dict(row)
+    resultat['numero_recu'] = numero_recu
+    return jsonify(resultat)
 
 
 # ─────────────────────────────────────────────────────────────

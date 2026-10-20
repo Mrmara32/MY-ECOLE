@@ -1,8 +1,10 @@
 import os
+import json
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, g
 
-from database import db, gen_id, rows_to_list, row_to_dict, log_action, get_settings, next_numero_recu
+from database import (db, gen_id, rows_to_list, row_to_dict, log_action, get_settings, next_numero_recu,
+                      debut_ecriture_exclusive)
 from auth import require_auth, require_role
 from permissions import require_permission
 from offline_sync import idempotent
@@ -133,6 +135,8 @@ def create_transaction_recurrente():
     )
     db.commit()
     row = db.execute("SELECT * FROM transactions_recurrentes WHERE id=?", (tid,)).fetchone()
+    log_action(g.user, 'creation', 'transaction_recurrente', tid,
+               {'type': type_, 'categorie': categorie, 'montant': montant, 'jour_du_mois': jour})
     return jsonify(row_to_dict(row)), 201
 
 
@@ -154,6 +158,8 @@ def update_transaction_recurrente(tr_id):
     row = db.execute("SELECT * FROM transactions_recurrentes WHERE id=? AND ecole_id=?", (tr_id, g.user['ecole_id'])).fetchone()
     if not row:
         return jsonify({'error': 'Introuvable'}), 404
+    log_action(g.user, 'modification', 'transaction_recurrente', tr_id,
+               {k: body.get(k) for k in ('categorie', 'description', 'montant', 'moyen_paiement', 'jour_du_mois', 'actif') if k in body})
     return jsonify(row_to_dict(row))
 
 
@@ -161,8 +167,12 @@ def update_transaction_recurrente(tr_id):
 @require_auth
 @require_role('admin')
 def delete_transaction_recurrente(tr_id):
+    avant = db.execute("SELECT * FROM transactions_recurrentes WHERE id=? AND ecole_id=?", (tr_id, g.user['ecole_id'])).fetchone()
     db.execute("DELETE FROM transactions_recurrentes WHERE id=? AND ecole_id=?", (tr_id, g.user['ecole_id']))
     db.commit()
+    if avant:
+        log_action(g.user, 'suppression', 'transaction_recurrente', tr_id,
+                   {'type': avant['type'], 'categorie': avant['categorie'], 'montant': avant['montant']})
     return jsonify({'success': True})
 
 
@@ -442,6 +452,10 @@ def create_frais():
     except Exception:
         return jsonify({'error': 'Barème déjà existant pour cette classe/année'}), 409
     row = db.execute("SELECT * FROM frais_scolarite WHERE id=?", (fid,)).fetchone()
+    log_action(g.user, 'creation', 'bareme_frais', fid, {
+        'classe': classe, 'annee_scolaire': annee_scolaire, 'frais_inscription': row['frais_inscription'],
+        'frais_reinscription': row['frais_reinscription'], 'scolarite_annuelle': row['scolarite_annuelle'],
+    })
     return jsonify(row_to_dict(row)), 201
 
 
@@ -450,6 +464,7 @@ def create_frais():
 @require_role('admin')
 def update_frais(f_id):
     body = request.get_json(silent=True) or {}
+    avant = db.execute("SELECT * FROM frais_scolarite WHERE id=? AND ecole_id=?", (f_id, g.user['ecole_id'])).fetchone()
     db.execute(
         "UPDATE frais_scolarite SET frais_inscription=COALESCE(?,frais_inscription), "
         "frais_reinscription=COALESCE(?,frais_reinscription), "
@@ -461,6 +476,13 @@ def update_frais(f_id):
     row = db.execute("SELECT * FROM frais_scolarite WHERE id=? AND ecole_id=?", (f_id, g.user['ecole_id'])).fetchone()
     if not row:
         return jsonify({'error': 'Introuvable'}), 404
+    champs = ('frais_inscription', 'frais_reinscription', 'scolarite_annuelle', 'nombre_tranches')
+    log_action(g.user, 'modification', 'bareme_frais', f_id, {
+        'classe': row['classe'], 'annee_scolaire': row['annee_scolaire'],
+        'avant': {c: avant[c] for c in champs} if avant else None,
+        'apres': {c: row[c] for c in champs},
+        'motif': body.get('motif'),
+    })
     return jsonify(row_to_dict(row))
 
 
@@ -468,8 +490,14 @@ def update_frais(f_id):
 @require_auth
 @require_role('admin')
 def delete_frais(f_id):
+    avant = db.execute("SELECT * FROM frais_scolarite WHERE id=? AND ecole_id=?", (f_id, g.user['ecole_id'])).fetchone()
     db.execute("DELETE FROM frais_scolarite WHERE id=? AND ecole_id=?", (f_id, g.user['ecole_id']))
     db.commit()
+    if avant:
+        log_action(g.user, 'suppression', 'bareme_frais', f_id, {
+            'classe': avant['classe'], 'annee_scolaire': avant['annee_scolaire'],
+            'frais_inscription': avant['frais_inscription'], 'scolarite_annuelle': avant['scolarite_annuelle'],
+        })
     return jsonify({'success': True})
 
 
@@ -579,6 +607,8 @@ def generer_paiements():
     if erreur:
         message, code = erreur
         return jsonify({'error': message}), code
+    log_action(g.user, 'generation', 'paiements', eleve_id,
+               {'annee_scolaire': annee_scolaire, 'nombre': count, 'type_inscription': body.get('type_inscription') or 'nouvelle'})
     return jsonify({'success': True, 'count': count}), 201
 
 
@@ -599,16 +629,71 @@ def create_paiement():
     )
     db.commit()
     row = db.execute("SELECT * FROM paiements WHERE id=?", (pid,)).fetchone()
+    log_action(g.user, 'creation', 'paiement', pid,
+               {'eleve_id': eleve_id, 'libelle': row['libelle'], 'montant_du': row['montant_du']})
     return jsonify(row_to_dict(row)), 201
+
+
+MOTIF_SUPPRESSION_MIN = 5
 
 
 @bp.route('/paiements/<p_id>', methods=['DELETE'])
 @require_auth
 @require_role('admin')
 def delete_paiement(p_id):
-    db.execute("DELETE FROM paiements WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id']))
+    """Suppression d'une ligne de paiement — réservée à l'administrateur, avec un motif
+    obligatoire. Plus rien ne disparaît sans trace : le paiement et TOUS ses versements
+    (montants, dates, moyens de paiement) sont d'abord copiés dans l'archive
+    `paiements_supprimes`, et l'opération est inscrite au journal d'audit avec son
+    auteur et son motif. Les recettes déjà passées en comptabilité (et leurs numéros
+    de reçu) ne sont pas touchées."""
+    body = request.get_json(silent=True) or {}
+    motif = (body.get('motif') or request.args.get('motif') or '').strip()
+    if len(motif) < MOTIF_SUPPRESSION_MIN:
+        return jsonify({'error': "Indiquez le motif de la suppression (au moins 5 caractères) : "
+                                 "il est conservé dans le journal."}), 400
+
+    ecole_id = g.user['ecole_id']
+    pai = db.execute("SELECT * FROM paiements WHERE id=? AND ecole_id=?", (p_id, ecole_id)).fetchone()
+    if not pai:
+        return jsonify({'error': 'Paiement introuvable'}), 404
+    versements = rows_to_list(db.execute(
+        "SELECT * FROM versements WHERE paiement_id=? AND ecole_id=? ORDER BY date_vers, created_at", (p_id, ecole_id)
+    ).fetchall())
+    eleve = db.execute("SELECT nom, prenom, matricule FROM eleves WHERE id=?", (pai['eleve_id'],)).fetchone()
+    eleve_nom = f"{eleve['prenom']} {eleve['nom']} ({eleve['matricule']})" if eleve else None
+
+    db.execute(
+        """INSERT INTO paiements_supprimes
+           (id,ecole_id,paiement_id,eleve_id,eleve_nom,libelle,montant_du,montant_paye,nb_versements,donnees,motif,
+            supprime_par,supprime_par_nom)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (gen_id('psup'), ecole_id, p_id, pai['eleve_id'], eleve_nom, pai['libelle'], pai['montant_du'],
+         pai['montant_paye'], len(versements),
+         json.dumps({'paiement': row_to_dict(pai), 'versements': versements}, ensure_ascii=False, default=str),
+         motif, g.user['id'], g.user.get('name')),
+    )
+    db.execute("DELETE FROM paiements WHERE id=? AND ecole_id=?", (p_id, ecole_id))
     db.commit()
-    return jsonify({'success': True})
+    log_action(g.user, 'suppression', 'paiement', p_id, {
+        'motif': motif, 'eleve': eleve_nom, 'libelle': pai['libelle'], 'montant_du': pai['montant_du'],
+        'montant_paye': pai['montant_paye'], 'nb_versements': len(versements),
+    })
+    return jsonify({'success': True, 'archive': True})
+
+
+@bp.route('/paiements-supprimes', methods=['GET'])
+@require_auth
+@require_role('admin', 'directeur', 'comptable')
+def lister_paiements_supprimes():
+    """Archive des paiements supprimés de l'école (contrôle interne)."""
+    rows = db.execute(
+        """SELECT id, paiement_id, eleve_id, eleve_nom, libelle, montant_du, montant_paye, nb_versements,
+                  motif, supprime_par_nom, supprime_le
+           FROM paiements_supprimes WHERE ecole_id=? ORDER BY supprime_le DESC LIMIT 500""",
+        (g.user['ecole_id'],),
+    ).fetchall()
+    return jsonify(rows_to_list(rows))
 
 
 @bp.route('/paiements/<p_id>/verser', methods=['POST'])
@@ -627,6 +712,16 @@ def verser_paiement(p_id):
     pai = db.execute("SELECT * FROM paiements WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id'])).fetchone()
     if not pai:
         return jsonify({'error': 'Paiement introuvable'}), 404
+
+    # Numéro de reçu officiel (REC-AAAA-NNNNN) attribué AVANT l'écriture : il est
+    # renvoyé à l'écran pour être imprimé sur le reçu remis au parent — le même
+    # numéro que celui enregistré en comptabilité.
+    numero_recu = (body.get('reference') or '').strip() or next_numero_recu(g.user['ecole_id'])
+
+    # Verrou d'écriture : deux caisses qui encaissent au même instant sur le même
+    # paiement ne peuvent plus s'écraser mutuellement le montant déjà payé.
+    debut_ecriture_exclusive()
+    pai = db.execute("SELECT * FROM paiements WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id'])).fetchone()
 
     # Le montant en Franc Guinéen n'a pas de sous-unité utile en pratique : on arrondit
     # systématiquement pour ne jamais laisser un résidu de calcul flottant (ex: 0,33 GNF)
@@ -661,13 +756,14 @@ def verser_paiement(p_id):
         "INSERT INTO transactions (id,ecole_id,type,date_op,description,categorie,moyen_paiement,montant,reference,eleve_id) "
         "VALUES (?,?,?,?,?,?,?,?,?,?)",
         (tid, g.user['ecole_id'], 'entree', date_vers, f"{pai['libelle']} — {eleve['prenom']} {eleve['nom']} ({eleve['matricule']})",
-         categorie_frais, moyen_paiement, montant, body.get('reference') or next_numero_recu(g.user['ecole_id']), pai['eleve_id']),
+         categorie_frais, moyen_paiement, montant, numero_recu, pai['eleve_id']),
     )
     db.commit()
 
     row = db.execute("SELECT * FROM paiements WHERE id=?", (p_id,)).fetchone()
-    log_action(g.user, 'versement', 'paiement', p_id, {'montant': montant, 'eleve_id': pai['eleve_id'], 'moyen_paiement': moyen_paiement})
-    return jsonify({'paiement': row_to_dict(row)})
+    log_action(g.user, 'versement', 'paiement', p_id, {'montant': montant, 'eleve_id': pai['eleve_id'],
+                                                       'moyen_paiement': moyen_paiement, 'numero_recu': numero_recu})
+    return jsonify({'paiement': row_to_dict(row), 'numero_recu': numero_recu})
 
 
 @bp.route('/paiements/solde/<eleve_id>', methods=['GET'])
@@ -752,6 +848,7 @@ def create_menu():
     except Exception:
         return jsonify({'error': 'Menu existant pour cette date'}), 409
     row = db.execute("SELECT * FROM cantine_menus WHERE id=?", (mid,)).fetchone()
+    log_action(g.user, 'creation', 'menu_cantine', mid, {'date_menu': body['date_menu']})
     return jsonify(row_to_dict(row)), 201
 
 
@@ -769,6 +866,7 @@ def update_menu(m_id):
     row = db.execute("SELECT * FROM cantine_menus WHERE id=? AND ecole_id=?", (m_id, g.user['ecole_id'])).fetchone()
     if not row:
         return jsonify({'error': 'Introuvable'}), 404
+    log_action(g.user, 'modification', 'menu_cantine', m_id, {'date_menu': row['date_menu']})
     return jsonify(row_to_dict(row))
 
 
@@ -777,8 +875,11 @@ def update_menu(m_id):
 @require_role(*FIN_ROLES)
 @require_permission('cantine', 'peut_supprimer')
 def delete_menu(m_id):
+    avant = db.execute("SELECT date_menu FROM cantine_menus WHERE id=? AND ecole_id=?", (m_id, g.user['ecole_id'])).fetchone()
     db.execute("DELETE FROM cantine_menus WHERE id=? AND ecole_id=?", (m_id, g.user['ecole_id']))
     db.commit()
+    if avant:
+        log_action(g.user, 'suppression', 'menu_cantine', m_id, {'date_menu': avant['date_menu']})
     return jsonify({'success': True})
 
 
@@ -822,6 +923,8 @@ def create_abonnement():
     except Exception:
         return jsonify({'error': 'Abonnement déjà existant pour cet élève/mois'}), 409
     row = db.execute("SELECT * FROM cantine_abonnements WHERE id=?", (aid,)).fetchone()
+    log_action(g.user, 'creation', 'abonnement_cantine', aid,
+               {'eleve_id': eleve_id, 'mois': mois, 'formule': row['formule'], 'montant': row['montant']})
     return jsonify(row_to_dict(row)), 201
 
 
@@ -831,6 +934,7 @@ def create_abonnement():
 @require_permission('cantine', 'peut_modifier')
 def update_abonnement(a_id):
     body = request.get_json(silent=True) or {}
+    avant = db.execute("SELECT * FROM cantine_abonnements WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id'])).fetchone()
     db.execute(
         "UPDATE cantine_abonnements SET formule=COALESCE(?,formule), montant=COALESCE(?,montant), "
         "paye=COALESCE(?,paye) WHERE id=? AND ecole_id=?",
@@ -840,6 +944,11 @@ def update_abonnement(a_id):
     row = db.execute("SELECT * FROM cantine_abonnements WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id'])).fetchone()
     if not row:
         return jsonify({'error': 'Introuvable'}), 404
+    champs = ('formule', 'montant', 'paye')
+    log_action(g.user, 'modification', 'abonnement_cantine', a_id, {
+        'eleve_id': row['eleve_id'], 'mois': row['mois'],
+        'avant': {c: avant[c] for c in champs} if avant else None, 'apres': {c: row[c] for c in champs},
+    })
     return jsonify(row_to_dict(row))
 
 
@@ -859,6 +968,7 @@ def payer_abonnement(a_id):
     if abo['paye']:
         return jsonify({'error': 'Déjà payé'}), 400
 
+    numero_recu = (body.get('reference') or '').strip() or next_numero_recu(g.user['ecole_id'])
     db.execute("UPDATE cantine_abonnements SET paye=1 WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id']))
     d = body.get('date_vers') or datetime.now().strftime('%Y-%m-%d')
     tid = gen_id('t')
@@ -867,10 +977,14 @@ def payer_abonnement(a_id):
         "VALUES (?,?,?,?,?,?,?,?,?,?)",
         (tid, g.user['ecole_id'], 'entree', d, f"Cantine {abo['mois']} — {abo['prenom']} {abo['nom']} ({abo['matricule']})",
          'Cantine', body.get('moyen_paiement', 'Espèces'), abo['montant'],
-         body.get('reference') or next_numero_recu(g.user['ecole_id']), abo['eleve_id']),
+         numero_recu, abo['eleve_id']),
     )
     db.commit()
-    return jsonify({'success': True})
+    log_action(g.user, 'paiement', 'abonnement_cantine', a_id, {
+        'eleve': f"{abo['prenom']} {abo['nom']} ({abo['matricule']})", 'mois': abo['mois'],
+        'montant': abo['montant'], 'numero_recu': numero_recu,
+    })
+    return jsonify({'success': True, 'numero_recu': numero_recu})
 
 
 @bp.route('/cantine/abonnements/<a_id>', methods=['DELETE'])
@@ -878,8 +992,13 @@ def payer_abonnement(a_id):
 @require_role(*FIN_ROLES)
 @require_permission('cantine', 'peut_supprimer')
 def delete_abonnement(a_id):
+    avant = db.execute("SELECT * FROM cantine_abonnements WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id'])).fetchone()
     db.execute("DELETE FROM cantine_abonnements WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id']))
     db.commit()
+    if avant:
+        log_action(g.user, 'suppression', 'abonnement_cantine', a_id, {
+            'eleve_id': avant['eleve_id'], 'mois': avant['mois'], 'montant': avant['montant'], 'paye': avant['paye'],
+        })
     return jsonify({'success': True})
 
 
@@ -927,6 +1046,8 @@ def create_ou_maj_budget():
         )
     db.commit()
     row = db.execute("SELECT * FROM budgets WHERE id=?", (bid,)).fetchone()
+    log_action(g.user, 'modification' if existant else 'creation', 'budget', bid,
+               {'categorie': categorie, 'type': type_, 'mois': mois, 'montant_prevu': montant})
     return jsonify(row_to_dict(row)), 201
 
 
@@ -934,8 +1055,13 @@ def create_ou_maj_budget():
 @require_auth
 @require_role('admin', 'directeur', 'comptable')
 def delete_budget(b_id):
+    avant = db.execute("SELECT * FROM budgets WHERE id=? AND ecole_id=?", (b_id, g.user['ecole_id'])).fetchone()
     db.execute("DELETE FROM budgets WHERE id=? AND ecole_id=?", (b_id, g.user['ecole_id']))
     db.commit()
+    if avant:
+        log_action(g.user, 'suppression', 'budget', b_id, {
+            'categorie': avant['categorie'], 'type': avant['type'], 'mois': avant['mois'], 'montant_prevu': avant['montant_prevu'],
+        })
     return jsonify({'success': True})
 
 
@@ -1075,8 +1201,7 @@ def analyser_rapprochement():
     """Reçoit un relevé bancaire (CSV ou Excel — 3 colonnes : Date, Description, Montant ;
     montant positif = crédit/entrée, négatif = débit/sortie) et propose un rapprochement
     automatique avec les opérations déjà enregistrées et non encore rapprochées."""
-    import pandas as pd
-    import io
+    from releve_bancaire import lire_releve
 
     fichier = request.files.get('fichier')
     if not fichier or fichier.filename == '':
@@ -1086,32 +1211,11 @@ def analyser_rapprochement():
         return jsonify({'error': 'Format non supporté (CSV ou Excel attendu)'}), 400
 
     try:
-        contenu = fichier.read()
-        if ext == '.csv':
-            df = pd.read_csv(io.BytesIO(contenu), sep=None, engine='python')
-        else:
-            df = pd.read_excel(io.BytesIO(contenu))
+        lignes_releve, erreur = lire_releve(fichier.read(), ext)
     except Exception as e:
         return jsonify({'error': f"Impossible de lire le fichier : {e}"}), 400
-
-    if df.shape[1] < 3:
-        return jsonify({'error': "Le fichier doit contenir au moins 3 colonnes : Date, Description, Montant"}), 400
-    df = df.iloc[:, :3]
-    df.columns = ['date', 'description', 'montant']
-
-    lignes_releve = []
-    for _, row in df.iterrows():
-        try:
-            date_op = pd.to_datetime(row['date']).strftime('%Y-%m-%d')
-            montant = float(str(row['montant']).replace(' ', '').replace(',', '.'))
-        except (ValueError, TypeError):
-            continue
-        if montant == 0:
-            continue
-        lignes_releve.append({
-            'date': date_op, 'description': str(row['description'] or ''),
-            'montant': abs(montant), 'type': 'entree' if montant > 0 else 'sortie',
-        })
+    if erreur:
+        return jsonify({'error': erreur}), 400
 
     non_rapprochees = rows_to_list(db.execute(
         """SELECT * FROM transactions WHERE ecole_id=? AND (rapproche IS NULL OR rapproche=0)
@@ -1156,6 +1260,7 @@ def valider_rapprochement(t_id):
     db.execute("UPDATE transactions SET rapproche=1, date_rapprochement=? WHERE id=? AND ecole_id=?",
                (datetime.now().strftime('%Y-%m-%d'), t_id, g.user['ecole_id']))
     db.commit()
+    log_action(g.user, 'rapprochement', 'transaction', t_id, {})
     return jsonify({'success': True})
 
 
@@ -1165,6 +1270,7 @@ def valider_rapprochement(t_id):
 def annuler_rapprochement(t_id):
     db.execute("UPDATE transactions SET rapproche=0, date_rapprochement=NULL WHERE id=? AND ecole_id=?", (t_id, g.user['ecole_id']))
     db.commit()
+    log_action(g.user, 'annulation_rapprochement', 'transaction', t_id, {})
     return jsonify({'success': True})
 
 

@@ -56,6 +56,26 @@ async function apiFetch(path, opts = {}) {
   return data;
 }
 
+/* Téléchargement d'un fichier protégé (ex : sauvegarde) : la requête doit porter
+   le jeton de connexion, d'où ce passage par fetch plutôt qu'un simple lien. */
+async function apiTelechargerFichier(path, nomParDefaut) {
+  const res = await fetch(API_BASE + path, { headers: _token ? { Authorization: 'Bearer ' + _token } : {} });
+  if (res.status === 401) { authLogout(); throw new Error('Session expirée'); }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Erreur ${res.status}`);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const trouve = disposition.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+  const nom = trouve ? decodeURIComponent(trouve[1]) : nomParDefaut;
+  const url = URL.createObjectURL(blob);
+  const lien = document.createElement('a');
+  lien.href = url; lien.download = nom;
+  document.body.appendChild(lien); lien.click(); lien.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 async function apiUpload(path, formData) {
   const res = await fetch(API_BASE + path, {
     method: 'POST',
@@ -460,7 +480,8 @@ const apiDeleteFrais = (id)   => apiFetch(`/frais/${id}`, { method: 'DELETE' });
 const apiGetPaiements  = (q='')  => apiFetch('/paiements'+(q?'?'+q:''));
 const apiGenPaiements  = (b)     => apiFetch('/paiements/generer', { method: 'POST', body: b });
 const apiCreatePaiement= (b)     => apiFetch('/paiements', { method: 'POST', body: b });
-const apiDeletePaiement= (id)    => apiFetch(`/paiements/${id}`, { method: 'DELETE' });
+const apiDeletePaiement= (id, motif) => apiFetch(`/paiements/${id}`, { method: 'DELETE', body: { motif } });
+const apiGetPaiementsSupprimes = () => apiFetch('/paiements-supprimes');
 const apiVerserPaiement= (id,b)  => apiFetch(`/paiements/${id}/verser`, {
   method: 'POST', body: b,
   descriptionHorsLigne: `Versement de ${b.montant||0} GNF`,

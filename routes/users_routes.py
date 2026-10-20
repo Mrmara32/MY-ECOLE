@@ -159,8 +159,8 @@ def lier_enfant_parent(user_id):
     if not e:
         return jsonify({'error': 'Élève introuvable'}), 404
     try:
-        db.execute("INSERT INTO parents_eleves (id, user_id, eleve_id) VALUES (?,?,?)",
-                   (gen_id('pe'), user_id, eleve_id))
+        db.execute("INSERT INTO parents_eleves (id, ecole_id, user_id, eleve_id) VALUES (?,?,?,?)",
+                   (gen_id('pe'), g.user['ecole_id'], user_id, eleve_id))
         db.commit()
     except Exception:
         return jsonify({'error': 'Ce lien existe déjà'}), 409
