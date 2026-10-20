@@ -12,6 +12,7 @@ const PAGES = {
   emploi:          { icon:'📅', labelKey:'nav_emploi',     fn: pageEmploi,          roles:['admin','directeur','enseignant','secretaire'] },
   seances:         { icon:'📋', labelKey:'nav_seances',    fn: pageSeances,         roles:['admin','directeur','directeur_etudes','enseignant','secretaire'] },
   absences:        { icon:'📋', labelKey:'nav_absences',            fn: pageAbsences,        roles:['admin','directeur','enseignant','secretaire'] },
+  pointage:        { icon:'🪪', labelKey:'nav_pointage',            fn: pagePointage,        roles:['admin','directeur','secretaire'] },
   classes:         { icon:'🏫', labelKey:'nav_classes',              fn: pageClasses,        roles:['admin','directeur'] },
   salles:          { icon:'🚪', labelKey:'nav_salles',                fn: pageSalles,         roles:['admin','directeur','secretaire'] },
   paiements:       { icon:'💰', labelKey:'nav_paiements',           fn: pagePaiements,       roles:['admin','directeur','comptable','secretaire'] },
@@ -35,7 +36,7 @@ const PAGES = {
 // Groupes de navigation
 const NAV_GROUPS = [
   { labelKey: null, pages: ['dashboard'] },
-  { labelKey: 'nav_section_scolarite', pages: ['eleves','eleveDuMois','notes','devoirs','emploi','seances','absences','classes','salles','reinscriptions'] },
+  { labelKey: 'nav_section_scolarite', pages: ['eleves','eleveDuMois','notes','devoirs','emploi','seances','absences','pointage','classes','salles','reinscriptions'] },
   { labelKey: 'nav_section_finances', pages: ['paiements','cantine','comptabilite','fournisseurs','logistique','revision','paie'] },
   { labelKey: 'nav_section_vie_ecole', pages: ['communication','actualites','personnel'] },
   { labelKey: 'nav_section_administration', pages: ['users','journal','settings'] },
