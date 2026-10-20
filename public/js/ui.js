@@ -82,6 +82,16 @@ const fmtMoney = n => Number(n || 0).toLocaleString('fr-FR', { maximumFractionDi
 const fmtDate  = d => { if (!d) return '—'; try { return new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }); } catch { return d; } };
 const fmtDateLong = d => { if (!d) return '—'; try { return new Date(d).toLocaleDateString('fr-FR', { weekday:'short', day:'2-digit', month:'long', year:'numeric' }); } catch { return d; } };
 const today = () => new Date().toISOString().split('T')[0];
+
+// Numéro guinéen → format international sans « + » (exigé par WhatsApp) : 6XXXXXXXX → 224 6XXXXXXXX.
+function numeroInternational(tel) {
+  let n = String(tel || '').replace(/[^\d+]/g, '');
+  if (n.startsWith('+')) n = n.slice(1);
+  else if (n.startsWith('00')) n = n.slice(2);
+  n = n.replace(/\D/g, '');
+  if (n.length === 9) n = '224' + n;
+  return n.length >= 11 ? n : '';
+}
 const anneeCourante = () => { const n=new Date(); const y=n.getMonth()>=8?n.getFullYear():n.getFullYear()-1; return `${y}-${y+1}`; };
 const moisCourant = () => new Date().toISOString().slice(0,7);
 

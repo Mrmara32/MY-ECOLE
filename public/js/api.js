@@ -214,6 +214,7 @@ const apiDeleteEdt = (id)      => apiFetch(`/emploi-du-temps/${id}`, { method: '
 
 /* ── Absences ── */
 const apiGetAbsences    = (q='')    => apiFetch('/absences'+(q?'?'+q:''));
+const apiPrevenirParentAbsence = (id, canal) => apiFetch(`/absences/${id}/prevenir`, { method: 'POST', body: { canal } });
 const apiCreateAbsence  = (b)       => apiFetch('/absences', {
   method: 'POST', body: b,
   descriptionHorsLigne: `Absence/retard — ${b.date_abs || ''}`,

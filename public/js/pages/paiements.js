@@ -326,16 +326,6 @@ const RELANCE_MODELE_DEFAUT =
 let _relances = [];
 let _nomEcoleRelance = '';
 
-// Numéro guinéen → format international sans « + » (exigé par WhatsApp) : 6XXXXXXXX → 224 6XXXXXXXX.
-function numeroInternational(tel) {
-  let n = String(tel || '').replace(/[^\d+]/g, '');
-  if (n.startsWith('+')) n = n.slice(1);
-  else if (n.startsWith('00')) n = n.slice(2);
-  n = n.replace(/\D/g, '');
-  if (n.length === 9) n = '224' + n;
-  return n.length >= 11 ? n : '';
-}
-
 function messageRelance(el, modele) {
   const parent = el.contact && el.contact.nom ? el.contact.nom : 'Madame, Monsieur';
   const montant = fmtMoney(el.reste_en_retard > 0 ? el.reste_en_retard : el.reste);

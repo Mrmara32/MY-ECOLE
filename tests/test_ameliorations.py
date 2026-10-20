@@ -349,3 +349,28 @@ def test_relances_impayes_contact_retard_et_journal(client, entetes):
 
 def test_relances_reservees_au_personnel_financier(client):
     assert client.get('/api/paiements-impayes').status_code == 401
+
+
+def test_prevenir_parent_absence_contact_et_journal(client, entetes):
+    r = client.post('/api/eleves', json={'nom': 'Absent', 'prenom': 'Oumar', 'classe': 'CM1', 'sexe': 'M',
+                                         'tuteur_prenom': 'Sekou', 'tuteur_nom': 'Absent',
+                                         'tuteur_telephone': '+224 664 00 11 22'}, headers=entetes)
+    assert r.status_code == 201, r.get_json()
+    eleve = r.get_json()
+    r = client.post('/api/absences', json={'eleve_id': eleve['id'], 'date_abs': '2026-10-19', 'type': 'absence',
+                                           'motif': 'maladie'}, headers=entetes)
+    assert r.status_code == 201, r.get_json()
+    absence_id = r.get_json()['id']
+
+    ligne = next(a for a in client.get('/api/absences?eleve_id=' + eleve['id'], headers=entetes).get_json()
+                 if a['id'] == absence_id)
+    assert ligne['contact']['lien'] == 'Tuteur' and ligne['contact']['telephone'] == '+224 664 00 11 22'
+    assert ligne['parent_prevenu_le'] is None
+
+    r = client.post(f'/api/absences/{absence_id}/prevenir', json={'canal': 'sms'}, headers=entetes)
+    assert r.status_code == 200
+    ligne = next(a for a in client.get('/api/absences?eleve_id=' + eleve['id'], headers=entetes).get_json()
+                 if a['id'] == absence_id)
+    assert ligne['parent_prevenu_le']
+    assert client.post('/api/absences/inconnue/prevenir', json={}, headers=entetes).status_code == 404
+    assert client.post(f'/api/absences/{absence_id}/prevenir', json={}).status_code == 401

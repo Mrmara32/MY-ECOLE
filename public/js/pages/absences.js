@@ -1,6 +1,8 @@
 /* ===================== ABSENCES (ÉLÈVES + PERSONNEL) ===================== */
 let _absEleves = [];
 let _absPersonnel = [];
+let _absAffichees = [];
+let _nomEcoleAbs = '';
 
 async function pageAbsences() {
   $('#content').innerHTML = loadingHtml;
@@ -31,6 +33,7 @@ function renderAbsEleves(absences, eleves) {
   const classes = [...new Set(eleves.map(e=>e.classe).filter(Boolean))].sort();
 
   const render = data => {
+    _absAffichees = data;
     const { items, page, totalPages, total } = paginate('abs-eleves', data);
     $('#tb-abs').innerHTML = items.length ? items.map(a => `<tr>
       <td>${fmtDate(a.date_abs)}</td>
@@ -41,6 +44,7 @@ function renderAbsEleves(absences, eleves) {
       <td><span class="badge ${a.justifie?'bdg-ok':'bdg-gray'}">${a.justifie?'Justifiée':'Non justifiée'}</span></td>
       <td class="text-muted">${esc(a.motif||'—')}</td>
       <td><div class="td-actions">
+        ${a.contact?`<button class="btn btn-outline btn-xs" title="${a.parent_prevenu_le?'Parent déjà prévenu le '+fmtDate(String(a.parent_prevenu_le).slice(0,10)):'Prévenir le parent'}" onclick="modalPrevenirParent('${escJs(a.id)}')">${a.parent_prevenu_le?'✅':'📲'} Prévenir</button>`:''}
         ${!a.justifie?`<button class="btn btn-ok btn-xs" onclick="justifierAbs('${escJs(a.id)}')">✔ Justifier</button>`:''}
         ${currentUser.role !== 'enseignant' ? `<button class="btn btn-danger btn-xs" onclick="delAbs('${escJs(a.id)}')">🗑</button>` : ''}
       </div></td>
@@ -254,3 +258,65 @@ window.delAbs = delAbs;
 window.modalAbsPersonnel = modalAbsPersonnel;
 window.terminerAbsPersonnel = terminerAbsPersonnel;
 window.delAbsPersonnel = delAbsPersonnel;
+
+/* ---------- Prévenir le parent d'une absence ou d'un retard (WhatsApp / SMS / appel) ---------- */
+const ABS_MODELE_DEFAUT =
+  "Bonjour {parent}, {ecole} vous informe que {eleve} ({classe}) {situation} le {date}{motif}. " +
+  "Merci de nous contacter pour toute précision.";
+
+function messageAbsence(a, modele) {
+  const retard = a.type === 'retard';
+  return modele
+    .replaceAll('{parent}', a.contact && a.contact.nom ? a.contact.nom : 'Madame, Monsieur')
+    .replaceAll('{eleve}', `${a.prenom} ${a.nom}`)
+    .replaceAll('{classe}', a.classe || '')
+    .replaceAll('{situation}', retard ? "est arrivé(e) en retard" : (a.duree && a.duree !== 'journée' ? `était absent(e) (${a.duree})` : 'était absent(e)'))
+    .replaceAll('{date}', fmtDate(a.date_abs))
+    .replaceAll('{motif}', a.motif ? ` — motif indiqué : ${a.motif}` : '')
+    .replaceAll('{ecole}', _nomEcoleAbs || 'Votre école');
+}
+
+async function modalPrevenirParent(id) {
+  const a = _absAffichees.find(x => x.id === id);
+  if (!a || !a.contact) { toast('Aucun numéro de parent enregistré pour cet élève', 'error'); return; }
+  if (!_nomEcoleAbs) { try { _nomEcoleAbs = (await apiGetSettings()).ecole_nom || ''; } catch (e) { /* nom par défaut */ } }
+  let modele = ABS_MODELE_DEFAUT;
+  try { modele = localStorage.getItem('gs_modele_absence') || modele; } catch (e) { /* stockage indisponible */ }
+  const intl = numeroInternational(a.contact.telephone);
+  openModal('📲 Prévenir le parent', `
+    <div class="alert alert-info"><strong>${esc(a.prenom)} ${esc(a.nom)}</strong> — ${a.type === 'retard' ? 'Retard' : 'Absence'} du ${fmtDate(a.date_abs)}<br>
+      ${esc(a.contact.nom || a.contact.lien)} <span class="text-muted">(${esc(a.contact.lien)})</span> · <span class="mono">${esc(a.contact.telephone)}</span></div>
+    <div class="fg"><label>Message — {parent} {eleve} {classe} {situation} {date} {motif} {ecole}</label>
+      <textarea id="abs-modele" rows="4">${esc(modele)}</textarea></div>
+    <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
+      <button class="btn btn-outline" onclick="closeModal()">Fermer</button>
+      ${intl ? `<button class="btn btn-ok" onclick="envoyerPrevenirParent('${escJs(id)}','whatsapp')">WhatsApp</button>` : ''}
+      <button class="btn btn-primary" onclick="envoyerPrevenirParent('${escJs(id)}','sms')">SMS</button>
+      <button class="btn btn-outline" onclick="envoyerPrevenirParent('${escJs(id)}','appel')">Appeler</button>
+      <button class="btn btn-outline" onclick="envoyerPrevenirParent('${escJs(id)}','copie')">Copier</button>
+    </div>`);
+  $('#abs-modele').addEventListener('change', e => {
+    try { localStorage.setItem('gs_modele_absence', e.target.value); } catch (err) { /* sans importance */ }
+  });
+}
+
+async function envoyerPrevenirParent(id, canal) {
+  const a = _absAffichees.find(x => x.id === id);
+  if (!a || !a.contact) return;
+  const texte = messageAbsence(a, ($('#abs-modele').value || '').trim() || ABS_MODELE_DEFAUT);
+  const tel = String(a.contact.telephone).replace(/[^\d+]/g, '');
+  if (canal === 'whatsapp') window.open(`https://wa.me/${numeroInternational(a.contact.telephone)}?text=${encodeURIComponent(texte)}`, '_blank', 'noopener');
+  else if (canal === 'sms') window.location.href = `sms:${tel}?body=${encodeURIComponent(texte)}`;
+  else if (canal === 'appel') window.location.href = `tel:${tel}`;
+  else {
+    try { await navigator.clipboard.writeText(texte); toast('Message copié', 'success'); }
+    catch (e) { toast('Copie impossible : sélectionnez le message à la main', 'error'); return; }
+  }
+  try {
+    await apiPrevenirParentAbsence(id, canal);
+    a.parent_prevenu_le = new Date().toISOString();
+    toast('Enregistré : parent prévenu', 'success');
+  } catch (e) { toast("Message préparé, mais non enregistré dans le journal : " + e.message, 'warning'); }
+}
+window.modalPrevenirParent = modalPrevenirParent;
+window.envoyerPrevenirParent = envoyerPrevenirParent;
