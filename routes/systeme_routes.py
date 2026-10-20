@@ -9,6 +9,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, send_file, g
 
 import sauvegarde
+import sauvegarde_externe
 from auth import require_auth, require_super_admin
 from database import log_action
 
@@ -22,6 +23,7 @@ def lister_sauvegardes():
     return jsonify({
         'sauvegardes': sauvegarde.lister(),
         'conservees': sauvegarde.NB_A_CONSERVER,
+        'hors_serveur': sauvegarde_externe.statut(),
     })
 
 
@@ -44,3 +46,16 @@ def telecharger_sauvegarde(nom):
         return jsonify({'error': 'Sauvegarde introuvable'}), 404
     log_action(g.user, 'telechargement', 'sauvegarde', nom, {'type': 'copie automatique'})
     return send_file(chemin, mimetype='application/zip', as_attachment=True, download_name=nom)
+
+
+@bp.route('/sauvegardes/hors-serveur/essai', methods=['POST'])
+@require_auth
+@require_super_admin
+def essai_envoi_hors_serveur():
+    """Envoie tout de suite une copie chiffrée vers le stockage externe (test des réglages)."""
+    try:
+        nom = sauvegarde_externe.envoyer_maintenant()
+    except Exception as e:
+        return jsonify({'error': str(e)}), 502
+    log_action(g.user, 'envoi', 'sauvegarde', nom, {'type': 'copie hors serveur'})
+    return jsonify({'ok': True, 'nom': nom})
