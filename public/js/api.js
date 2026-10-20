@@ -225,6 +225,8 @@ const apiPointageSupprimerAppareil = id => apiFetch(`/pointage/appareils/${id}`,
 const apiPointagePersonnes = q => apiFetch('/pointage/personnes?' + q);
 const apiPointageDefinirCode = b => apiFetch('/pointage/codes', { method: 'PUT', body: b });
 const apiPointageCodesAuto = type => apiFetch('/pointage/codes/auto', { method: 'POST', body: { type } });
+const apiPointageBadges = (type, classe) => apiFetch('/pointage/badges?type=' + type + (classe ? '&classe=' + encodeURIComponent(classe) : ''));
+const apiPointageScan = contenu => apiFetch('/pointage/scan', { method: 'POST', body: { contenu } });
 const apiPointageParametres = () => apiFetch('/pointage/parametres');
 const apiPointageSauverParametres = b => apiFetch('/pointage/parametres', { method: 'PUT', body: b });
 const apiPointageManuel = b => apiFetch('/pointage/manuel', { method: 'POST', body: b });

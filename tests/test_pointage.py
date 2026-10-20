@@ -219,3 +219,23 @@ def test_heures_pointees_alimentent_la_paie(app_ctx=None):
                    ('p'+h, ec, '777', h, 'appareil'))
     db.commit()
     assert heures_pointees(ec, pid, '2026-09') == 4.5
+
+
+def test_badge_qr_signe_et_scan(client, entetes, creer_eleve):
+    import re
+    eleve = _eleve_avec_code(client, entetes, creer_eleve, 'Badgé', '55')
+    lot = client.get('/api/pointage/badges?type=eleve', headers=entetes).get_json()
+    assert lot and '<svg' in lot[0]['svg']
+    from routes.pointage_routes import contenu_badge
+    from database import db
+    ec = db.execute("SELECT ecole_id FROM eleves WHERE id=?", (eleve['id'],)).fetchone()['ecole_id']
+    bon = contenu_badge(ec, '55')
+    r = client.post('/api/pointage/scan', json={'contenu': bon}, headers=entetes)
+    assert r.status_code == 200 and r.get_json()['deja_scanne'] is False
+    assert 'Badgé' in r.get_json()['nom']
+    # second scan immédiat : pas de doublon
+    assert client.post('/api/pointage/scan', json={'contenu': bon}, headers=entetes).get_json()['deja_scanne'] is True
+    # badge falsifié ou numéro deviné
+    faux = re.sub(r':[0-9a-f]{12}$', ':000000000000', bon)
+    assert client.post('/api/pointage/scan', json={'contenu': faux}, headers=entetes).status_code == 400
+    assert client.post('/api/pointage/scan', json={'contenu': 'MEC:55'}, headers=entetes).status_code == 400
