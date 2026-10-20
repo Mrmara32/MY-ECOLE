@@ -434,7 +434,7 @@ tr:hover td{background:var(--g0)}
   .topbar{padding:10px 12px;gap:8px;flex-wrap:wrap}
   .topbar h1{font-size:16px}
   .pg-sub{font-size:11px}
-  .topbar-right{gap:6px}
+  .topbar-right{gap:6px;flex-wrap:wrap}
   .topbar-right .btn{padding:7px 10px;font-size:12px}
   .content{padding:12px}
 
