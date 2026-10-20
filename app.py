@@ -114,7 +114,9 @@ def create_app():
     # Initialiser la base de données (doit être fait avant d'importer les routes,
     # car elles importent `db` depuis database.py)
     import database
+    from flask import request
     database.init_db()
+    import auth
     if database.USE_PG:
         import pg_migration
         pg_migration.migrer_au_demarrage()
@@ -183,7 +185,34 @@ def create_app():
     # ── Fichiers statiques (équivalent express.static) ──
     @app.route('/uploads/<path:filename>')
     def serve_uploads(filename):
-        return send_from_directory(UPLOAD_DIR, filename)
+        # Photos d'élèves, du personnel, justificatifs : jamais sans connexion. Seules restent
+        # publiques les images de l'établissement affichées avant la connexion (logo, fond)
+        # et les médias des actualités.
+        url = '/uploads/' + filename
+        public = (database.db.execute("SELECT 1 FROM settings WHERE valeur=? LIMIT 1", (url,)).fetchone()
+                  or database.db.execute("SELECT 1 FROM articles_media WHERE url=? LIMIT 1", (url,)).fetchone())
+        if not public:
+            entete = request.headers.get('Authorization', '')
+            jeton = entete[7:] if entete.startswith('Bearer ') else request.cookies.get('gs_media', '')
+            payload, erreur = auth.charger_session(jeton) if jeton else (None, 'x')
+            if erreur or payload.get('mdp_provisoire'):
+                return jsonify({'error': 'Non authentifié'}), 401
+        reponse = send_from_directory(UPLOAD_DIR, filename)
+        reponse.headers['Cache-Control'] = 'private, max-age=3600' if not public else 'public, max-age=3600'
+        return reponse
+
+    @app.after_request
+    def poser_cookie_medias(reponse):
+        # Les <img> ne peuvent pas envoyer l'en-tête Authorization : le jeton de session est
+        # aussi déposé dans un cookie HttpOnly limité à /uploads (jamais lisible par un script).
+        entete = request.headers.get('Authorization', '')
+        if request.path.startswith('/api/') and entete.startswith('Bearer ') and reponse.status_code < 400 \
+                and request.path not in ('/api/auth/logout', '/api/auth/logout-all'):
+            jeton = entete[7:]
+            if request.cookies.get('gs_media') != jeton:
+                reponse.set_cookie('gs_media', jeton, max_age=12 * 3600, path='/uploads',
+                                   httponly=True, samesite='Strict', secure=request.is_secure)
+        return reponse
 
     @app.route('/css/<path:filename>')
     def serve_css(filename):

@@ -118,14 +118,51 @@ def emettre_jeton(user):
         'est_super_admin': bool(user['est_super_admin']),
         'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=12),
         'iat': datetime.datetime.utcnow(),
+        'jti': secrets.token_hex(12),                       # identifiant du jeton : permet de le révoquer (déconnexion)
+        'sv': (user['session_version'] if 'session_version' in user.keys() else 0) or 0,  # voir revoquer_sessions
     }
     if user['doit_changer_mdp']:
         payload['mdp_provisoire'] = True
     return jwt.encode(payload, get_secret(), algorithm='HS256')
 
 
+def revoquer_sessions(user_id):
+    """Invalide immédiatement TOUS les jetons déjà émis pour cet utilisateur (changement de
+    mot de passe, de rôle, désactivation, perte d'un appareil…). Les jetons portent la
+    « version de session » ; l'incrémenter les rend tous caducs."""
+    db.execute("UPDATE users SET session_version = COALESCE(session_version, 0) + 1 WHERE id=?", (user_id,))
+
+
+def revoquer_jeton(payload):
+    """Déconnexion : ce jeton précis ne sera plus accepté, même avant son expiration."""
+    jti = payload.get('jti')
+    if not jti:
+        return
+    exp = payload.get('exp') or 0
+    db.execute("DELETE FROM jetons_revoques WHERE expire_le < ?", (int(time.time()),))
+    db.execute("INSERT OR IGNORE INTO jetons_revoques (jti, expire_le) VALUES (?, ?)", (jti, int(exp)))
+
+
+def charger_session(token):
+    """Décode un jeton ET vérifie qu'il est toujours valable côté serveur (compte existant et
+    actif, version de session à jour, jeton non révoqué). Renvoie (payload, None) ou
+    (None, message_d_erreur)."""
+    try:
+        payload = jwt.decode(token, get_secret(), algorithms=['HS256'])
+    except jwt.InvalidTokenError:
+        return None, 'Session expirée — reconnectez-vous'
+    payload.setdefault('ecole_id', 1)  # jetons émis avant le multi-établissement
+    payload.setdefault('est_super_admin', False)
+    ligne = db.execute("SELECT active, session_version FROM users WHERE id=?", (payload.get('id'),)).fetchone()
+    if not ligne or not ligne['active'] or (ligne['session_version'] or 0) != payload.get('sv', 0):
+        return None, 'Session terminée — reconnectez-vous'
+    if payload.get('jti') and db.execute("SELECT 1 FROM jetons_revoques WHERE jti=?", (payload['jti'],)).fetchone():
+        return None, 'Session terminée — reconnectez-vous'
+    return payload, None
+
+
 # Seules routes accessibles avec un mot de passe provisoire.
-ROUTES_MDP_PROVISOIRE = ('/api/auth/change-password', '/api/auth/me')
+ROUTES_MDP_PROVISOIRE = ('/api/auth/change-password', '/api/auth/me', '/api/auth/logout', '/api/auth/logout-all')
 
 
 def require_auth(f):
@@ -137,16 +174,10 @@ def require_auth(f):
         auth_header = request.headers.get('Authorization', '')
         if not auth_header.startswith('Bearer '):
             return jsonify({'error': 'Non authentifié'}), 401
-        token = auth_header[7:]
-        try:
-            payload = jwt.decode(token, get_secret(), algorithms=['HS256'])
-            payload.setdefault('ecole_id', 1)  # jetons émis avant le multi-établissement
-            payload.setdefault('est_super_admin', False)
-            g.user = payload
-        except jwt.ExpiredSignatureError:
-            return jsonify({'error': 'Session expirée — reconnectez-vous'}), 401
-        except jwt.InvalidTokenError:
-            return jsonify({'error': 'Session expirée — reconnectez-vous'}), 401
+        payload, erreur = charger_session(auth_header[7:])
+        if erreur:
+            return jsonify({'error': erreur}), 401
+        g.user = payload
 
         if g.user.get('mdp_provisoire') and request.path not in ROUTES_MDP_PROVISOIRE:
             return jsonify({'error': 'Vous devez d\'abord changer votre mot de passe provisoire.',

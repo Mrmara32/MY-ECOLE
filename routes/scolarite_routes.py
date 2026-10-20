@@ -1,6 +1,7 @@
 import os
 import time
 import random
+import secrets
 from flask import Blueprint, request, jsonify, g, current_app
 
 from contact_parent import COLONNES_CONTACT, contact_a_prevenir
@@ -668,7 +669,7 @@ def upload_photo_personnel(p_id):
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ALLOWED_PHOTO_EXT:
         return jsonify({'error': 'Format non supporté'}), 400
-    fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
+    fname = f"{secrets.token_hex(12)}{ext}"
     upload_dir = current_app.config['UPLOAD_DIR']
     file.save(os.path.join(upload_dir, fname))
     url = '/uploads/' + fname

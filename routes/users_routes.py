@@ -3,7 +3,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from database import db, rows_to_list, row_to_dict, log_action, gen_id
 from securite import erreur_mot_de_passe
-from auth import require_auth, require_role
+from auth import revoquer_sessions, require_auth, require_role
 
 bp = Blueprint('users_routes', __name__, url_prefix='/api/users')
 
@@ -76,6 +76,10 @@ def update_user(user_id):
             user_id, g.user['ecole_id'],
         ),
     )
+    nouveau_role = body.get('role') if body.get('role') else existing['role']
+    desactive = 'active' in body and not body.get('active') and existing['active']
+    if nouveau_role != existing['role'] or desactive:
+        revoquer_sessions(user_id)  # droits modifiés ou compte désactivé : effet immédiat, pas dans 12 h
     db.commit()
     log_action(g.user, 'modification', 'utilisateur', str(user_id),
                {'motif': body.get('motif'), 'avant': {'full_name': existing['full_name'], 'role': existing['role'], 'active': existing['active']}, 'apres': body})
@@ -99,8 +103,23 @@ def reset_password(user_id):
     # Mot de passe fixé par l'administrateur = provisoire : l'utilisateur devra le changer à sa prochaine connexion.
     db.execute("UPDATE users SET password_hash=?, doit_changer_mdp=1 WHERE id=? AND ecole_id=?",
                (generate_password_hash(new_password), user_id, g.user['ecole_id']))
+    revoquer_sessions(user_id)
     db.commit()
     log_action(g.user, 'reinitialisation_mdp', 'utilisateur', str(user_id), {'username': u['username']})
+    return jsonify({'success': True})
+
+
+@bp.route('/<int:user_id>/revoquer-sessions', methods=['POST'])
+@require_auth
+@require_role('admin')
+def revoquer_sessions_utilisateur(user_id):
+    """Coupe toutes les connexions ouvertes d'un utilisateur (compte compromis, appareil perdu)."""
+    u = db.execute("SELECT id, username FROM users WHERE id=? AND ecole_id=?", (user_id, g.user['ecole_id'])).fetchone()
+    if not u:
+        return jsonify({'error': 'Introuvable'}), 404
+    revoquer_sessions(user_id)
+    db.commit()
+    log_action(g.user, 'revocation_sessions', 'utilisateur', str(user_id), {'username': u['username']})
     return jsonify({'success': True})
 
 

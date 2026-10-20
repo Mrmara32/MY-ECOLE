@@ -1,6 +1,7 @@
 import os
 import time
 import random
+import secrets
 from flask import Blueprint, request, jsonify, g, current_app
 
 from database import db, gen_id, rows_to_list, row_to_dict, log_action, ecole_id_depuis_code
@@ -130,7 +131,7 @@ def upload_image_contenu():
     if ext not in ALLOWED_PHOTO:
         return jsonify({'error': 'Format non supporté (jpg, png, gif, webp)'}), 400
 
-    fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
+    fname = f"{secrets.token_hex(12)}{ext}"
     upload_dir = current_app.config['UPLOAD_DIR']
     file.save(os.path.join(upload_dir, fname))
     return jsonify({'url': '/uploads/' + fname})
@@ -153,7 +154,7 @@ def upload_media(a_id):
     else:
         return jsonify({'error': 'Format non supporté (photos: jpg/png/gif/webp, vidéos: mp4/webm/mov/avi)'}), 400
 
-    fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
+    fname = f"{secrets.token_hex(12)}{ext}"
     upload_dir = current_app.config['UPLOAD_DIR']
     file.save(os.path.join(upload_dir, fname))
     url = '/uploads/' + fname
