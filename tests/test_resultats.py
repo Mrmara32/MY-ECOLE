@@ -27,6 +27,10 @@ def noter(client, entetes):
     return _noter
 
 
+def _annee_courante(client, entetes):
+    return client.get('/api/settings', headers=entetes).get_json()['annee_scolaire']
+
+
 def _bulletin(client, entetes, classe, periode='1'):
     r = client.get(f'/api/bulletins/classe/{classe}?periode={periode}', headers=entetes)
     assert r.status_code == 200, r.get_json()
@@ -134,28 +138,80 @@ def test_fin_annee_decisions_puis_reinscriptions(client, entetes, creer_eleve, c
     # 'Fin-2' est créée après 'Fin-1' : elle la suit dans l'ordre
     bon, faible = creer_eleve(nom='Hh1', prenom='H', classe=c1), creer_eleve(nom='Hh2', prenom='H', classe=c1)
     noter(bon['id'], 'Maths', 14); noter(faible['id'], 'Maths', 6)
+    an = _annee_courante(client, entetes)
     prop = client.get(f'/api/fin-annee/{c1}', headers=entetes).get_json()
     assert prop['classe_suivante_suggeree'] == c2
     dec = {x['eleve_id']: x['decision_proposee'] for x in prop['eleves']}
     assert dec[bon['id']] == 'admis' and dec[faible['id']] == 'redouble'
 
     r = client.post('/api/fin-annee/decisions', json={
-        'annee_scolaire': '2025-2026', 'classe': c1,
+        'annee_scolaire': an, 'classe': c1,
         'decisions': [{'eleve_id': i, 'decision': d} for i, d in dec.items()]}, headers=entetes)
     assert r.status_code == 200, r.get_json()
     # décision invalide / élève d'une autre classe : refusées
-    assert client.post('/api/fin-annee/decisions', json={'annee_scolaire': '2025-2026', 'classe': c1,
+    assert client.post('/api/fin-annee/decisions', json={'annee_scolaire': an, 'classe': c1,
                        'decisions': [{'eleve_id': bon['id'], 'decision': 'promu'}]}, headers=entetes).status_code == 400
-    assert client.post('/api/fin-annee/decisions', json={'annee_scolaire': '2025-2026', 'classe': c1,
+    assert client.post('/api/fin-annee/decisions', json={'annee_scolaire': an, 'classe': c1,
                        'decisions': [{'eleve_id': 'zzz', 'decision': 'admis'}]}, headers=entetes).status_code == 400
 
-    r = client.post('/api/fin-annee/reinscriptions', json={'annee_scolaire': '2025-2026', 'nouvelle_annee': '2026-2027'}, headers=entetes)
+    r = client.post('/api/fin-annee/reinscriptions', json={'annee_scolaire': an, 'nouvelle_annee': an + '-suivante'}, headers=entetes)
     assert r.get_json()['creees'] == 2
-    r = client.post('/api/fin-annee/reinscriptions', json={'annee_scolaire': '2025-2026', 'nouvelle_annee': '2026-2027'}, headers=entetes)
+    r = client.post('/api/fin-annee/reinscriptions', json={'annee_scolaire': an, 'nouvelle_annee': an + '-suivante'}, headers=entetes)
     assert r.get_json()['creees'] == 0 and r.get_json()['deja_existantes'] == 2     # idempotent
-    rei = {x['eleve_id']: x for x in client.get('/api/reinscriptions?annee_scolaire=2026-2027', headers=entetes).get_json()}
+    rei = {x['eleve_id']: x for x in client.get('/api/reinscriptions?annee_scolaire=' + an + '-suivante', headers=entetes).get_json()}
     assert rei[bon['id']]['classe_nouvelle'] == c2 and rei[bon['id']]['statut'] == 'en_attente'
     assert rei[faible['id']]['classe_nouvelle'] == c1                                # redoublant : reste en classe
     # la décision enregistrée apparaît dans le bulletin annuel
     ligne = next(x for x in _bulletin(client, entetes, c1, 'annee')['eleves'] if x['eleve_id'] == bon['id'])
     assert ligne['decision']['decision'] == 'admis'
+
+
+def test_changement_d_annee_scolaire_ne_melange_pas_les_notes(client, entetes, creer_eleve, classe_test, noter):
+    """À la rentrée, le T1 de la nouvelle année ne doit pas reprendre les notes du T1 de l'année précédente."""
+    avant = client.get('/api/settings', headers=entetes).get_json().get('annee_scolaire')
+    c = classe_test('Roll-A', matieres=[{'matiere': 'Maths', 'coefficient': 1}])
+    e = creer_eleve(nom='Roll', prenom='R', classe=c)
+    try:
+        client.put('/api/settings', json={'annee_scolaire': '2025-2026'}, headers=entetes)
+        noter(e['id'], 'Maths', 10)
+        client.put('/api/settings', json={'annee_scolaire': '2026-2027'}, headers=entetes)
+        assert _bulletin(client, entetes, c)['eleves'][0]['moyenne_generale'] is None     # nouvelle année : aucune note
+        noter(e['id'], 'Maths', 18)
+        assert _bulletin(client, entetes, c)['eleves'][0]['moyenne_generale'] == 18.0      # pas (10+18)/2
+        ancien = client.get(f'/api/bulletins/classe/{c}?periode=1&annee_scolaire=2025-2026', headers=entetes).get_json()
+        assert ancien['eleves'][0]['moyenne_generale'] == 10.0 and ancien['annee_scolaire'] == '2025-2026'
+        annees = client.get('/api/bulletins/annees', headers=entetes).get_json()
+        assert annees['en_cours'] == '2026-2027' and {'2025-2026', '2026-2027'} <= set(annees['annees'])
+        courantes = client.get(f"/api/notes?eleve_id={e['id']}", headers=entetes).get_json()
+        assert [n['note'] for n in courantes] == [18]                                      # liste : année en cours seulement
+        assert len(client.get(f"/api/notes?eleve_id={e['id']}&annee_scolaire=toutes", headers=entetes).get_json()) == 2
+    finally:
+        client.put('/api/settings', json={'annee_scolaire': avant}, headers=entetes)
+
+
+def test_migration_rattache_les_anciennes_notes_a_l_annee_en_cours(client, entetes, creer_eleve):
+    import database
+    e = creer_eleve(nom='Mig', prenom='M')
+    database.db.execute("INSERT INTO notes (id,ecole_id,eleve_id,matiere,trimestre,note,note_max,annee_scolaire) "
+                        "VALUES ('n-mig',1,?,'Maths',1,12,20,NULL)", (e['id'],))
+    database.db.commit()
+    database._rattacher_notes_a_l_annee()
+    r = database.db.execute("SELECT annee_scolaire FROM notes WHERE id='n-mig'").fetchone()
+    courante = database.db.execute("SELECT valeur FROM settings WHERE ecole_id=1 AND cle='annee_scolaire'").fetchone()['valeur']
+    assert r['annee_scolaire'] == courante
+
+
+def test_parcours_pluriannuel_de_l_eleve(client, entetes, creer_eleve, classe_test, noter):
+    c = classe_test('Parc-1', cycle='primaire', matieres=[{'matiere': 'Maths', 'coefficient': 1}])
+    classe_test('Parc-2', cycle='primaire')
+    e = creer_eleve(nom='Parc', prenom='P', classe=c)
+    noter(e['id'], 'Maths', 15)
+    an = _annee_courante(client, entetes)
+    assert client.post('/api/fin-annee/decisions', json={'annee_scolaire': '1999-2000', 'classe': c,
+                       'decisions': [{'eleve_id': e['id'], 'decision': 'admis'}]}, headers=entetes).status_code == 400   # année sans notes
+    client.post('/api/fin-annee/decisions', json={'annee_scolaire': an, 'classe': c,
+                'decisions': [{'eleve_id': e['id'], 'decision': 'admis'}]}, headers=entetes)
+    p = client.get(f"/api/eleves/{e['id']}/parcours", headers=entetes).get_json()
+    assert p['annees'][0]['annee_scolaire'] == an and p['annees'][0]['decision'] == 'admis'
+    assert p['annees'][0]['classe_origine'] == c and p['annees'][0]['moyenne_annuelle'] == 15.0
+    assert client.get('/api/eleves/inexistant/parcours', headers=entetes).status_code == 404

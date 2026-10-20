@@ -11,7 +11,8 @@ async function pageNotes() {
   const estDirection = ['admin', 'directeur'].includes(currentUser?.role);
   let classes = [];
   try { classes = (await apiGetClassesFull()).map(c => c.nom); } catch (_) {}
-  let filtClasse = '', filtPer = '1', donnees = null;
+  let filtClasse = '', filtPer = '1', donnees = null, annees = { en_cours: null, annees: [] }, filtAnnee = '';
+  try { annees = await apiGetAnnees(); filtAnnee = annees.en_cours || (annees.annees[0] || ''); } catch (_) {}
 
   const charger = async () => {
     if (!filtClasse) {
@@ -21,7 +22,7 @@ async function pageNotes() {
       $('#notes-actions').innerHTML = '';
       return;
     }
-    try { donnees = await apiGetBulletinsClasse(filtClasse, filtPer); }
+    try { donnees = await apiGetBulletinsClasse(filtClasse, filtPer, filtAnnee); }
     catch (e) { toast(e.message, 'error'); return; }
     afficher();
   };
@@ -32,14 +33,14 @@ async function pageNotes() {
     const tri = d.eleves.slice().sort((a, b) => (a.rang ?? 9999) - (b.rang ?? 9999) || a.nom.localeCompare(b.nom));
     $('#notes-actions').innerHTML = `
       ${estDirection ? `<button class="btn btn-outline btn-sm" onclick="modalCoefficients('${escJs(filtClasse)}')">⚖️ Matières & coefficients</button>` : ''}
-      ${estDirection && filtPer === 'annee' ? `<button class="btn btn-primary btn-sm" onclick="modalFinAnnee('${escJs(filtClasse)}')">🎓 Conseil de classe / fin d'année</button>` : ''}
+      ${estDirection && filtPer === 'annee' ? `<button class="btn btn-primary btn-sm" onclick="modalFinAnnee('${escJs(filtClasse)}','${escJs(filtAnnee)}')">🎓 Conseil de classe / fin d'année</button>` : ''}
       <span class="text-muted" style="font-size:12px">Moyenne de classe : <strong>${d.moyenne_classe != null ? d.moyenne_classe.toFixed(2) : '—'}</strong> · Plus forte : ${d.moyenne_max ?? '—'} · Plus faible : ${d.moyenne_min ?? '—'}</span>`;
     if (!tri.length) {
       $('#notes-head').innerHTML = '<th>Élève</th><th>Rang</th><th>Moy. gén.</th><th>Actions</th>';
       $('#notes-body').innerHTML = `<tr><td colspan="4">${emptyHtml('📊','Aucun élève actif dans cette classe')}</td></tr>`;
       return;
     }
-    const peutSaisir = filtPer !== 'annee';
+    const peutSaisir = filtPer !== 'annee' && (!annees.en_cours || filtAnnee === annees.en_cours);   // on ne saisit que dans l'année en cours
     $('#notes-head').innerHTML = `<th>Élève</th><th>Rang</th>${d.matieres.map(m =>
       `<th style="min-width:80px">${esc(m.matiere)}<br><span class="text-muted" style="font-size:10px;font-weight:400">coef. ${m.coefficient}</span></th>`).join('')}
       <th>Moy. gén.</th><th>Mention</th><th>Actions</th>`;
@@ -52,7 +53,7 @@ async function pageNotes() {
         <td><div class="td-actions">
           ${peutSaisir ? `<button class="btn btn-outline btn-xs" onclick="modalSaisieNote('${escJs(l.eleve_id)}','${escJs(l.prenom)} ${escJs(l.nom)}','${escJs(filtClasse)}','${filtPer}')">+ Note</button>` : ''}
           <button class="btn btn-outline btn-xs" title="Appréciation du conseil de classe" onclick="modalAppreciation('${escJs(l.eleve_id)}','${escJs(l.prenom)} ${escJs(l.nom)}','${filtPer}')">✍</button>
-          <button class="btn btn-accent btn-xs" onclick="imprimerBulletin('${escJs(l.eleve_id)}','${filtPer}')">🖨</button>
+          <button class="btn btn-accent btn-xs" onclick="imprimerBulletin('${escJs(l.eleve_id)}','${filtPer}','${escJs(filtAnnee)}')">🖨</button>
         </div></td>
       </tr>`).join('') + `
       <tr style="background:#F3F4F6;font-size:12px"><td colspan="2"><strong>Moyenne de la classe</strong></td>
@@ -68,6 +69,9 @@ async function pageNotes() {
       <div class="fg"><label>Classe*</label>
         <select id="f-ncls"><option value="">— Choisir —</option>${classes.map(c => `<option>${esc(c)}</option>`).join('')}</select>
       </div>
+      <div class="fg"><label>Année scolaire</label>
+        <select id="f-nannee">${annees.annees.map(a => `<option ${a === filtAnnee ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>
+      </div>
       <div class="fg"><label>Période</label>
         <select id="f-ntri">${Object.entries(PERIODES_LIBELLES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
       </div>
@@ -80,6 +84,7 @@ async function pageNotes() {
   </div>`;
   $('#f-ncls').addEventListener('change', e => { filtClasse = e.target.value; charger(); });
   $('#f-ntri').addEventListener('change', e => { filtPer = e.target.value; charger(); });
+  $('#f-nannee').addEventListener('change', e => { filtAnnee = e.target.value; charger(); });
 }
 
 /* ── Matières & coefficients d'une classe ── */
@@ -116,7 +121,7 @@ async function modalCoefficients(classe) {
 window.modalCoefficients = modalCoefficients;
 
 /* ── Appréciation du conseil de classe ── */
-async function modalAppreciation(eleveId, nom, periode) {
+async function modalAppreciation(eleveId, nom, periode) {   // appréciation : année en cours
   let courant = '';
   try { courant = (await apiGetBulletinEleve(eleveId, periode)).eleve.appreciation || ''; } catch (_) {}
   openModal(`Appréciation — ${nom}`, `
@@ -134,9 +139,9 @@ async function modalAppreciation(eleveId, nom, periode) {
 window.modalAppreciation = modalAppreciation;
 
 /* ── Conseil de classe : décisions de fin d'année ── */
-async function modalFinAnnee(classe) {
+async function modalFinAnnee(classe, annee) {
   let d, toutesClasses = [];
-  try { d = await apiGetFinAnnee(classe); toutesClasses = (await apiGetClassesFull()).map(c => c.nom); }
+  try { d = await apiGetFinAnnee(classe, annee); toutesClasses = (await apiGetClassesFull()).map(c => c.nom); }
   catch (e) { toast(e.message, 'error'); return; }
   const settings = await apiGetSettings().catch(() => ({}));
   const optsClasse = sel => `<option value="">—</option>` + toutesClasses.map(c => `<option ${c === sel ? 'selected' : ''}>${esc(c)}</option>`).join('');
@@ -152,7 +157,7 @@ async function modalFinAnnee(classe) {
   openModal(`Conseil de classe — ${classe}`, `
     <p class="text-muted" style="font-size:12px">Décision proposée automatiquement : admis si la moyenne annuelle atteint ${d.seuil_passage}/20 (réglable dans le paramètre « seuil_passage »). Vous pouvez la modifier élève par élève.</p>
     <div class="tbl-wrap"><table><thead><tr><th>Élève</th><th>Moy. annuelle</th><th>Décision</th><th>Classe suivante</th></tr></thead><tbody>${lignes}</tbody></table></div>
-    <div class="fg" style="margin-top:12px"><label>Année scolaire concernée</label><input id="fa-annee" value="${esc(settings.annee_scolaire || '')}" placeholder="2025-2026"></div>
+    <div class="fg" style="margin-top:12px"><label>Année scolaire concernée</label><input id="fa-annee" value="${esc(d.annee_scolaire || settings.annee_scolaire || '')}" placeholder="2025-2026"></div>
     <div class="modal-footer">
       <button type="button" class="btn btn-outline" onclick="closeModal()">Fermer</button>
       <button type="button" class="btn btn-primary" id="fa-save">Enregistrer les décisions</button>

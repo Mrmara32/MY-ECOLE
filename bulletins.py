@@ -41,6 +41,11 @@ def appreciation_auto(moy):
     return "Résultats insuffisants. Un sérieux travail de rattrapage s'impose."
 
 
+def annee_en_cours(ecole_id):
+    r = db.execute("SELECT valeur FROM settings WHERE ecole_id=? AND cle='annee_scolaire'", (ecole_id,)).fetchone()
+    return (r['valeur'] or '').strip() if r and r['valeur'] else None
+
+
 def seuil_passage(ecole_id):
     r = db.execute("SELECT valeur FROM settings WHERE ecole_id=? AND cle='seuil_passage'", (ecole_id,)).fetchone()
     try:
@@ -80,7 +85,7 @@ def _moyenne_ponderee(parmat, coefs):
     return num / den if den else None
 
 
-def _moyennes_trimestre(ecole_id, classe, trimestre, eleves, coefs):
+def _moyennes_trimestre(ecole_id, classe, trimestre, eleves, coefs, annee=None):
     """-> {eleve_id: {matiere: moyenne/20}} pour un trimestre."""
     ids = [e['id'] for e in eleves]
     if not ids:
@@ -88,7 +93,8 @@ def _moyennes_trimestre(ecole_id, classe, trimestre, eleves, coefs):
     ph = ','.join('?' * len(ids))
     rows = db.execute(
         f"SELECT eleve_id, matiere, note, note_max FROM notes WHERE ecole_id=? AND trimestre=? "
-        f"AND note IS NOT NULL AND eleve_id IN ({ph})", [ecole_id, int(trimestre)] + ids).fetchall()
+        f"AND note IS NOT NULL AND eleve_id IN ({ph})" + (" AND (annee_scolaire=? OR annee_scolaire IS NULL)" if annee else ""),
+        [ecole_id, int(trimestre)] + ids + ([annee] if annee else [])).fetchall()
     cumul = {}
     for r in rows:
         nmax = r['note_max'] or 20
@@ -98,8 +104,10 @@ def _moyennes_trimestre(ecole_id, classe, trimestre, eleves, coefs):
     return {eid: {m: sum(v) / len(v) for m, v in mats.items()} for eid, mats in cumul.items()}
 
 
-def calculer_classe(ecole_id, classe, periode):
-    """Résultats de toute une classe pour un trimestre ('1','2','3') ou l'année ('annee')."""
+def calculer_classe(ecole_id, classe, periode, annee=None):
+    """Résultats de toute une classe pour un trimestre ('1','2','3') ou l'année ('annee'), pour UNE année
+    scolaire (par défaut celle en cours) : les notes d'une année ne se mélangent jamais à celles d'une autre."""
+    annee = annee or annee_en_cours(ecole_id)
     if periode not in PERIODES:
         raise ValueError('Période invalide')
     eleves = db.execute(
@@ -107,7 +115,7 @@ def calculer_classe(ecole_id, classe, periode):
         "ORDER BY nom, prenom", (ecole_id, classe)).fetchall()
     coefs = coefficients_classe(ecole_id, classe)
     seuil = seuil_passage(ecole_id)
-    tris = {t: _moyennes_trimestre(ecole_id, classe, t, eleves, coefs) for t in ('1', '2', '3')}
+    tris = {t: _moyennes_trimestre(ecole_id, classe, t, eleves, coefs, annee) for t in ('1', '2', '3')}
 
     parmat_par_eleve, moy_par_eleve = {}, {}
     moy_tri_par_eleve = {}
@@ -167,7 +175,7 @@ def calculer_classe(ecole_id, classe, periode):
             'decision': decisions.get(eid),
         })
     toutes = [s['moyenne_generale'] for s in sortie if s['moyenne_generale'] is not None]
-    return {'classe': classe, 'periode': periode, 'seuil_passage': seuil, 'matieres': stats,
+    return {'classe': classe, 'periode': periode, 'annee_scolaire': annee, 'seuil_passage': seuil, 'matieres': stats,
             'moyenne_classe': round(sum(toutes) / len(toutes), 2) if toutes else None,
             'moyenne_min': min(toutes) if toutes else None, 'moyenne_max': max(toutes) if toutes else None,
             'eleves': sortie}

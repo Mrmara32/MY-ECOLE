@@ -8,6 +8,7 @@ from database import db, gen_id, rows_to_list, row_to_dict, log_action, get_clas
 from auth import require_auth, require_role
 from permissions import require_permission
 from offline_sync import idempotent
+from bulletins import annee_en_cours
 
 bp = Blueprint('scolarite_routes', __name__, url_prefix='/api')
 
@@ -50,6 +51,11 @@ def list_notes():
     if classe: sql += " AND e.classe=?"; params.append(classe)
     if matiere: sql += " AND n.matiere=?"; params.append(matiere)
     if trimestre: sql += " AND n.trimestre=?"; params.append(trimestre)
+    # Année en cours par défaut (les notes d'une année ne se mélangent pas à celles d'une autre) ;
+    # annee_scolaire=toutes pour tout l'historique.
+    annee = request.args.get('annee_scolaire') or annee_en_cours(g.user['ecole_id'])
+    if annee and annee != 'toutes':
+        sql += " AND (n.annee_scolaire=? OR n.annee_scolaire IS NULL)"; params.append(annee)
     sql += " ORDER BY e.nom, n.matiere"
 
     rows = db.execute(sql, params).fetchall()
@@ -96,8 +102,9 @@ def create_note():
         return jsonify({'error': "Cet élève n'est pas dans une de vos classes"}), 403
     nid = gen_id('n')
     db.execute(
-        "INSERT INTO notes (id,ecole_id,eleve_id,matiere,trimestre,type,note,note_max,date_note) VALUES (?,?,?,?,?,?,?,?,?)",
-        (nid, g.user['ecole_id'], eleve_id, matiere, trimestre, body.get('type'), note, note_max, body.get('date_note')),
+        "INSERT INTO notes (id,ecole_id,eleve_id,matiere,trimestre,type,note,note_max,date_note,annee_scolaire) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (nid, g.user['ecole_id'], eleve_id, matiere, trimestre, body.get('type'), note, note_max, body.get('date_note'),
+         (body.get('annee_scolaire') or '').strip()[:20] or annee_en_cours(g.user['ecole_id'])),
     )
     db.commit()
     row = db.execute("SELECT * FROM notes WHERE id=?", (nid,)).fetchone()

@@ -21,6 +21,12 @@ def _classe_existe(classe):
                                        (g.user['ecole_id'], classe)).fetchone()
 
 
+def _annee():
+    """Année scolaire demandée (?annee_scolaire=2025-2026) ; à défaut, l'année en cours de l'école."""
+    a = (request.args.get('annee_scolaire') or '').strip()[:20]
+    return a or None
+
+
 def _acces_classe(classe):
     """Un enseignant ne voit que les classes où il enseigne ; un parent n'a pas accès aux classes."""
     if g.user['role'] == 'parent':
@@ -91,7 +97,7 @@ def bulletins_classe(classe):
         return jsonify({'error': 'Classe introuvable'}), 404
     if not _acces_classe(classe):
         return jsonify({'error': 'Accès refusé à cette classe'}), 403
-    return jsonify(bulletins.calculer_classe(g.user['ecole_id'], classe, periode))
+    return jsonify(bulletins.calculer_classe(g.user['ecole_id'], classe, periode, _annee()))
 
 
 @bp.route('/bulletins/eleve/<eleve_id>', methods=['GET'])
@@ -109,7 +115,7 @@ def bulletin_eleve(eleve_id):
             return jsonify({'error': 'Accès refusé à cet élève'}), 403
     elif not _acces_classe(e['classe']):
         return jsonify({'error': 'Accès refusé à cet élève'}), 403
-    res = bulletins.calculer_classe(g.user['ecole_id'], e['classe'], periode)
+    res = bulletins.calculer_classe(g.user['ecole_id'], e['classe'], periode, _annee())
     ligne = next((x for x in res['eleves'] if x['eleve_id'] == eleve_id), None)
     if ligne is None:  # élève non actif dans la classe
         return jsonify({'error': "Cet élève n'est pas actif dans sa classe"}), 404
@@ -150,7 +156,7 @@ def fin_annee_classe(classe):
     """Résultats annuels de la classe + décision proposée + classe suivante suggérée."""
     if not _classe_existe(classe):
         return jsonify({'error': 'Classe introuvable'}), 404
-    res = bulletins.calculer_classe(g.user['ecole_id'], classe, 'annee')
+    res = bulletins.calculer_classe(g.user['ecole_id'], classe, 'annee', _annee())
     res['classe_suivante_suggeree'] = bulletins.classe_suivante(g.user['ecole_id'], classe)
     return jsonify(res)
 
@@ -166,8 +172,11 @@ def enregistrer_decisions():
     if not annee or not _classe_existe(classe) or not isinstance(liste, list) or not liste:
         return jsonify({'error': 'Année scolaire, classe et décisions requises'}), 400
     eid = g.user['ecole_id']
-    res = bulletins.calculer_classe(eid, classe, 'annee')
+    res = bulletins.calculer_classe(eid, classe, 'annee', annee)
     moyennes = {x['eleve_id']: x['moyenne_generale'] for x in res['eleves']}
+    if all(m is None for m in moyennes.values()):
+        return jsonify({'error': f"Aucune note enregistrée pour la classe {classe} en {annee} : vérifiez l'année scolaire "
+                                 f"(les décisions s'appuient sur les notes de cette année-là)."}), 400
     suggeree = bulletins.classe_suivante(eid, classe)
     lignes = []
     for d in liste:
@@ -223,3 +232,33 @@ def proposer_reinscriptions():
     db.commit()
     log_action(g.user, 'creation', 'reinscriptions', None, {'depuis': annee, 'vers': nouvelle, 'creees': creees})
     return jsonify({'success': True, 'creees': creees, 'deja_existantes': deja})
+
+
+@bp.route('/bulletins/annees', methods=['GET'])
+@require_auth
+@require_permission('notes', 'peut_voir')
+def annees_disponibles():
+    """Années scolaires pour lesquelles des notes existent (+ l'année en cours), la plus récente d'abord."""
+    eid = g.user['ecole_id']
+    annees = {r['annee_scolaire'] for r in db.execute(
+        "SELECT DISTINCT annee_scolaire FROM notes WHERE ecole_id=? AND annee_scolaire IS NOT NULL", (eid,)).fetchall()}
+    en_cours = bulletins.annee_en_cours(eid)
+    if en_cours:
+        annees.add(en_cours)
+    return jsonify({'en_cours': en_cours, 'annees': sorted(annees, reverse=True)})
+
+
+@bp.route('/eleves/<eleve_id>/parcours', methods=['GET'])
+@require_auth
+@require_role('admin', 'directeur', 'secretaire')
+@require_permission('notes', 'peut_voir')
+def parcours_eleve(eleve_id):
+    """Historique scolaire d'un élève, année par année : classe, moyenne annuelle et décision du conseil de classe."""
+    e = db.execute("SELECT id, nom, prenom, matricule, classe FROM eleves WHERE id=? AND ecole_id=?",
+                   (eleve_id, g.user['ecole_id'])).fetchone()
+    if not e:
+        return jsonify({'error': 'Élève introuvable'}), 404
+    rows = db.execute("SELECT annee_scolaire, classe_origine, moyenne_annuelle, decision, classe_suivante "
+                      "FROM decisions_annuelles WHERE eleve_id=? AND ecole_id=? ORDER BY annee_scolaire DESC",
+                      (eleve_id, g.user['ecole_id'])).fetchall()
+    return jsonify({'eleve': dict(e), 'annees': rows_to_list(rows)})
