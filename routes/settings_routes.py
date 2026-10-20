@@ -1,4 +1,5 @@
 import os
+import secrets
 from flask import Blueprint, request, jsonify, current_app, g
 from werkzeug.utils import secure_filename
 import securite_http
@@ -79,7 +80,7 @@ def upload_logo():
         return jsonify({'error': 'Format non supporté : le fichier doit être une vraie image (PNG, JPEG, GIF ou WebP)'}), 400
 
     import time, random
-    fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
+    fname = f"{secrets.token_hex(12)}{ext}"
     upload_dir = current_app.config['UPLOAD_DIR']
     file.save(os.path.join(upload_dir, fname))
 
@@ -102,7 +103,7 @@ def upload_cachet():
         return jsonify({'error': 'Format non supporté : le fichier doit être une vraie image (PNG, JPEG, GIF ou WebP)'}), 400
 
     import time, random
-    fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
+    fname = f"{secrets.token_hex(12)}{ext}"
     upload_dir = current_app.config['UPLOAD_DIR']
     file.save(os.path.join(upload_dir, fname))
 
@@ -125,7 +126,7 @@ def upload_signature_directeur():
         return jsonify({'error': 'Format non supporté : le fichier doit être une vraie image (PNG, JPEG, GIF ou WebP)'}), 400
 
     import time, random
-    fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
+    fname = f"{secrets.token_hex(12)}{ext}"
     upload_dir = current_app.config['UPLOAD_DIR']
     file.save(os.path.join(upload_dir, fname))
 
@@ -148,7 +149,7 @@ def upload_fond():
         return jsonify({'error': 'Format non supporté : le fichier doit être une vraie image (PNG, JPEG, GIF ou WebP)'}), 400
 
     import time, random
-    fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
+    fname = f"{secrets.token_hex(12)}{ext}"
     upload_dir = current_app.config['UPLOAD_DIR']
     file.save(os.path.join(upload_dir, fname))
 
@@ -181,7 +182,7 @@ def ajouter_image_carousel():
         return jsonify({'error': 'Format non supporté : le fichier doit être une vraie image (PNG, JPEG, GIF ou WebP)'}), 400
 
     import time, random, json
-    fname = f"{int(time.time()*1000)}_{random.randint(1000,9999)}{ext}"
+    fname = f"{secrets.token_hex(12)}{ext}"
     upload_dir = current_app.config['UPLOAD_DIR']
     file.save(os.path.join(upload_dir, fname))
     url = '/uploads/' + fname

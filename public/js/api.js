@@ -104,6 +104,8 @@ async function apiLogin(username, password, codeEcole, code2fa) {
 }
 const apiMe = () => apiFetch('/auth/me');
 function authLogout() {
+  // Révoque le jeton côté serveur (sans attendre la réponse : la page se recharge de toute façon).
+  if (_token) { try { fetch(API_BASE + '/auth/logout', { method: 'POST', keepalive: true, headers: { Authorization: 'Bearer ' + _token } }); } catch (e) {} }
   _token = null;
   localStorage.removeItem('gs_tok');
   localStorage.removeItem('gs_user');

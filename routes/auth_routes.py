@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, g
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from database import db
-from auth import login as do_login, require_auth, emettre_jeton
+from auth import login as do_login, require_auth, emettre_jeton, revoquer_sessions, revoquer_jeton
 import securite
 import double_authentification as da
 from database import log_action
@@ -163,8 +163,33 @@ def change_password():
         return jsonify({'error': "Le nouveau mot de passe doit être différent de l'ancien"}), 400
     db.execute("UPDATE users SET password_hash=?, doit_changer_mdp=0 WHERE id=?",
                (generate_password_hash(new_password), g.user['id']))
+    revoquer_sessions(g.user['id'])  # les autres appareils/jetons volés sont déconnectés
     db.commit()
     u = db.execute("SELECT * FROM users WHERE id=?", (g.user['id'],)).fetchone()
     # Nouveau jeton sans la mention « mot de passe provisoire » : l'utilisateur peut continuer sans se reconnecter.
     return jsonify({'success': True, 'token': emettre_jeton(u)})
 
+
+
+@bp.route('/logout', methods=['POST'])
+@require_auth
+def logout():
+    """Déconnexion réelle : le jeton est révoqué côté serveur (pas seulement oublié par le navigateur)."""
+    revoquer_jeton(g.user)
+    db.commit()
+    log_action(g.user, 'deconnexion', 'session', str(g.user['id']), {})
+    reponse = jsonify({'success': True})
+    reponse.delete_cookie('gs_media', path='/uploads')
+    return reponse
+
+
+@bp.route('/logout-all', methods=['POST'])
+@require_auth
+def logout_all():
+    """Déconnecte tous les appareils de l'utilisateur (téléphone perdu, session oubliée…)."""
+    revoquer_sessions(g.user['id'])
+    db.commit()
+    log_action(g.user, 'deconnexion_tous_appareils', 'session', str(g.user['id']), {})
+    reponse = jsonify({'success': True})
+    reponse.delete_cookie('gs_media', path='/uploads')
+    return reponse

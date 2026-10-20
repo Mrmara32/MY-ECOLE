@@ -211,6 +211,10 @@ CREATE TABLE IF NOT EXISTS ecoles (
   created_at          TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS jetons_revoques (
+  jti       TEXT PRIMARY KEY,
+  expire_le INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS settings (
   ecole_id INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   cle   TEXT NOT NULL,
@@ -1192,6 +1196,7 @@ MIGRATIONS = {
         'totp_secret': "TEXT",                    # double authentification (voir double_authentification.py)
         'totp_actif': "INTEGER DEFAULT 0",
         'totp_dernier_pas': "INTEGER DEFAULT 0",  # dernier code accepté : un code ne sert qu'une fois
+        'session_version': "INTEGER DEFAULT 0",   # incrémentée pour déconnecter tous les appareils (auth.revoquer_sessions)
         'codes_secours': "TEXT",                  # empreintes (SHA-256) des codes de secours restants
     },
     'notes': {
