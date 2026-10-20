@@ -23,6 +23,13 @@ jamais dans le code) :
   EMAIL_EXPEDITEUR_NOM : optionnel — nom affiché avant l'adresse (ex: "MY-ECOLE").
   EMAIL_HOST           : optionnel, défaut smtp.gmail.com
   EMAIL_PORT           : optionnel, défaut 587
+  BREVO_API_KEY        : RECOMMANDÉ sur Render. Envoi par l'API web de Brevo (port 443) au
+                         lieu du SMTP : les ports SMTP sont souvent bloqués chez les
+                         hébergeurs, ce qui explique des e-mails jamais partis. Avec cette clé,
+                         EMAIL_ADRESSE / EMAIL_MOT_DE_PASSE ne sont plus nécessaires ; il faut
+                         EMAIL_EXPEDITEUR = une adresse d'expéditeur validée dans Brevo
+                         (Brevo → Expéditeurs ; un nom de domaine n'est pas obligatoire pour
+                         démarrer, mais SPF/DKIM d'un domaine améliore la réception).
   URL_APPLICATION      : l'adresse publique de l'application (pour les liens dans
                          les e-mails, ex: https://my-ecole.onrender.com) — sans
                          slash final
@@ -33,7 +40,10 @@ envoyé ne doit jamais empêcher une inscription de fonctionner.
 """
 import os
 import base64
+import json
 import smtplib
+import urllib.error
+import urllib.request
 import secrets
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -43,7 +53,33 @@ from email import encoders
 
 
 def _config_disponible():
-    return bool(os.environ.get('EMAIL_ADRESSE') and os.environ.get('EMAIL_MOT_DE_PASSE'))
+    return bool(_cle_brevo() or (os.environ.get('EMAIL_ADRESSE') and os.environ.get('EMAIL_MOT_DE_PASSE')))
+
+
+def _cle_brevo():
+    return (os.environ.get('BREVO_API_KEY') or '').strip()
+
+
+def _envoyer_par_api_brevo(destinataire, sujet, corps_html, piece_jointe):
+    expediteur = os.environ.get('EMAIL_EXPEDITEUR') or os.environ.get('EMAIL_ADRESSE')
+    if not expediteur:
+        raise RuntimeError("EMAIL_EXPEDITEUR (expéditeur validé dans Brevo) est requis avec BREVO_API_KEY")
+    charge = {'sender': {'email': expediteur}, 'to': [{'email': destinataire}],
+              'subject': sujet, 'htmlContent': corps_html}
+    if os.environ.get('EMAIL_EXPEDITEUR_NOM'):
+        charge['sender']['name'] = os.environ['EMAIL_EXPEDITEUR_NOM']
+    if piece_jointe:
+        charge['attachment'] = [{'name': piece_jointe['nom_fichier'], 'content': piece_jointe['contenu_base64']}]
+    req = urllib.request.Request(
+        os.environ.get('BREVO_API_URL', 'https://api.brevo.com/v3/smtp/email'),
+        data=json.dumps(charge).encode(), method='POST',
+        headers={'api-key': _cle_brevo(), 'content-type': 'application/json', 'accept': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            if r.status not in (200, 201, 202):
+                raise RuntimeError(f"Brevo a répondu {r.status}")
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"Brevo a refusé l'envoi (HTTP {e.code}) : {e.read()[:300].decode(errors='replace')}")
 
 
 def generer_jeton():
@@ -65,6 +101,13 @@ def envoyer_email(destinataire, sujet, corps_html, piece_jointe=None):
     if not _config_disponible():
         print(f"[email] Configuration absente (EMAIL_ADRESSE / EMAIL_MOT_DE_PASSE) — e-mail à {destinataire} non envoyé")
         return False
+    if _cle_brevo():
+        try:
+            _envoyer_par_api_brevo(destinataire, sujet, corps_html, piece_jointe)
+            return True
+        except Exception as e:
+            print(f"[email] Échec d'envoi (API Brevo) à {destinataire} : {e}")
+            return False
     try:
         adresse = os.environ['EMAIL_ADRESSE']
         mot_de_passe = os.environ['EMAIL_MOT_DE_PASSE']
