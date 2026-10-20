@@ -3,12 +3,15 @@ import time
 import random
 from flask import Blueprint, request, jsonify, g, current_app
 
+from contact_parent import COLONNES_CONTACT, contact_a_prevenir
 from database import db, gen_id, rows_to_list, row_to_dict, log_action, get_classes_enseignant, next_matricule_personnel, matricule_lock
 from auth import require_auth, require_role
 from permissions import require_permission
 from offline_sync import idempotent
 
 bp = Blueprint('scolarite_routes', __name__, url_prefix='/api')
+
+ROLES_PREVENIR_PARENT = ('admin', 'directeur', 'secretaire')
 
 # ─────────────────────────────────────────────────────────────
 # NOTES
@@ -289,8 +292,41 @@ def list_absences():
     if date_fin: sql += " AND a.date_abs<=?"; params.append(date_fin)
     sql += " ORDER BY a.date_abs DESC"
 
-    rows = db.execute(sql, params).fetchall()
-    return jsonify(rows_to_list(rows))
+    rows = rows_to_list(db.execute(sql, params).fetchall())
+
+    # Personnel de l'administration seulement : parent à prévenir + date de la dernière
+    # information envoyée (jamais les numéros pour un enseignant ou un parent).
+    if rows and g.user['role'] in ROLES_PREVENIR_PARENT:
+        ids = sorted({r['eleve_id'] for r in rows})
+        marques = ','.join('?' * len(ids))
+        contacts = {r['id']: contact_a_prevenir(r) for r in db.execute(
+            f"SELECT e.id, {COLONNES_CONTACT} FROM eleves e WHERE e.ecole_id=? AND e.id IN ({marques})",
+            [g.user['ecole_id']] + ids).fetchall()}
+        prevenus = {r['entite_id']: r['derniere'] for r in db.execute(
+            """SELECT entite_id, MAX(created_at) AS derniere FROM journal_audit
+               WHERE ecole_id=? AND action='prevenir_parent' AND entite='absence' GROUP BY entite_id""",
+            (g.user['ecole_id'],)).fetchall()}
+        for r in rows:
+            r['contact'] = contacts.get(r['eleve_id'])
+            r['parent_prevenu_le'] = prevenus.get(r['id'])
+    return jsonify(rows)
+
+
+@bp.route('/absences/<absence_id>/prevenir', methods=['POST'])
+@require_auth
+@require_role(*ROLES_PREVENIR_PARENT)
+def enregistrer_parent_prevenu(absence_id):
+    """Garde la trace (journal d'audit) du message envoyé au parent pour cette absence."""
+    body = request.get_json(silent=True) or {}
+    canal = body.get('canal') if body.get('canal') in ('whatsapp', 'sms', 'appel', 'copie') else 'autre'
+    a = db.execute(
+        """SELECT a.id, a.date_abs, a.type, e.nom, e.prenom FROM absences a JOIN eleves e ON e.id=a.eleve_id
+           WHERE a.id=? AND a.ecole_id=?""", (absence_id, g.user['ecole_id'])).fetchone()
+    if not a:
+        return jsonify({'error': 'Absence introuvable'}), 404
+    log_action(g.user, 'prevenir_parent', 'absence', absence_id,
+               {'canal': canal, 'eleve': f"{a['prenom']} {a['nom']}", 'date': a['date_abs'], 'type': a['type']})
+    return jsonify({'ok': True})
 
 
 @bp.route('/absences/stats/<eleve_id>', methods=['GET'])

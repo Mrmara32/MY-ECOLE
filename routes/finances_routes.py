@@ -3,6 +3,7 @@ import json
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, g
 
+from contact_parent import COLONNES_CONTACT, contact_a_prevenir
 from database import (db, gen_id, rows_to_list, row_to_dict, log_action, get_settings, next_numero_recu,
                       debut_ecriture_exclusive)
 from auth import require_auth, require_role
@@ -704,12 +705,9 @@ def lister_impayes():
     relancer et la date de la dernière relance — base de l'écran « Relances »."""
     annee = request.args.get('annee_scolaire')
     ecole_id = g.user['ecole_id']
-    sql = """SELECT p.montant_du, p.montant_paye, p.date_echeance,
+    sql = f"""SELECT p.montant_du, p.montant_paye, p.date_echeance,
                     e.id AS eleve_id, e.nom, e.prenom, e.classe, e.matricule,
-                    e.mere_prenom, e.mere_nom, e.mere_telephone,
-                    e.pere_prenom, e.pere_nom, e.pere_telephone,
-                    e.tuteur_prenom, e.tuteur_nom, e.tuteur_telephone,
-                    e.contact_urgence_nom, e.contact_urgence_telephone
+                    {COLONNES_CONTACT}
              FROM paiements p JOIN eleves e ON e.id = p.eleve_id AND e.ecole_id = p.ecole_id
              WHERE p.ecole_id = ? AND p.montant_du - p.montant_paye > 0
                AND COALESCE(e.statut, 'actif') NOT IN ('inactif', 'exclu', 'transfere', 'preinscrit')"""
@@ -719,23 +717,12 @@ def lister_impayes():
         params.append(annee)
     aujourdhui = datetime.now().strftime('%Y-%m-%d')
 
-    def contact(r):
-        for prenom, nom, tel, lien in (
-            (r['mere_prenom'], r['mere_nom'], r['mere_telephone'], 'Mère'),
-            (r['pere_prenom'], r['pere_nom'], r['pere_telephone'], 'Père'),
-            (r['tuteur_prenom'], r['tuteur_nom'], r['tuteur_telephone'], 'Tuteur'),
-            (None, r['contact_urgence_nom'], r['contact_urgence_telephone'], 'Contact'),
-        ):
-            if (tel or '').strip():
-                return {'lien': lien, 'nom': ' '.join(x for x in (prenom, nom) if x).strip(), 'telephone': tel.strip()}
-        return None
-
     par_eleve = {}
     for r in db.execute(sql, params).fetchall():
         e = par_eleve.setdefault(r['eleve_id'], {
             'eleve_id': r['eleve_id'], 'nom': r['nom'], 'prenom': r['prenom'], 'classe': r['classe'],
             'matricule': r['matricule'], 'reste': 0, 'reste_en_retard': 0, 'nb_echeances': 0,
-            'prochaine_echeance': None, 'contact': contact(r),
+            'prochaine_echeance': None, 'contact': contact_a_prevenir(r),
         })
         reste = (r['montant_du'] or 0) - (r['montant_paye'] or 0)
         e['reste'] += reste
