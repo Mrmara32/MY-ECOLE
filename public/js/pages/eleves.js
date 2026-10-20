@@ -15,7 +15,10 @@ function renderElevesTable(list) {
   <div class="card">
     <div class="card-header">
       <span class="card-title">🎓 Élèves (${list.length})</span>
-      <button class="btn btn-primary btn-sm" onclick="modalEleve()">+ Inscrire un élève</button>
+      <div style="display:flex;gap:8px">
+        ${['admin','directeur','secretaire'].includes(currentUser?.role) ? '<button class="btn btn-outline btn-sm" onclick="modalImportEleves()">📥 Importer (Excel / CSV)</button>' : ''}
+        <button class="btn btn-primary btn-sm" onclick="modalEleve()">+ Inscrire un élève</button>
+      </div>
     </div>
     <div class="filters">
       <div class="fg grow"><label>Recherche</label><input id="q-elv" placeholder="Nom, prénom, matricule…"></div>
@@ -311,6 +314,7 @@ async function ficheEleve(id) {
       <button class="btn btn-outline" onclick="closeModal()">Fermer</button>
       <button class="btn btn-primary" onclick="closeModal();modalEleve('${escJs(id)}')">✏️ Modifier</button>
       <button class="btn btn-accent" onclick="closeModal();imprimerBulletin('${escJs(id)}')">🖨 Bulletin</button>
+      ${['admin','directeur','secretaire'].includes(currentUser?.role) ? `<button class="btn btn-outline" onclick="closeModal();imprimerAttestation('${escJs(id)}')">📄 Attestation de scolarité</button>` : ''}
     </div>
   `, { wide: true });
 }
@@ -664,3 +668,97 @@ function modalValiderPreinscription(eleveId, nom) {
   };
 }
 window.modalValiderPreinscription = modalValiderPreinscription;
+
+
+/* ===================== IMPORT D'ÉLÈVES (Excel / CSV) ===================== */
+function modalImportEleves() {
+  openModal('Importer des élèves', `
+    <p class="text-muted" style="font-size:13px">Reprenez vos listes existantes : un fichier Excel (.xlsx) ou CSV avec une ligne de titres
+      (au minimum <strong>Nom</strong> et <strong>Prénom</strong> ; aussi : Date de naissance, Sexe, Classe, Père, Téléphone père, Mère, Téléphone mère, Adresse…).
+      Les classes doivent déjà exister. Rien n'est enregistré avant votre confirmation.</p>
+    <p><a href="#" id="imp-modele">⬇ Télécharger le fichier modèle</a></p>
+    <div class="fg"><label>Fichier</label><input type="file" id="imp-fichier" accept=".xlsx,.csv"></div>
+    <div id="imp-resultat" style="margin-top:12px"></div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline" onclick="closeModal()">Fermer</button>
+      <button type="button" class="btn btn-outline" id="imp-verifier">🔍 Vérifier le fichier</button>
+      <button type="button" class="btn btn-primary" id="imp-confirmer" disabled>Importer</button>
+    </div>`, { wide: true });
+  $('#imp-modele').onclick = e => { e.preventDefault(); apiTelechargerFichier('/import-eleves/modele', 'modele-import-eleves.csv'); };
+  const zone = $('#imp-resultat');
+  const fichier = () => $('#imp-fichier').files[0];
+  const afficher = r => {
+    const err = r.erreurs.map(p => `<li>Ligne ${p.ligne}${p.nom ? ' (' + esc(p.nom) + ')' : ''} : ${p.erreurs.map(esc).join(' ; ')}</li>`).join('');
+    const dbl = r.doublons.map(d => `<li>Ligne ${d.ligne} : ${esc(d.nom)}</li>`).join('');
+    zone.innerHTML = `
+      <div class="alert ${r.importes ? 'alert-success' : 'alert-info'}">
+        ${r.simulation ? '<strong>Vérification :</strong> ' : '<strong>Terminé :</strong> '}
+        ${r.lignes_lues} ligne(s) lue(s) — <strong>${r.simulation ? r.a_importer + ' prête(s) à importer' : r.importes + ' élève(s) importé(s)'}</strong>,
+        ${r.erreurs.length} en erreur, ${r.doublons.length} déjà présent(s).</div>
+      ${err ? `<details open><summary>Lignes en erreur (ignorées)</summary><ul style="font-size:12px">${err}</ul></details>` : ''}
+      ${dbl ? `<details><summary>Élèves déjà présents (ignorés)</summary><ul style="font-size:12px">${dbl}</ul></details>` : ''}`;
+  };
+  $('#imp-fichier').onchange = () => { $('#imp-confirmer').disabled = true; zone.innerHTML = ''; };
+  $('#imp-verifier').onclick = async () => {
+    if (!fichier()) { toast('Choisissez un fichier', 'error'); return; }
+    try { const r = await apiImporterEleves(fichier(), true); afficher(r); $('#imp-confirmer').disabled = r.a_importer === 0; }
+    catch (e) { zone.innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`; }
+  };
+  $('#imp-confirmer').onclick = async () => {
+    $('#imp-confirmer').disabled = true;
+    try { const r = await apiImporterEleves(fichier(), false); afficher(r); toast(`${r.importes} élève(s) importé(s)`, 'success'); _elevesList = await apiGetEleves(); renderElevesTable(_elevesList); }
+    catch (e) { toast(e.message, 'error'); }
+  };
+}
+window.modalImportEleves = modalImportEleves;
+
+/* ===================== ATTESTATION DE SCOLARITÉ ===================== */
+async function imprimerAttestation(eleveId) {
+  let att;
+  try { att = await apiDelivrerAttestation(eleveId); } catch (e) { toast(e.message, 'error'); return; }
+  const e = att.eleve, settings = await apiGetSettings();
+  const dateFr = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
+  const annee = settings.annee_scolaire || e.annee_scolaire || '—';
+  const sexeF = e.sexe === 'F';
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Attestation de scolarité — ${esc(e.prenom)} ${esc(e.nom)}</title>
+  <style>
+    body{font-family:Georgia,'Times New Roman',serif;color:#111;margin:0;padding:40px;background:#fff}
+    .doc{max-width:720px;margin:0 auto}
+    .header{text-align:center;border-bottom:3px double #1E3A8A;padding-bottom:14px;margin-bottom:34px}
+    .header h1{color:#1E3A8A;font-size:22px;margin:0 0 4px}.header p{margin:2px 0;color:#555;font-size:13px}
+    .header img{max-height:70px;display:block;margin:0 auto 8px}
+    h2{text-align:center;letter-spacing:2px;font-size:20px;margin:0 0 6px}
+    .ref{text-align:center;font-size:13px;color:#555;margin-bottom:34px}
+    p.corps{font-size:16px;line-height:1.9;text-align:justify}
+    .sig{display:flex;justify-content:space-between;margin-top:60px;font-size:14px}
+    .sig div{width:45%;text-align:center}.sig .ligne{margin-top:60px;border-top:1px solid #333;padding-top:6px;font-size:12px;color:#555}
+    .pied{margin-top:40px;font-size:11px;color:#777;text-align:center;border-top:1px solid #ddd;padding-top:8px}
+    @media print{body{padding:20px}}
+  </style></head><body><div class="doc">
+  <div class="header">
+    ${settings.ecole_logo ? `<img src="${settings.ecole_logo}" alt="Logo">` : ''}
+    <h1>${esc(settings.ecole_nom || 'MY-ECOLE')}</h1>
+    ${settings.ecole_adresse ? `<p>${esc(settings.ecole_adresse)}</p>` : ''}
+    ${settings.ecole_telephone ? `<p>Tél : ${esc(settings.ecole_telephone)}</p>` : ''}
+  </div>
+  <h2>ATTESTATION DE SCOLARITÉ</h2>
+  <div class="ref">N° ${esc(att.numero)}</div>
+  <p class="corps">Je soussigné(e), Directeur(trice) de <strong>${esc(settings.ecole_nom || "l'établissement")}</strong>, atteste que
+    ${sexeF ? 'l\'élève' : 'l\'élève'} <strong>${esc(e.prenom)} ${esc((e.nom || '').toUpperCase())}</strong>,
+    ${sexeF ? 'née' : 'né'} le <strong>${dateFr(e.date_naissance)}</strong>${e.lieu_naissance ? ' à <strong>' + esc(e.lieu_naissance) + '</strong>' : ''},
+    matricule <strong>${esc(e.matricule || '—')}</strong>, est régulièrement ${sexeF ? 'inscrite' : 'inscrit'} dans notre établissement
+    en classe de <strong>${esc(e.classe || '—')}</strong> pour l'année scolaire <strong>${esc(annee)}</strong>.</p>
+  <p class="corps">La présente attestation est délivrée à l'intéressé(e) pour servir et valoir ce que de droit.</p>
+  <div class="sig"><div>Fait à ${esc((settings.ecole_adresse || '').split(',').pop().trim() || '………………')}, le ${dateFr(att.date)}</div>
+    <div>Le Directeur<div class="ligne">Signature et cachet</div></div></div>
+  <div class="pied">Attestation n° ${esc(att.numero)} — enregistrée dans le registre de l'établissement</div>
+  </div></body></html>`;
+  const win = ouvrirDocumentImprimable(html);
+  finaliserDocumentPartageable(win, '.doc', {
+    filenameBase: `attestation_${e.prenom}_${e.nom}`.replace(/\s+/g, '_'),
+    sujetEmail: `Attestation de scolarité — ${e.prenom} ${e.nom}`,
+    messageEmail: 'Veuillez trouver ci-joint l\'attestation de scolarité.',
+    destinataireDefaut: e.email_parent || '',
+  });
+}
+window.imprimerAttestation = imprimerAttestation;

@@ -759,3 +759,7 @@ const apiSetAppreciation     = (eleve_id, periode, appreciation) => apiFetch('/b
 const apiGetFinAnnee         = (classe) => apiFetch('/fin-annee/' + encodeURIComponent(classe));
 const apiSaveDecisions       = (annee_scolaire, classe, decisions) => apiFetch('/fin-annee/decisions', { method:'POST', body:{ annee_scolaire, classe, decisions } });
 const apiProposerReinscriptions = (annee_scolaire, nouvelle_annee) => apiFetch('/fin-annee/reinscriptions', { method:'POST', body:{ annee_scolaire, nouvelle_annee } });
+
+/* ── Import d'élèves et attestations ── */
+const apiImporterEleves = (fichier, simulation) => { const fd = new FormData(); fd.append('fichier', fichier); if (simulation) fd.append('simulation', '1'); return apiUpload('/import-eleves', fd); };
+const apiDelivrerAttestation = (id) => apiFetch(`/eleves/${encodeURIComponent(id)}/attestation`, { method: 'POST' });
