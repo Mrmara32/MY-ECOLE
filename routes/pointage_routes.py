@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 
 from flask import Blueprint, Response, g, jsonify, request
 
-from auth import require_auth, require_role
+from auth import get_secret, require_auth, require_role
 from contact_parent import COLONNES_CONTACT, contact_a_prevenir
 from database import db, gen_id, log_action, rows_to_list
 
@@ -111,7 +111,7 @@ def _date_valide(date):
 
 
 # ───────────────────────── enregistrement des passages ─────────────────────────
-def enregistrer_passages(ecole_id, appareil_id, passages):
+def enregistrer_passages(ecole_id, appareil_id, passages, source='appareil'):
     """Enregistre une liste de (code, horodatage). Idempotent : un passage déjà reçu est
     ignoré. Crée au passage les retards des élèves arrivés après l'heure limite.
     Renvoie un dict de compteurs."""
@@ -129,8 +129,8 @@ def enregistrer_passages(ecole_id, appareil_id, passages):
             res['invalides'] += 1
             continue
         cur = db.execute(
-            "INSERT OR IGNORE INTO pointages (ecole_id,id,appareil_id,code,horodatage,source) VALUES (?,?,?,?,?, 'appareil')",
-            (ecole_id, gen_id('pt'), appareil_id, code, horo))
+            "INSERT OR IGNORE INTO pointages (ecole_id,id,appareil_id,code,horodatage,source) VALUES (?,?,?,?,?,?)",
+            (ecole_id, gen_id('pt'), appareil_id, code, horo, source))
         if cur.rowcount == 0:
             res['doublons'] += 1
             continue
@@ -285,6 +285,88 @@ def zk_getrequest():
 @bp_zk.route('/iclock/devicecmd', methods=['POST'])
 def zk_devicecmd():
     return _texte('OK') if _appareil_zk() else _texte('UNKNOWN DEVICE', 403)
+
+
+# ───────────────────────── badges QR ─────────────────────────
+DELAI_DOUBLE_SCAN_S = 60
+
+
+def _signature_badge(ecole_id, code):
+    msg = f"badge|{ecole_id}|{code}".encode()
+    return hmac.new(get_secret().encode(), msg, hashlib.sha256).hexdigest()[:12]
+
+
+def contenu_badge(ecole_id, code):
+    """Texte encodé dans le QR : le numéro + une signature, pour qu'on ne puisse pas
+    fabriquer un badge en devinant un numéro."""
+    return f"MEC:{code}:{_signature_badge(ecole_id, code)}"
+
+
+@bp.route('/badges', methods=['GET'])
+@require_auth
+@require_role(*ROLES_GESTION)
+def badges():
+    """Badges imprimables (QR en SVG) des personnes qui ont un numéro de pointage."""
+    import segno
+    ecole_id = g.user['ecole_id']
+    type_ = 'personnel' if request.args.get('type') == 'personnel' else 'eleve'
+    if type_ == 'personnel':
+        sql = ("SELECT p.nom, p.prenom, p.poste AS detail, c.code FROM personnel p "
+               "JOIN codes_pointage c ON c.ecole_id=p.ecole_id AND c.personne_type='personnel' AND c.personne_id=p.id "
+               "WHERE p.ecole_id=? ORDER BY p.nom, p.prenom")
+        params = [ecole_id]
+    else:
+        sql = ("SELECT e.nom, e.prenom, e.classe AS detail, c.code FROM eleves e "
+               "JOIN codes_pointage c ON c.ecole_id=e.ecole_id AND c.personne_type='eleve' AND c.personne_id=e.id "
+               "WHERE e.ecole_id=? AND COALESCE(e.statut,'actif') IN ('actif','reinsrit')")
+        params = [ecole_id]
+        if request.args.get('classe'):
+            sql += " AND e.classe=?"
+            params.append(request.args['classe'])
+        sql += " ORDER BY e.classe, e.nom, e.prenom"
+    out = []
+    for r in db.execute(sql, params).fetchall():
+        qr = segno.make(contenu_badge(ecole_id, r['code']), error='m')
+        out.append({**dict(r), 'svg': qr.svg_inline(scale=4, border=1, dark='#000', light='#fff')})
+    return jsonify(out)
+
+
+@bp.route('/scan', methods=['POST'])
+@require_auth
+@require_role(*ROLES_CONSULTATION)
+def scanner_badge():
+    """Enregistre le passage d'un badge QR scanné depuis un téléphone, une tablette
+    ou une douchette USB. L'heure est celle du serveur."""
+    ecole_id = g.user['ecole_id']
+    contenu = ((request.get_json(silent=True) or {}).get('contenu') or '').strip()
+    morceaux = contenu.split(':')
+    if len(morceaux) != 3 or morceaux[0] != 'MEC':
+        return jsonify({'error': 'Ce QR code n\'est pas un badge de l\'école'}), 400
+    code = normaliser_code(morceaux[1])
+    if not code or not hmac.compare_digest(morceaux[2], _signature_badge(ecole_id, code)):
+        return jsonify({'error': 'Badge invalide ou d\'une autre école'}), 400
+    cible = db.execute("SELECT personne_type, personne_id FROM codes_pointage WHERE ecole_id=? AND code=?",
+                       (ecole_id, code)).fetchone()
+    if not cible:
+        return jsonify({'error': 'Ce badge n\'est plus associé à une personne'}), 404
+    if cible['personne_type'] == 'personnel':
+        fiche = db.execute("SELECT nom, prenom, poste AS detail FROM personnel WHERE id=? AND ecole_id=?",
+                           (cible['personne_id'], ecole_id)).fetchone()
+    else:
+        fiche = db.execute("SELECT nom, prenom, classe AS detail FROM eleves WHERE id=? AND ecole_id=?",
+                           (cible['personne_id'], ecole_id)).fetchone()
+    if not fiche:
+        return jsonify({'error': 'Fiche introuvable'}), 404
+    maintenant = datetime.now()
+    derniere = db.execute("SELECT MAX(horodatage) AS h FROM pointages WHERE ecole_id=? AND code=?",
+                          (ecole_id, code)).fetchone()['h']
+    deja = bool(derniere and (maintenant - datetime.strptime(derniere, '%Y-%m-%d %H:%M:%S')).total_seconds()
+                < DELAI_DOUBLE_SCAN_S)
+    if not deja:
+        enregistrer_passages(ecole_id, None, [(code, maintenant.strftime('%Y-%m-%d %H:%M:%S'))], source='qr')
+    return jsonify({'ok': True, 'deja_scanne': deja, 'type': cible['personne_type'],
+                    'nom': f"{fiche['prenom'] or ''} {fiche['nom'] or ''}".strip(), 'detail': fiche['detail'],
+                    'heure': (derniere if deja else maintenant.strftime('%Y-%m-%d %H:%M:%S'))[11:19]})
 
 
 # ───────────────────────── appareils ─────────────────────────

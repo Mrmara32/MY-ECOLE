@@ -18,7 +18,9 @@ async function pagePointage() {
     <div class="tabs" id="pt-tabs">
       <div class="tab" data-onglet="jour" onclick="setPtOnglet('jour')">📅 Journée</div>
       <div class="tab" data-onglet="mois" onclick="setPtOnglet('mois')">📊 Mois</div>
-      ${gestion ? `<div class="tab" data-onglet="numeros" onclick="setPtOnglet('numeros')">🔢 Numéros</div>
+      <div class="tab" data-onglet="scan" onclick="setPtOnglet('scan')">📷 Scanner</div>
+      ${gestion ? `<div class="tab" data-onglet="badges" onclick="setPtOnglet('badges')">🎫 Badges</div>
+      <div class="tab" data-onglet="numeros" onclick="setPtOnglet('numeros')">🔢 Numéros</div>
       <div class="tab" data-onglet="appareils" onclick="setPtOnglet('appareils')">🪪 Appareils</div>
       <div class="tab" data-onglet="reglages" onclick="setPtOnglet('reglages')">⚙ Réglages</div>` : ''}
     </div>
@@ -27,9 +29,10 @@ async function pagePointage() {
 }
 
 function setPtOnglet(nom) {
+  if (typeof ptArreterCamera === 'function') ptArreterCamera();
   _ptOnglet = nom;
   $$('#pt-tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.onglet === nom));
-  ({ jour: ptJour, mois: ptMois, numeros: ptNumeros, appareils: ptAppareils, reglages: ptReglages })[nom]();
+  ({ jour: ptJour, mois: ptMois, scan: ptScan, badges: ptBadges, numeros: ptNumeros, appareils: ptAppareils, reglages: ptReglages })[nom]();
 }
 
 /* ---------- Journée ---------- */
@@ -333,7 +336,7 @@ async function ptAppareils() {
         <tbody>${passages.length ? passages.map(p => `<tr>
           <td class="mono">${esc(p.horodatage.slice(11, 19))}</td><td class="mono">${esc(p.source === 'manuel' ? '—' : p.code)}</td>
           <td>${p.personne ? esc(p.personne) : '<span class="badge bdg-warn">Numéro inconnu</span>'}</td>
-          <td>${p.source === 'manuel' ? `Saisie manuelle <span class="text-muted" style="font-size:11px">(${esc(p.motif || '')})</span>` : esc(p.appareil || '—')}</td></tr>`).join('')
+          <td>${p.source === 'manuel' ? `Saisie manuelle <span class="text-muted" style="font-size:11px">(${esc(p.motif || '')})</span>` : esc(p.source === 'qr' ? 'Badge QR' : (p.appareil || '—'))}</td></tr>`).join('')
           : `<tr><td colspan="4">${emptyHtml('🧾', "Aucun passage aujourd'hui")}</td></tr>`}</tbody></table></div>
     </div>`;
 }
@@ -413,3 +416,99 @@ async function ptReglages() {
 
 Object.assign(window, { ptExporterMois, pagePointage, setPtOnglet, ptCharger, ptCloturer, ptModalManuel, ptCodesAuto, ptEnregistrerCode,
   ptModalAppareil, ptBasculerAppareil, ptNouvelleCle, ptSupprimerAppareil });
+
+
+/* ---------- Scan de badges QR (téléphone, tablette ou douchette USB) ---------- */
+let _scanFlux = null, _scanBoucle = null, _scanDernier = { c: '', t: 0 };
+
+function ptArreterCamera() {
+  clearInterval(_scanBoucle); _scanBoucle = null;
+  if (_scanFlux) { _scanFlux.getTracks().forEach(t => t.stop()); _scanFlux = null; }
+}
+
+async function ptScan() {
+  $('#pt-corps').innerHTML = `
+    <div class="card">
+      <div class="card-header"><span class="card-title">📷 Scanner un badge</span></div>
+      <div class="alert alert-info" style="font-size:12px;margin:0 16px 10px">À l'entrée de l'école, présentez le badge devant la caméra
+        de ce téléphone ou de cette tablette. Une douchette USB fonctionne aussi : cliquez dans la case ci-dessous puis scannez.</div>
+      <div style="padding:0 16px 16px">
+        <div id="scan-resultat" style="min-height:64px;margin-bottom:12px"></div>
+        <video id="scan-video" playsinline muted style="width:100%;max-width:420px;border-radius:12px;background:#000;display:none"></video>
+        <div style="margin:10px 0"><button class="btn btn-primary" id="scan-cam" onclick="ptDemarrerCamera()">📷 Activer la caméra</button></div>
+        <div class="fg"><label>Douchette ou saisie du contenu du QR</label>
+          <input id="scan-saisie" autocomplete="off" placeholder="Scannez ici (MEC:…)" onkeydown="if(event.key==='Enter'){ptEnvoyerScan(this.value);this.value=''}"></div>
+      </div>
+    </div>`;
+  $('#scan-saisie').focus();
+}
+
+async function ptDemarrerCamera() {
+  if (!('BarcodeDetector' in window)) {
+    return toast('Ce navigateur ne lit pas les QR codes : utilisez Chrome sur Android, ou une douchette USB.', 'error');
+  }
+  try {
+    _scanFlux = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  } catch (e) { return toast('Caméra refusée ou indisponible', 'error'); }
+  const video = $('#scan-video');
+  video.srcObject = _scanFlux; video.style.display = 'block'; await video.play();
+  const detecteur = new BarcodeDetector({ formats: ['qr_code'] });
+  _scanBoucle = setInterval(async () => {
+    if (!$('#scan-video')) return ptArreterCamera();
+    try {
+      const codes = await detecteur.detect(video);
+      if (codes.length) ptEnvoyerScan(codes[0].rawValue);
+    } catch (e) { /* image pas prête */ }
+  }, 400);
+}
+
+async function ptEnvoyerScan(contenu) {
+  contenu = (contenu || '').trim();
+  if (!contenu) return;
+  const maintenant = Date.now();
+  if (contenu === _scanDernier.c && maintenant - _scanDernier.t < 4000) return; // même badge encore dans le champ
+  _scanDernier = { c: contenu, t: maintenant };
+  const zone = $('#scan-resultat');
+  try {
+    const r = await apiPointageScan(contenu);
+    zone.innerHTML = `<div class="alert ${r.deja_scanne ? 'alert-info' : 'alert-ok'}" style="font-size:16px">
+      ${r.deja_scanne ? 'Déjà scanné à ' : '✅ Enregistré à '}<b>${esc(r.heure)}</b><br>
+      <b>${esc(r.nom)}</b> <span class="text-muted">${esc(r.detail || '')}</span></div>`;
+  } catch (e) {
+    zone.innerHTML = `<div class="alert alert-danger" style="font-size:16px">❌ ${esc(e.message || 'Badge refusé')}</div>`;
+  }
+}
+
+/* ---------- Badges imprimables ---------- */
+async function ptBadges() {
+  ptArreterCamera();
+  $('#pt-corps').innerHTML = `
+    <div class="card">
+      <div class="card-header"><span class="card-title">🎫 Badges QR à imprimer</span></div>
+      <div class="alert alert-info" style="font-size:12px;margin:0 16px 10px">Seules les personnes qui ont un numéro (onglet Numéros) ont un badge.
+        Imprimez, découpez et plastifiez. Le QR est signé : un badge ne peut pas être fabriqué en devinant un numéro.</div>
+      <div class="filters">
+        <div class="fg"><label>Qui ?</label><select id="bd-type"><option value="eleve">Élèves</option><option value="personnel">Enseignants et personnel</option></select></div>
+        <div class="fg"><label>Classe</label><input id="bd-classe" placeholder="Toutes (ex : CE2)"></div>
+        <button class="btn btn-primary btn-sm" onclick="ptImprimerBadges()">🖨 Générer et imprimer</button>
+      </div>
+    </div>`;
+}
+
+async function ptImprimerBadges() {
+  const type = $('#bd-type').value, classe = $('#bd-classe').value.trim();
+  const liste = await apiPointageBadges(type, classe);
+  if (!liste.length) return toast('Aucun badge : attribuez d\'abord des numéros', 'error');
+  let ecole = 'École';
+  try { ecole = (await apiGetSettings()).ecole_nom || ecole; } catch (e) { /* nom par défaut */ }
+  const cartes = liste.map(b => `<div class="b"><div class="e">${esc(ecole)}</div><div class="q">${b.svg}</div>
+    <div class="n">${esc(b.prenom || '')} ${esc(b.nom || '')}</div><div class="d">${esc(b.detail || '')} · N° ${esc(b.code)}</div></div>`).join('');
+  const w = window.open('', '_blank');
+  if (!w) return toast('Autorisez les fenêtres pour imprimer', 'error');
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>Badges</title><style>
+    body{font-family:Arial,sans-serif;margin:8mm}.g{display:flex;flex-wrap:wrap;gap:4mm}
+    .b{width:54mm;height:86mm;border:1px solid #333;border-radius:3mm;text-align:center;padding:3mm;box-sizing:border-box;page-break-inside:avoid}
+    .e{font-size:9pt;font-weight:bold}.q svg{width:42mm;height:42mm;margin:3mm 0}.n{font-size:11pt;font-weight:bold}.d{font-size:9pt;color:#444}
+    </style><div class="g">${cartes}</div><script>onload=()=>print()<\/script>`);
+  w.document.close();
+}
