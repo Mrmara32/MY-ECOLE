@@ -164,3 +164,44 @@ def test_relais_lit_les_exports_de_l_appareil(tmp_path):
         {'code': '43', 'horodatage': '2026-10-20 07:58:00'},
         {'code': '44', 'horodatage': '2026-10-20 08:03'},
     ]
+
+
+def test_rapport_du_jour_donne_de_quoi_prevenir_le_parent(client, entetes, creer_eleve):
+    jour = _hier()
+    appareil = _creer_appareil(client, entetes, nom='Prévenir')
+    r = client.post('/api/eleves', json={'nom': 'ParentRetard', 'prenom': 'Test', 'classe': 'CE1', 'sexe': 'F',
+                                         'mere_prenom': 'Aissatou', 'mere_nom': 'Camara', 'mere_telephone': '622 55 66 77'}, headers=entetes)
+    eleve = r.get_json()
+    client.put('/api/pointage/codes', json={'personne_type': 'eleve', 'personne_id': eleve['id'], 'code': '601'}, headers=entetes)
+    _envoyer(client, appareil['cle'], [('601', f'{jour} 09:30:00')])
+    ligne = next(e for e in client.get(f'/api/pointage/jour?date={jour}', headers=entetes).get_json()['eleves'] if e['id'] == eleve['id'])
+    assert ligne['statut'] == 'retard' and ligne['absence_type'] == 'retard'
+    assert ligne['contact']['lien'] == 'Mère' and ligne['parent_prevenu_le'] is None
+    client.post(f"/api/absences/{ligne['absence_id']}/prevenir", json={'canal': 'whatsapp'}, headers=entetes)
+    ligne = next(e for e in client.get(f'/api/pointage/jour?date={jour}', headers=entetes).get_json()['eleves'] if e['id'] == eleve['id'])
+    assert ligne['parent_prevenu_le']
+
+
+def test_rapport_mensuel(client, entetes, creer_eleve):
+    appareil = _creer_appareil(client, entetes, nom='Mensuel')
+    assidu = _eleve_avec_code(client, entetes, creer_eleve, 'MAssidu', '701')
+    absent = _eleve_avec_code(client, entetes, creer_eleve, 'MAbsent', '702')
+    r = client.post('/api/personnel', json={'nom': 'Mensuel', 'prenom': 'Prof', 'poste': 'Enseignant'}, headers=entetes)
+    pid = r.get_json()['id']
+    client.put('/api/pointage/codes', json={'personne_type': 'personnel', 'personne_id': pid, 'code': '703'}, headers=entetes)
+    # Mars 2025 : 3 jours de classe ; MAssidu présent les 3 jours dont 1 retard ; MAbsent présent 1 jour ; le prof 2 jours (8 h + 6 h)
+    _envoyer(client, appareil['cle'], [
+        ('701', '2025-03-03 07:50:00'), ('701', '2025-03-04 08:40:00'), ('701', '2025-03-05 07:55:00'),
+        ('702', '2025-03-03 07:58:00'),
+        ('703', '2025-03-03 07:30:00'), ('703', '2025-03-03 15:30:00'),
+        ('703', '2025-03-04 08:00:00'), ('703', '2025-03-04 14:00:00'),
+    ])
+    m = client.get('/api/pointage/mensuel?mois=2025-03', headers=entetes).get_json()
+    assert m['jours_classe'] == 3
+    par_id = {e['id']: e for e in m['eleves']}
+    assert (par_id[assidu['id']]['presents'], par_id[assidu['id']]['retards'], par_id[assidu['id']]['absents']) == (3, 1, 0)
+    assert par_id[assidu['id']]['taux_presence'] == 100
+    assert (par_id[absent['id']]['presents'], par_id[absent['id']]['absents']) == (1, 2)
+    prof = next(p for p in m['personnel'] if p['id'] == pid)
+    assert prof['presents'] == 2 and prof['heures_presence'] == 14.0
+    assert client.get('/api/pointage/mensuel?mois=n-importe-quoi', headers=entetes).status_code == 400

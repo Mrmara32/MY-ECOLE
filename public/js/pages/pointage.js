@@ -17,6 +17,7 @@ async function pagePointage() {
   $('#content').innerHTML = `
     <div class="tabs" id="pt-tabs">
       <div class="tab" data-onglet="jour" onclick="setPtOnglet('jour')">📅 Journée</div>
+      <div class="tab" data-onglet="mois" onclick="setPtOnglet('mois')">📊 Mois</div>
       ${gestion ? `<div class="tab" data-onglet="numeros" onclick="setPtOnglet('numeros')">🔢 Numéros</div>
       <div class="tab" data-onglet="appareils" onclick="setPtOnglet('appareils')">🪪 Appareils</div>
       <div class="tab" data-onglet="reglages" onclick="setPtOnglet('reglages')">⚙ Réglages</div>` : ''}
@@ -28,7 +29,7 @@ async function pagePointage() {
 function setPtOnglet(nom) {
   _ptOnglet = nom;
   $$('#pt-tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.onglet === nom));
-  ({ jour: ptJour, numeros: ptNumeros, appareils: ptAppareils, reglages: ptReglages })[nom]();
+  ({ jour: ptJour, mois: ptMois, numeros: ptNumeros, appareils: ptAppareils, reglages: ptReglages })[nom]();
 }
 
 /* ---------- Journée ---------- */
@@ -93,13 +94,20 @@ async function ptCharger(rechargerServeur = true) {
   const filtre = $('#pt-filtre').value;
   const eleves = r.eleves.filter(e => !filtre || e.statut === filtre);
   $('#pt-eleves').innerHTML = `<div class="tbl-wrap"><table>
-    <thead><tr><th>Élève</th><th>Classe</th><th>Arrivée</th><th>Départ</th><th>Statut</th></tr></thead>
+    <thead><tr><th>Élève</th><th>Classe</th><th>Arrivée</th><th>Départ</th><th>Statut</th><th>Parent</th></tr></thead>
     <tbody>${eleves.length ? eleves.map(e => `<tr>
       <td><strong>${esc(e.prenom)} ${esc(e.nom)}</strong><br><span class="text-muted" style="font-size:11px">${esc(e.matricule || '')}</span></td>
       <td>${esc(e.classe || '—')}</td>
       <td class="mono">${esc(e.arrivee || '—')}</td><td class="mono">${esc(e.depart || '—')}</td>
       <td>${ptBadge(e.statut)}${e.statut === 'absent' && e.justifie ? ' <span class="text-muted" style="font-size:11px">(justifiée)</span>' : ''}</td>
-    </tr>`).join('') : `<tr><td colspan="5">${emptyHtml('🪪', 'Aucun élève pour ce filtre')}</td></tr>`}</tbody></table></div>`;
+      <td>${e.absence_id && e.contact
+        ? `<button class="btn btn-outline btn-xs" title="${e.parent_prevenu_le ? 'Parent déjà prévenu' : 'Prévenir le parent'}" onclick="modalPrevenirParent('${escJs(e.absence_id)}')">${e.parent_prevenu_le ? '✅' : '📲'} Prévenir</button>`
+        : (e.absence_id ? '<span class="text-muted" style="font-size:11px">Pas de numéro</span>' : '')}</td>
+    </tr>`).join('') : `<tr><td colspan="6">${emptyHtml('🪪', 'Aucun élève pour ce filtre')}</td></tr>`}</tbody></table></div>`;
+  // « Prévenir » réutilise la fenêtre de la page Absences, qui lit cette liste.
+  _absAffichees = r.eleves.filter(e => e.absence_id).map(e => ({
+    id: e.absence_id, type: e.absence_type, date_abs: r.date, nom: e.nom, prenom: e.prenom, classe: e.classe,
+    duree: e.duree, motif: e.motif, contact: e.contact, parent_prevenu_le: e.parent_prevenu_le }));
 
   const pers = r.personnel.filter(p => !filtre || p.statut === filtre || (filtre === 'absent' && p.statut === 'absent_signale'));
   $('#pt-personnel').innerHTML = `<div class="tbl-wrap"><table>
@@ -150,6 +158,78 @@ async function ptModalManuel() {
       toast('Passage enregistré', 'success'); closeModal(); ptCharger(true);
     } catch (err) { toast(err.message, 'error'); }
   };
+}
+
+/* ---------- Mois : ponctualité et assiduité ---------- */
+let _ptMois = null;
+async function ptMois() {
+  const moisCourant = today().slice(0, 7);
+  $('#pt-corps').innerHTML = `
+    <div class="card">
+      <div class="card-header"><span class="card-title">📊 Ponctualité du mois</span>
+        <div class="card-actions"><button class="btn btn-outline btn-sm" onclick="ptExporterMois()">⬇ Télécharger (Excel/CSV)</button></div></div>
+      <div class="filters">
+        <div class="fg"><label>Mois</label><input type="month" id="pt-mois" value="${moisCourant}" max="${moisCourant}"></div>
+        <div class="fg"><label>Qui ?</label><select id="pt-mois-type"><option value="eleve">Élèves</option><option value="personnel">Enseignants et personnel</option></select></div>
+        <div class="fg" id="pt-mois-classe-wrap"><label>Classe</label><input id="pt-mois-classe" placeholder="Toutes (ex : CE2)"></div>
+      </div>
+      <div id="pt-mois-resume" class="text-muted" style="font-size:12px;margin:0 16px 8px"></div>
+      <div id="pt-mois-corps"></div>
+    </div>`;
+  $('#pt-mois').addEventListener('change', ptChargerMois);
+  $('#pt-mois-classe').addEventListener('change', ptChargerMois);
+  $('#pt-mois-type').addEventListener('change', ptDessinerMois);
+  ptChargerMois();
+}
+
+async function ptChargerMois() {
+  $('#pt-mois-corps').innerHTML = loadingHtml;
+  try {
+    const classe = $('#pt-mois-classe').value.trim();
+    _ptMois = await apiPointageMensuel(`mois=${$('#pt-mois').value}${classe ? '&classe=' + encodeURIComponent(classe) : ''}`);
+  } catch (e) { $('#pt-mois-corps').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`; return; }
+  ptDessinerMois();
+}
+
+function ptDessinerMois() {
+  if (!_ptMois) return;
+  const eleve = $('#pt-mois-type').value === 'eleve';
+  $('#pt-mois-classe-wrap').style.display = eleve ? '' : 'none';
+  const lignes = eleve ? _ptMois.eleves : _ptMois.personnel;
+  const jours = eleve ? _ptMois.jours_classe : _ptMois.jours_service;
+  $('#pt-mois-resume').textContent = jours
+    ? `${jours} jour(s) ${eleve ? 'de classe' : 'de service'} ce mois-ci (jours où au moins une personne a pointé).`
+    : 'Aucun passage reçu ce mois-ci.';
+  const taux = t => t === null ? '—' : `<span class="${t >= 90 ? 'text-ok' : t >= 75 ? 'text-warn' : 'text-err'}">${t} %</span>`;
+  $('#pt-mois-corps').innerHTML = `<div class="tbl-wrap"><table>
+    <thead><tr><th>${eleve ? 'Élève' : 'Nom'}</th><th>${eleve ? 'Classe' : 'Poste'}</th><th class="text-right">Présences</th>
+      <th class="text-right">Retards</th><th class="text-right">Absences</th>${eleve ? '<th class="text-right">dont justifiées</th>' : '<th class="text-right">Heures de présence</th>'}
+      <th class="text-right">Taux</th></tr></thead>
+    <tbody>${lignes.length ? lignes.map(l => `<tr>
+      <td><strong>${esc(l.prenom)} ${esc(l.nom)}</strong></td><td>${esc((eleve ? l.classe : l.poste) || '—')}</td>
+      <td class="mono text-right">${l.presents}</td><td class="mono text-right">${l.retards}</td><td class="mono text-right">${l.absents}</td>
+      <td class="mono text-right">${eleve ? l.absences_justifiees : l.heures_presence}</td>
+      <td class="mono text-right">${taux(l.taux_presence)}</td></tr>`).join('')
+      : `<tr><td colspan="7">${emptyHtml('📊', 'Aucune donnée')}</td></tr>`}</tbody></table></div>`;
+}
+
+function ptExporterMois() {
+  if (!_ptMois) return;
+  const eleve = $('#pt-mois-type').value === 'eleve';
+  const lignes = eleve ? _ptMois.eleves : _ptMois.personnel;
+  const entete = eleve ? ['Nom', 'Prénom', 'Classe', 'Matricule', 'Présences', 'Retards', 'Absences', 'Absences justifiées', 'Taux de présence (%)']
+                       : ['Nom', 'Prénom', 'Poste', 'Présences', 'Retards', 'Absences', 'Heures de présence', 'Taux de présence (%)'];
+  const cellule = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const corps = lignes.map(l => (eleve
+    ? [l.nom, l.prenom, l.classe, l.matricule, l.presents, l.retards, l.absents, l.absences_justifiees, l.taux_presence]
+    : [l.nom, l.prenom, l.poste, l.presents, l.retards, l.absents, l.heures_presence, l.taux_presence]).map(cellule).join(';'));
+  // BOM + point-virgule : s'ouvre correctement dans Excel en français (accents compris).
+  const blob = new Blob(['﻿' + [entete.map(cellule).join(';'), ...corps].join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const lien = document.createElement('a');
+  lien.href = URL.createObjectURL(blob);
+  lien.download = `pointage-${_ptMois.mois}-${eleve ? 'eleves' : 'personnel'}.csv`;
+  document.body.appendChild(lien); lien.click(); lien.remove();
+  setTimeout(() => URL.revokeObjectURL(lien.href), 1000);
 }
 
 /* ---------- Numéros ---------- */
@@ -331,5 +411,5 @@ async function ptReglages() {
   };
 }
 
-Object.assign(window, { pagePointage, setPtOnglet, ptCharger, ptCloturer, ptModalManuel, ptCodesAuto, ptEnregistrerCode,
+Object.assign(window, { ptExporterMois, pagePointage, setPtOnglet, ptCharger, ptCloturer, ptModalManuel, ptCodesAuto, ptEnregistrerCode,
   ptModalAppareil, ptBasculerAppareil, ptNouvelleCle, ptSupprimerAppareil });

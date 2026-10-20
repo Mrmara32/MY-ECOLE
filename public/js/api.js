@@ -216,6 +216,7 @@ const apiDeleteEdt = (id)      => apiFetch(`/emploi-du-temps/${id}`, { method: '
 /* ── Absences ── */
 const apiGetAbsences    = (q='')    => apiFetch('/absences'+(q?'?'+q:''));
 const apiPointageJour = (q='') => apiFetch('/pointage/jour'+(q?'?'+q:''));
+const apiPointageMensuel = (q='') => apiFetch('/pointage/mensuel'+(q?'?'+q:''));
 const apiPointagePassages = (q='') => apiFetch('/pointage/passages'+(q?'?'+q:''));
 const apiPointageAppareils = () => apiFetch('/pointage/appareils');
 const apiPointageCreerAppareil = b => apiFetch('/pointage/appareils', { method: 'POST', body: b });
