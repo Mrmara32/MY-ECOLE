@@ -270,6 +270,7 @@ def create_app():
     from routes.logistique_routes import bp as logistique_bp
     from routes.permissions_routes import bp as permissions_bp
     from routes.systeme_routes import bp as systeme_bp
+    from routes.resultats_routes import bp as resultats_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
@@ -293,6 +294,7 @@ def create_app():
     app.register_blueprint(logistique_bp)
     app.register_blueprint(permissions_bp)
     app.register_blueprint(systeme_bp)
+    app.register_blueprint(resultats_bp)
 
     # Copie automatique quotidienne de la base (voir sauvegarde.py)
     sauvegarde.demarrer_sauvegardes_automatiques()

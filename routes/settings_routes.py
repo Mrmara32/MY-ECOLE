@@ -58,7 +58,7 @@ def update_settings():
     allowed = ['ecole_nom', 'ecole_adresse', 'ecole_telephone', 'ecole_email', 'annee_scolaire',
                'reseau_facebook', 'reseau_instagram', 'reseau_youtube', 'reseau_tiktok', 'reseau_whatsapp',
                'creneaux_horaires', 'mot_fondateur', 'video_presentation_youtube', 'services_vie_scolaire',
-               'etablissement_titre', 'etablissement_texte', 'cycles_detail', 'carte_latitude', 'carte_longitude']
+               'etablissement_titre', 'etablissement_texte', 'cycles_detail', 'carte_latitude', 'carte_longitude', 'seuil_passage']
     for k in allowed:
         if k in body:
             db.execute("INSERT OR REPLACE INTO settings (ecole_id, cle, valeur) VALUES (?,?,?)", (g.user['ecole_id'], k, body[k]))
