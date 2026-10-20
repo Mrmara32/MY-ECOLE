@@ -34,6 +34,7 @@ MODULES_PERMISSIONS = [
     ('absences', "Absences"),
     ('discipline', "Discipline"),
     ('bibliotheque', "Bibliothèque"),
+    ('examens', "Examens & concours"),
     ('emploi_du_temps', "Emploi du temps"),
     ('revision', "Cours de révision"),
     ('candidatures', "Candidatures"),

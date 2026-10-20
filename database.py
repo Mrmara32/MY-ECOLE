@@ -428,6 +428,42 @@ CREATE TABLE IF NOT EXISTS prets_livres (
 CREATE INDEX IF NOT EXISTS idx_prets_ecole ON prets_livres(ecole_id, date_retour, date_retour_prevue);
 CREATE INDEX IF NOT EXISTS idx_prets_emprunteur ON prets_livres(ecole_id, emprunteur_id);
 
+-- Examens et concours (voir routes/examens_routes.py) : sessions, candidats (élèves ou externes), résultats.
+CREATE TABLE IF NOT EXISTS examens (
+  ecole_id       INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id             TEXT PRIMARY KEY,
+  nom            TEXT NOT NULL,
+  type           TEXT NOT NULL CHECK(type IN ('examen_national','composition','examen_blanc','concours_entree')),
+  annee_scolaire TEXT,
+  classe         TEXT,
+  date_debut     TEXT NOT NULL,
+  date_fin       TEXT,
+  lieu           TEXT,
+  seuil_admission REAL NOT NULL DEFAULT 10,
+  places         INTEGER,
+  cloture        INTEGER NOT NULL DEFAULT 0,
+  created_at     TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_examens_ecole ON examens(ecole_id, date_debut);
+CREATE TABLE IF NOT EXISTS examen_candidats (
+  ecole_id      INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id            TEXT PRIMARY KEY,
+  examen_id     TEXT NOT NULL REFERENCES examens(id) ON DELETE CASCADE,
+  eleve_id      TEXT REFERENCES eleves(id) ON DELETE SET NULL,
+  nom           TEXT NOT NULL,
+  prenom        TEXT NOT NULL,
+  date_naissance TEXT,
+  telephone     TEXT,
+  numero        TEXT NOT NULL,
+  statut        TEXT NOT NULL DEFAULT 'inscrit' CHECK(statut IN ('inscrit','admis','ajourne','absent')),
+  moyenne       REAL,
+  mention       TEXT,
+  observations  TEXT,
+  created_at    TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(examen_id, numero)
+);
+CREATE INDEX IF NOT EXISTS idx_candidats_examen ON examen_candidats(ecole_id, examen_id);
+
 -- Échecs de connexion (blocage temporaire anti force brute, voir securite.py).
 CREATE TABLE IF NOT EXISTS echecs_connexion (
   cle          TEXT PRIMARY KEY,
