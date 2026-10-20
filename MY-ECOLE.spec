@@ -34,6 +34,7 @@ bloc_analyse = Analysis(
         'routes.parent_routes', 'routes.ecoles_routes', 'routes.licence_routes',
         'routes.fournisseurs_routes', 'routes.logistique_routes', 'routes.permissions_routes',
         'routes.systeme_routes', 'routes.resultats_routes', 'bulletins', 'routes.import_eleves_routes', 'import_eleves',
+        'routes.pointage_routes',
         'permissions', 'offline_sync', 'licence', 'email_service', 'sauvegarde', 'releve_bancaire', 'contact_parent',
         # Vérification des licences par clé publique (licence.py).
         'cryptography.hazmat.primitives.asymmetric.ed25519',

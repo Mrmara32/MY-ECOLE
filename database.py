@@ -431,6 +431,49 @@ CREATE TABLE IF NOT EXISTS absences_personnel (
   created_at   TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Pointage biométrique / par badge (élèves, enseignants, personnel administratif).
+-- L'application ne garde JAMAIS d'empreinte ni de visage : ils restent dans l'appareil,
+-- qui n'envoie qu'un numéro d'identifiant et une heure de passage.
+CREATE TABLE IF NOT EXISTS appareils_pointage (
+  ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id                TEXT PRIMARY KEY,
+  nom               TEXT NOT NULL,
+  numero_serie      TEXT,
+  cle_hash          TEXT,
+  actif             INTEGER DEFAULT 1,
+  derniere_activite TEXT,
+  created_at        TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_appareils_serie
+  ON appareils_pointage(numero_serie) WHERE numero_serie IS NOT NULL AND numero_serie <> '';
+
+CREATE TABLE IF NOT EXISTS codes_pointage (
+  ecole_id      INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  code          TEXT NOT NULL,
+  personne_type TEXT NOT NULL CHECK(personne_type IN ('eleve','personnel')),
+  personne_id   TEXT NOT NULL,
+  PRIMARY KEY (ecole_id, code)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_codes_pointage_personne
+  ON codes_pointage(ecole_id, personne_type, personne_id);
+
+CREATE TABLE IF NOT EXISTS pointages (
+  ecole_id      INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id            TEXT PRIMARY KEY,
+  appareil_id   TEXT,
+  code          TEXT NOT NULL,
+  horodatage    TEXT NOT NULL,
+  source        TEXT NOT NULL DEFAULT 'appareil',
+  personne_type TEXT,
+  personne_id   TEXT,
+  saisi_par     TEXT,
+  motif         TEXT,
+  created_at    TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pointages_doublon
+  ON pointages(ecole_id, COALESCE(appareil_id, ''), code, horodatage);
+CREATE INDEX IF NOT EXISTS idx_pointages_ecole_date ON pointages(ecole_id, horodatage);
+
 CREATE TABLE IF NOT EXISTS fournisseurs (
   ecole_id      INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id            TEXT PRIMARY KEY,

@@ -1,0 +1,27 @@
+RELAIS DE POINTAGE MY-ECOLE
+===========================
+
+À quoi ça sert ?
+Si votre appareil de pointage ne peut pas envoyer lui-même ses passages sur Internet
+(ou seulement en HTTP non sécurisé), ce petit programme le fait à sa place depuis un
+ordinateur de l'école.
+
+Installation (une seule fois)
+1. Installez Python 3 sur l'ordinateur (python.org).
+2. Pour lire un appareil ZKTeco sur le réseau : ouvrez une invite de commande et tapez
+       pip install pyzk
+3. Dans MY-ECOLE : Pointage -> Appareils -> Ajouter un appareil. Notez la CLÉ affichée.
+
+Utilisation
+- Appareil sur le réseau de l'école (adresse IP visible dans son menu Communication) :
+      python relais_pointage.py --site https://my-ecole.onrender.com --cle VOTRE_CLE --appareil 192.168.1.201
+- Fichier exporté sur clé USB (.dat, .csv, .txt) :
+      python relais_pointage.py --site https://my-ecole.onrender.com --cle VOTRE_CLE --fichier export.dat
+- Pour vérifier avant d'envoyer, ajoutez --essai.
+
+Automatiser (Windows) : planificateur de tâches -> nouvelle tâche toutes les 5 minutes,
+exécutant la commande ci-dessus. Le site ignore les passages déjà reçus : aucun risque
+de doublon.
+
+Important : le numéro enregistré dans l'appareil pour chaque personne doit être le même
+que celui saisi dans MY-ECOLE (onglet Pointage -> Numéros).

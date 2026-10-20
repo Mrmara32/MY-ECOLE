@@ -214,6 +214,19 @@ const apiDeleteEdt = (id)      => apiFetch(`/emploi-du-temps/${id}`, { method: '
 
 /* ── Absences ── */
 const apiGetAbsences    = (q='')    => apiFetch('/absences'+(q?'?'+q:''));
+const apiPointageJour = (q='') => apiFetch('/pointage/jour'+(q?'?'+q:''));
+const apiPointagePassages = (q='') => apiFetch('/pointage/passages'+(q?'?'+q:''));
+const apiPointageAppareils = () => apiFetch('/pointage/appareils');
+const apiPointageCreerAppareil = b => apiFetch('/pointage/appareils', { method: 'POST', body: b });
+const apiPointageModifierAppareil = (id, b) => apiFetch(`/pointage/appareils/${id}`, { method: 'PUT', body: b });
+const apiPointageSupprimerAppareil = id => apiFetch(`/pointage/appareils/${id}`, { method: 'DELETE' });
+const apiPointagePersonnes = q => apiFetch('/pointage/personnes?' + q);
+const apiPointageDefinirCode = b => apiFetch('/pointage/codes', { method: 'PUT', body: b });
+const apiPointageCodesAuto = type => apiFetch('/pointage/codes/auto', { method: 'POST', body: { type } });
+const apiPointageParametres = () => apiFetch('/pointage/parametres');
+const apiPointageSauverParametres = b => apiFetch('/pointage/parametres', { method: 'PUT', body: b });
+const apiPointageManuel = b => apiFetch('/pointage/manuel', { method: 'POST', body: b });
+const apiPointageCloture = b => apiFetch('/pointage/cloture', { method: 'POST', body: b });
 const apiPrevenirParentAbsence = (id, canal) => apiFetch(`/absences/${id}/prevenir`, { method: 'POST', body: { canal } });
 const apiCreateAbsence  = (b)       => apiFetch('/absences', {
   method: 'POST', body: b,
