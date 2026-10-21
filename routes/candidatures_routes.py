@@ -18,6 +18,10 @@ def soumettre_candidature():
     Le candidat choisit dès maintenant son identifiant et mot de passe : si sa candidature
     est acceptée, son compte n'attendra plus qu'une confirmation par e-mail pour être actif."""
     body = request.get_json(silent=True) or {}
+    import conditions
+    refus = conditions.acceptation_manquante(body)
+    if refus:
+        return refus
     nom, prenom = body.get('nom'), body.get('prenom')
     email = (body.get('email') or '').strip()
     username_souhaite = (body.get('username_souhaite') or '').strip()
@@ -34,6 +38,7 @@ def soumettre_candidature():
     if isinstance(matieres, list):
         matieres = ', '.join(matieres)
     ecole_id = ecole_id_depuis_code(body.get('code_ecole') or request.args.get('ecole'))
+    conditions.journaliser(ecole_id, f"{prenom} {nom}", 'candidature enseignant')
 
     if db.execute("SELECT 1 FROM users WHERE ecole_id=? AND username=?", (ecole_id, username_souhaite)).fetchone():
         return jsonify({'error': "Cet identifiant est déjà pris — choisissez-en un autre"}), 409

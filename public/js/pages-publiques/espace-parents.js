@@ -56,6 +56,7 @@ document.getElementById('inscription-form').addEventListener('submit', async e =
       email: document.getElementById('i-email').value.trim(),
       username: document.getElementById('i-user').value.trim(),
       password: document.getElementById('i-pass').value,
+      accepte_conditions: document.getElementById('i-cgu').checked,
     };
     if (CODE_ECOLE) body.code_ecole = CODE_ECOLE;
     const r = await fetch(API + '/parent/inscription', {

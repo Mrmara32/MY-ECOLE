@@ -274,6 +274,11 @@ def create_app():
         return send_from_directory(PUBLIC_DIR, 'preinscription.html')
 
     # ── Politique de protection des données personnelles (publique) ──
+    @app.route('/conditions.html')
+    @app.route('/conditions')
+    def serve_conditions():
+        return send_from_directory(PUBLIC_DIR, 'conditions.html')
+
     @app.route('/confidentialite.html')
     @app.route('/confidentialite')
     def serve_confidentialite():
@@ -329,6 +334,7 @@ def create_app():
     from routes.parent_routes import bp as parent_bp
     from routes.ecoles_routes import bp as ecoles_bp
     from routes.licence_routes import bp as licence_bp
+    from routes.aide_routes import bp as aide_bp
     from routes.fournisseurs_routes import bp as fournisseurs_bp
     from routes.logistique_routes import bp as logistique_bp
     from routes.permissions_routes import bp as permissions_bp
@@ -362,6 +368,7 @@ def create_app():
     app.register_blueprint(parent_bp)
     app.register_blueprint(ecoles_bp)
     app.register_blueprint(licence_bp)
+    app.register_blueprint(aide_bp)
     app.register_blueprint(fournisseurs_bp)
     app.register_blueprint(logistique_bp)
     app.register_blueprint(permissions_bp)

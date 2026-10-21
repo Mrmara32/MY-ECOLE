@@ -16,6 +16,10 @@ def inscription_parent():
     n'est normalement connu que des familles, via les documents remis par l'école) ;
     la confirmation par e-mail apporte une seconde vérification avant activation."""
     body = request.get_json(silent=True) or {}
+    import conditions
+    refus = conditions.acceptation_manquante(body)
+    if refus:
+        return refus
     nom_complet = (body.get('nom_complet') or '').strip()
     username = (body.get('username') or '').strip()
     password = body.get('password') or ''
@@ -56,6 +60,7 @@ def inscription_parent():
     code_ecole_email = nom_ecole_row['code'] if nom_ecole_row else None
     email_envoye = envoyer_confirmation_parent(email, nom_complet, nom_ecole, code_ecole_email, jeton)
     log_action(None, 'inscription_parent', 'utilisateur', str(user_id), {'nom': nom_complet, 'enfant': f"{eleve['prenom']} {eleve['nom']}"})
+    conditions.journaliser(ecole_id, nom_complet, 'inscription parent', user_id)
 
     return jsonify({
         'ok': True,

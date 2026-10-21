@@ -33,6 +33,7 @@ document.getElementById('f-cand').addEventListener('submit', async (e) => {
     email: fd.get('email'), cycle: cyclesChoisis.join(', '), disponibilites: fd.get('disponibilites'),
     message: fd.get('message'), matieres,
     username_souhaite: fd.get('username_souhaite'), password: fd.get('password'),
+    accepte_conditions: !!fd.get('accepte_conditions'),
   };
   if (CODE_ECOLE) body.code_ecole = CODE_ECOLE;
   try {

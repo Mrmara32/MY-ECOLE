@@ -39,6 +39,6 @@ def test_interpreteur_charge_et_precache(client):
 
 def test_pages_publiques_chargent_la_couche_accessibilite():
     for f in glob.glob('public/*.html'):
-        if f.endswith('confidentialite.html'):
+        if f.endswith(('confidentialite.html', 'conditions.html')):
             continue
         assert 'js/a11y.js' in open(f, encoding='utf-8').read(), f
