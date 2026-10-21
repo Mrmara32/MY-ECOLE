@@ -142,6 +142,7 @@ const api2faStatut   = ()     => apiFetch('/auth/2fa');
 const api2faPreparer = ()     => apiFetch('/auth/2fa/preparer', { method: 'POST' });
 const api2faActiver  = (code) => apiFetch('/auth/2fa/activer', { method: 'POST', body: { code } });
 const api2faDesactiver = (password, code) => apiFetch('/auth/2fa/desactiver', { method: 'POST', body: { password, code } });
+const apiRevoquerSessions = (id) => apiFetch(`/users/${id}/revoquer-sessions`, { method: 'POST' });
 const apiReset2fa    = (id)   => apiFetch(`/users/${id}/reset-2fa`, { method: 'POST' });
 const apiChangePwd   = (o,n)  => apiFetch('/auth/change-password', { method: 'POST', body: { oldPassword: o, newPassword: n } });
 

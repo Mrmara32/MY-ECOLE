@@ -275,6 +275,12 @@ function logout() {
   if (!confirm('Se déconnecter ?')) return;
   authLogout();
 }
+async function logoutPartout() {
+  if (!confirm('Déconnecter tous vos appareils (téléphone, autres ordinateurs…) ?')) return;
+  try { await apiFetch('/auth/logout-all', { method: 'POST' }); } catch (e) {}
+  authLogout();
+}
+window.logoutPartout = logoutPartout;
 window.logout = logout;
 
 /* ── Modal mot de passe ── */

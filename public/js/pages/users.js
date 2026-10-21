@@ -20,6 +20,7 @@ async function pageUsers() {
               ${u.role==='parent'?`<button class="btn btn-outline btn-xs" onclick="modalEnfantsParent(${u.id}, '${escJs(u.full_name)}')" title="Gérer les enfants liés">👨‍👩‍👧</button>`:''}
               <button class="btn btn-outline btn-xs" onclick="modalResetPwd(${u.id}, '${escJs(u.username)}')">🔑</button>
               <button class="btn btn-outline btn-xs" title="Retirer la double authentification (téléphone perdu)" onclick="reset2fa(${u.id}, '${escJs(u.username)}')">🛡️</button>
+              <button class="btn btn-outline btn-xs" title="Déconnecter cet utilisateur de tous ses appareils" onclick="revoquerSessions(${u.id}, '${escJs(u.username)}')">🔌</button>
               <button class="btn btn-danger btn-xs" onclick="deleteUser(${u.id})">🗑</button>
             </div></td>
           </tr>`).join('') : `<tr><td colspan="8">${emptyHtml('👥','Aucun utilisateur')}</td></tr>`;
@@ -181,6 +182,13 @@ async function reset2fa(id, username) {
   catch (err) { toast(err.message, 'error'); }
 }
 window.reset2fa = reset2fa;
+
+async function revoquerSessions(id, username) {
+  if (!confirm(`Déconnecter « ${username} » de tous ses appareils ?`)) return;
+  try { await apiRevoquerSessions(id); toast('Sessions fermées', 'success'); }
+  catch (e) { toast(e.message, 'error'); }
+}
+window.revoquerSessions = revoquerSessions;
 window.deleteUser = deleteUser;
 
 async function modalEnfantsParent(userId, nomParent) {

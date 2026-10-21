@@ -281,7 +281,7 @@ def upload_photo(eleve_id):
     if not db.execute("SELECT id FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id'])).fetchone():
         return jsonify({'error': 'Élève introuvable'}), 404
 
-    fname = f"{secrets.token_hex(12)}{ext}"
+    fname = f"e{g.user['ecole_id']}_{secrets.token_hex(12)}{ext}"
     upload_dir = current_app.config['UPLOAD_DIR']
     file.save(os.path.join(upload_dir, fname))
 

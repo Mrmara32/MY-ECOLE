@@ -669,7 +669,7 @@ def upload_photo_personnel(p_id):
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ALLOWED_PHOTO_EXT:
         return jsonify({'error': 'Format non supporté'}), 400
-    fname = f"{secrets.token_hex(12)}{ext}"
+    fname = f"e{g.user['ecole_id']}_{secrets.token_hex(12)}{ext}"
     upload_dir = current_app.config['UPLOAD_DIR']
     file.save(os.path.join(upload_dir, fname))
     url = '/uploads/' + fname

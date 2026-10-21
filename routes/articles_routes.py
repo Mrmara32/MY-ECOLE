@@ -131,7 +131,7 @@ def upload_image_contenu():
     if ext not in ALLOWED_PHOTO:
         return jsonify({'error': 'Format non supporté (jpg, png, gif, webp)'}), 400
 
-    fname = f"{secrets.token_hex(12)}{ext}"
+    fname = f"e{g.user['ecole_id']}_{secrets.token_hex(12)}{ext}"
     upload_dir = current_app.config['UPLOAD_DIR']
     file.save(os.path.join(upload_dir, fname))
     return jsonify({'url': '/uploads/' + fname})
@@ -154,7 +154,7 @@ def upload_media(a_id):
     else:
         return jsonify({'error': 'Format non supporté (photos: jpg/png/gif/webp, vidéos: mp4/webm/mov/avi)'}), 400
 
-    fname = f"{secrets.token_hex(12)}{ext}"
+    fname = f"e{g.user['ecole_id']}_{secrets.token_hex(12)}{ext}"
     upload_dir = current_app.config['UPLOAD_DIR']
     file.save(os.path.join(upload_dir, fname))
     url = '/uploads/' + fname
