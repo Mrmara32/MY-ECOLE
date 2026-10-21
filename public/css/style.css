@@ -146,8 +146,8 @@ nav{flex:1;padding:10px 8px;display:flex;flex-direction:column;gap:2px}
   font-size:14px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap}
 .btn-primary{background:var(--c-primary);color:#fff}
 .btn-primary:hover{background:var(--c-primary-d)}
-.btn-accent{background:var(--c-accent);color:#fff}
-.btn-accent:hover{background:var(--c-accent-d)}
+.btn-accent{background:var(--c-accent);color:#1F2937}
+.btn-accent:hover{background:var(--c-accent-d);color:#fff}
 .btn-ok{background:var(--c-ok);color:#fff}
 .btn-ok:hover{background:#047857}
 .btn-danger{background:var(--c-err);color:#fff}
@@ -309,7 +309,7 @@ tr:hover td{background:var(--g0)}
    AVATAR / PHOTO
 ============================================================ */
 .avatar{width:36px;height:36px;border-radius:50%;background:var(--c-accent);
-  color:#fff;display:flex;align-items:center;justify-content:center;
+  color:#1F2937;display:flex;align-items:center;justify-content:center;
   font-weight:700;font-size:15px;flex-shrink:0}
 .photo-preview{width:80px;height:80px;border-radius:var(--r);object-fit:cover;
   border:2px solid var(--g2)}
