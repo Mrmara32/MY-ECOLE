@@ -25,7 +25,7 @@ const FICHIERS_A_PRECACHER = [
   '/js/pages/cantine.js', '/js/pages/comptabilite.js', '/js/pages/fournisseurs.js', '/js/pages/logistique.js',
   '/js/pages/revision.js', '/js/pages/paie.js', '/js/pages/candidatures.js', '/js/pages/reinscriptions.js',
   '/js/pages/communication.js', '/js/pages/classes.js', '/js/pages/salles.js', '/js/pages/journal.js',
-  '/js/pages/actualites.js', '/js/pages/eleveDuMois.js',
+  '/js/pages/actualites.js', '/js/pages/eleveDuMois.js', '/js/pages/aide.js',
 ];
 
 self.addEventListener('install', (event) => {

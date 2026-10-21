@@ -33,6 +33,7 @@ const PAGES = {
   users:           { icon:'👥', labelKey:'nav_users',         fn: pageUsers,           roles:['admin'] },
   journal:         { icon:'🗂️', labelKey:'nav_journal',     fn: pageJournal,         roles:['admin'] },
   settings:        { icon:'⚙️', labelKey:'nav_settings',          fn: pageSettings,        roles:['admin','directeur'] },
+  aide:            { icon:'❓', labelKey:'nav_aide',                 fn: pageAide,            roles:['admin','directeur','comptable','enseignant','secretaire','charge_communication','directeur_etudes','parent'] },
   ecoles:          { icon:'🏢', labelKey:'nav_ecoles',             fn: pageEcoles,          superAdminOnly:true },
 };
 
@@ -44,6 +45,7 @@ const NAV_GROUPS = [
   { labelKey: 'nav_section_vie_ecole', pages: ['communication','actualites','personnel'] },
   { labelKey: 'nav_section_administration', pages: ['users','journal','settings'] },
   { labelKey: 'nav_section_super_admin', pages: ['ecoles'] },
+  { labelKey: null, pages: ['aide'] },
 ];
 
 /* ── État ── */
@@ -201,6 +203,7 @@ async function startApp() {
     }
   } catch (_) {}
 
+  await exigerAcceptationConditions();
   buildNav();
   navigate('dashboard');
 }
@@ -425,6 +428,7 @@ function afficherEcranLicenceBloquee() {
   $('#licence-screen').style.display = 'flex';
   $('#login-screen').style.display = 'none';
   $('#app').style.display = 'none';
+  fetch('/api/aide/info').then(r => r.json()).then(d => { const e = d.editeur || {}; if (e.email && $('#licence-contact-mail')) $('#licence-contact-mail').innerHTML = ' ou ' + '<a href="mailto:' + esc(e.email) + '">' + esc(e.email) + '</a>'; }).catch(() => {});
   const form = $('#licence-form');
   if (form.dataset.bound) return;
   form.dataset.bound = '1';

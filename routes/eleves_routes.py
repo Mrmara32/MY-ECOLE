@@ -107,12 +107,17 @@ def preinscription_publique():
     préinscrire son enfant depuis le site vitrine de l'école. L'élève reste en
     statut 'preinscrit' tant que le comptable n'a pas validé le paiement."""
     body = request.get_json(silent=True) or {}
+    import conditions
+    refus = conditions.acceptation_manquante(body)
+    if refus:
+        return refus
     nom, prenom = body.get('nom'), body.get('prenom')
     if not nom or not prenom:
         return jsonify({'error': 'Nom et prénom requis'}), 400
 
     eid = gen_id('e')
     ecole_id = ecole_id_depuis_code(body.get('code_ecole') or request.args.get('ecole'))
+    conditions.journaliser(ecole_id, f"{prenom} {nom}", 'préinscription élève')
     champs_autorises = ['date_naissance', 'lieu_naissance', 'sexe', 'classe',
                          'pere_nom', 'pere_prenom', 'pere_telephone', 'pere_email',
                          'mere_nom', 'mere_prenom', 'mere_telephone', 'mere_email',

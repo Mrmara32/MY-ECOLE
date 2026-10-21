@@ -639,6 +639,14 @@ CREATE TABLE IF NOT EXISTS paiements_om_declares (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_om_declares_transaction ON paiements_om_declares(ecole_id, transaction_id);
 CREATE INDEX IF NOT EXISTS idx_om_declares_statut ON paiements_om_declares(ecole_id, statut, created_at);
 
+CREATE TABLE IF NOT EXISTS acceptations_conditions (
+  ecole_id    INTEGER NOT NULL DEFAULT 1,
+  user_id     INTEGER NOT NULL,
+  version     TEXT NOT NULL,
+  created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, version)
+);
+
 CREATE TABLE IF NOT EXISTS fournisseurs (
   ecole_id      INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id            TEXT PRIMARY KEY,

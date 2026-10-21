@@ -62,6 +62,10 @@ def inscription_ecole():
     admin_password = body.get('admin_password') or ''
     email_contact = (body.get('email_contact') or '').strip()
 
+    import conditions
+    refus = conditions.acceptation_manquante(body)
+    if refus:
+        return refus
     if not nom_ecole or not admin_full_name or not admin_username or not admin_password:
         return jsonify({'error': "Nom de l'école, nom de l'administrateur, identifiant et mot de passe sont requis"}), 400
     if erreur_mot_de_passe(admin_password):
@@ -103,6 +107,7 @@ def inscription_ecole():
 
     email_envoye = envoyer_confirmation_ecole(email_contact, nom_ecole, code, jeton, admin_username, admin_password)
     log_action(None, 'inscription_ecole', 'ecole', str(ecole_id), {'nom': nom_ecole, 'code': code})
+    conditions.journaliser(ecole_id, admin_full_name, 'inscription école')
     return jsonify({
         'ecole_id': ecole_id, 'code': code, 'nom': nom_ecole,
         'essai_jusquau': date_expiration,
