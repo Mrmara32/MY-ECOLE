@@ -12,7 +12,7 @@ async function loadEdt() {
   if (!_edtClasse) {
     $('#content').innerHTML = `
     <div class="card"><div class="card-header"><span class="card-title">📅 Emploi du temps</span>
-      <select id="edt-cls-sel" onchange="_edtClasse=this.value;loadEdt()">${CLASSES.map(c=>`<option value="${esc(c)}" ${c===_edtClasse?'selected':''}>${esc(c)}</option>`).join('')}</select>
+      <select id="edt-cls-sel" onchange="edtChoisirClasse(this.value)">${CLASSES.map(c=>`<option value="${esc(c)}" ${c===_edtClasse?'selected':''}>${esc(c)}</option>`).join('')}</select>
     </div><div class="card-body">${emptyHtml('📅','Choisissez une classe')}</div></div>`;
     return;
   }
@@ -54,7 +54,7 @@ function renderEdt() {
     <div class="card-header">
       <span class="card-title">📅 Emploi du temps — Classe <span class="badge bdg-primary">${esc(_edtClasse)}</span></span>
       <div class="card-actions">
-        <select id="edt-cls-sel" onchange="_edtClasse=this.value;loadEdt()">${CLASSES.map(c=>`<option value="${esc(c)}" ${c===_edtClasse?'selected':''}>${esc(c)}</option>`).join('')}</select>
+        <select id="edt-cls-sel" onchange="edtChoisirClasse(this.value)">${CLASSES.map(c=>`<option value="${esc(c)}" ${c===_edtClasse?'selected':''}>${esc(c)}</option>`).join('')}</select>
         ${['admin','directeur'].includes(currentUser.role) ? `<button class="btn btn-outline btn-sm" onclick="modalGererCreneaux()">🕐 Gérer les créneaux</button>` : ''}
       </div>
     </div>
@@ -153,3 +153,6 @@ async function delEdt(id) {
 }
 window.modalEdtAdd = modalEdtAdd;
 window.delEdt = delEdt;
+
+function edtChoisirClasse(v) { _edtClasse = v; loadEdt(); }
+window.edtChoisirClasse = edtChoisirClasse;

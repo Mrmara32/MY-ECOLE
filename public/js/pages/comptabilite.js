@@ -750,7 +750,7 @@ async function pageBalance(dateDebut, dateFin) {
       <div class="filters">
         <div class="fg"><label>Du</label><input type="date" id="f-baldeb" value="${dateDebut}"></div>
         <div class="fg"><label>Au</label><input type="date" id="f-balfin" value="${dateFin}"></div>
-        <button class="btn btn-outline btn-sm" style="align-self:flex-end" onclick="pageBalance($('#f-baldeb').value,$('#f-balfin').value)">🔍 Actualiser</button>
+        <button class="btn btn-outline btn-sm" style="align-self:flex-end" onclick="pageBalance(document.querySelector('#f-baldeb').value,document.querySelector('#f-balfin').value)">🔍 Actualiser</button>
       </div>
       <div class="alert alert-info">💡 Le <strong>solde initial</strong> reprend l'ensemble des opérations comptabilisées avant le ${fmtDate(dateDebut)} pour chaque catégorie (report à nouveau). Le <strong>solde final</strong> = solde initial + crédit (recettes) − débit (dépenses) de la période.</div>
       ${_synthesesCategoriesHtml(data.lignes)}

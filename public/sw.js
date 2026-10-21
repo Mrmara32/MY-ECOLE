@@ -14,7 +14,7 @@ const CACHE_NOM = 'my-ecole-shell-__VERSION__';
 
 const FICHIERS_A_PRECACHER = [
   '/', '/index.html', '/css/style.css?v=2',
-  '/js/i18n.js', '/js/api.js', '/js/offline.js', '/js/ui.js', '/js/app.js',
+  '/js/handlers.js', '/js/i18n.js', '/js/api.js', '/js/offline.js', '/js/ui.js', '/js/app.js',
   // Bibliothèques servies par l'application elle-même (et non plus par Internet) :
   // graphiques, exports PDF/PNG et QR codes fonctionnent aussi sans connexion.
   '/js/vendor/qrcode.min.js', '/js/vendor/chart.umd.min.js',

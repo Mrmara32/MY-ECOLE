@@ -20,6 +20,9 @@ const URL_JSPDF = `${window.location.origin}/js/vendor/jspdf.umd.min.js`;
    navigateur confirmé par test réel, qui rendait ces boutons inopérants. Une
    URL Blob crée un vrai document avec sa propre origine, sans cette limite. */
 function ouvrirDocumentImprimable(html) {
+  // Le document hérite de la politique de sécurité de l'application (pas de script en ligne) : on y charge
+  // le gestionnaire d'événements commun pour que les boutons « Imprimer » etc. fonctionnent.
+  html = String(html) + `<script src="${window.location.origin}/js/handlers.js"></script>`;
   const blob = new Blob([html], { type: 'text/html' });
   const url = URL.createObjectURL(blob);
   const win = window.open(url, '_blank');
