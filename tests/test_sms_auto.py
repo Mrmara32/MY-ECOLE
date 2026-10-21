@@ -86,3 +86,52 @@ def test_routes_absence_et_relance(client, entetes, creer_eleve, faux_orange):
     assert client.post(f'/api/sms/absence/inconnue', json={}, headers=entetes).status_code == 404
     assert client.post(f'/api/sms/relance/{e["id"]}', json={}, headers=entetes).status_code == 400  # aucun solde
     assert client.post(f'/api/sms/absence/{aid}').status_code == 401
+
+
+# ---------- smsmode ----------
+recus_sm = []
+
+
+class FauxSmsmode(BaseHTTPRequestHandler):
+    def do_POST(self):
+        corps = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        recus_sm.append({'chemin': self.path, 'cle': self.headers.get('X-Api-Key'), 'corps': corps})
+        if self.headers.get('X-Api-Key') != 'CLE':
+            self.send_response(401); self.end_headers(); self.wfile.write(b'{"message":"bad key"}'); return
+        self.send_response(201); self.end_headers()
+        self.wfile.write(b'{"messageId":"SM42"}')
+
+    def log_message(self, *a):
+        pass
+
+
+@pytest.fixture
+def faux_smsmode(monkeypatch):
+    recus_sm.clear()
+    srv = HTTPServer(('127.0.0.1', 0), FauxSmsmode)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    monkeypatch.setenv('SMSMODE_API_URL', f'http://127.0.0.1:{srv.server_port}')
+    monkeypatch.setenv('SMSMODE_EXPEDITEUR', 'ElMountaga')
+    monkeypatch.delenv('SMS_FOURNISSEUR', raising=False)
+    yield monkeypatch
+    srv.shutdown()
+
+
+def test_smsmode_envoi(faux_smsmode):
+    faux_smsmode.setenv('SMSMODE_API_KEY', 'CLE')
+    assert sms_service.fournisseur() == 'smsmode' and sms_service.actif()
+    assert sms_service.envoyer_sms('622 98 76 54', 'Bonjour « Fanta »') == 'SM42'
+    r = recus_sm[0]
+    assert r['chemin'] == '/sms/v1/messages' and r['cle'] == 'CLE'
+    assert r['corps'] == {'recipient': {'to': '224622987654'}, 'body': {'text': 'Bonjour "Fanta"'}, 'from': 'ElMountaga'}
+
+
+def test_smsmode_cle_refusee_et_choix(faux_smsmode):
+    faux_smsmode.setenv('SMSMODE_API_KEY', 'MAUVAISE')
+    with pytest.raises(RuntimeError, match='SMSMODE_API_KEY'):
+        sms_service.envoyer_sms('622987654', 'x')
+    faux_smsmode.setenv('SMS_FOURNISSEUR', 'orange')
+    assert sms_service.fournisseur() == 'orange'
+    faux_smsmode.delenv('SMSMODE_API_KEY')
+    faux_smsmode.setenv('SMS_FOURNISSEUR', 'smsmode')
+    assert sms_service.reglages_manquants() == ['SMSMODE_API_KEY']
