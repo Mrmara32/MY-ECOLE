@@ -81,7 +81,7 @@ img{display:block}
   display:flex;align-items:center;justify-content:space-between;gap:16px;flex-shrink:0}
 .topbar h1{font-size:20px;color:var(--g9);font-weight:600}
 .pg-sub{font-size:12px;color:var(--g5);margin-top:2px}
-.breadcrumb{font-size:11.5px;color:var(--g5);margin-bottom:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.breadcrumb{font-size:11.5px;color:var(--g5);margin-bottom:3px;display:flex;flex-direction:row;flex:0 0 auto;padding:0;align-items:center;gap:6px;flex-wrap:wrap}
 .breadcrumb a{color:var(--g5);text-decoration:none}
 .breadcrumb a:hover{color:var(--c-primary);text-decoration:underline}
 .breadcrumb-sep{color:var(--g4);opacity:.6}
@@ -484,3 +484,14 @@ tr:hover td{background:var(--g0)}
 .skip-link:focus{left:8px}
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:3px solid #2563EB;outline-offset:2px}
 @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+/* Mobile : boutons d'action lisibles, fil d'Ariane non écrasé, champs date dans leur carte */
+@media(max-width:640px){
+  .card-actions .btn,.card-actions select,.card-actions input{flex:1 1 calc(50% - 8px);min-width:0;white-space:normal;text-align:center;line-height:1.25;overflow-wrap:anywhere}
+  .stats-grid{grid-template-columns:repeat(2,1fr)!important}
+  .topbar>div:first-child{flex:1 1 100%;min-width:0}
+  .topbar>div:first-child>div{min-width:0;flex:1}
+  .breadcrumb{flex-wrap:wrap;row-gap:0}
+  .filters input,.filters select,.fg input,.fg select,.fg textarea{max-width:100%;min-width:0;box-sizing:border-box}
+  input[type=date],input[type=time],input[type=datetime-local]{min-width:0;width:100%;max-width:100%;box-sizing:border-box}
+}
