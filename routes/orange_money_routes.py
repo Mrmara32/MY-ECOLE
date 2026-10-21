@@ -285,6 +285,21 @@ def _appliquer_declaration(d, valideur):
     return numero, affectes
 
 
+def _confirmer_au_payeur(ecole_id, d, numero_recu):
+    """SMS de confirmation au numéro laissé par le payeur, si l'envoi SMS est configuré.
+    Un échec d'envoi ne change jamais l'enregistrement du paiement."""
+    import sms_service
+    if not sms_service.actif() or not sms_service.numero_international(d['telephone']):
+        return
+    eleve = db.execute("SELECT nom, prenom FROM eleves WHERE id=?", (d['eleve_id'],)).fetchone()
+    ecole = get_settings(ecole_id).get('ecole_nom') or 'Votre école'
+    try:
+        sms_service.envoyer_sms(d['telephone'], f"{ecole} : paiement Orange Money de {round(d['montant']):,} GNF".replace(',', ' ')
+                                + f" bien reçu pour {eleve['prenom']} {eleve['nom']}. Reçu N° {numero_recu}. Merci.")
+    except RuntimeError as e:
+        print(f"[orange-money] SMS de confirmation non envoyé : {e}")
+
+
 @bp.route('/declarations', methods=['POST'])
 @require_auth
 @require_role(*ROLES_DECLARER)
@@ -322,6 +337,8 @@ def declarer():
     db.commit()
     log_action(g.user, 'declaration_orange_money', 'paiement_om', did,
                {'eleve': f"{eleve['prenom']} {eleve['nom']}", 'montant': montant, 'transaction': transaction, **{k: resultat[k] for k in ('statut',)}})
+    if resultat.get('statut') == 'valide':
+        _confirmer_au_payeur(ecole_id, {'telephone': str(body.get('telephone') or ''), 'eleve_id': body.get('eleve_id'), 'montant': montant}, resultat['numero_recu'])
     return jsonify(resultat), 201
 
 
@@ -359,6 +376,8 @@ def valider_declaration(did):
     db.commit()
     log_action(g.user, 'validation_orange_money', 'paiement_om', did,
                {'montant': d['montant'], 'transaction': d['transaction_id'], 'numero_recu': numero, 'statut': statut})
+    if statut == 'valide':
+        _confirmer_au_payeur(g.user['ecole_id'], d, numero)
     return jsonify({'statut': statut, 'numero_recu': numero})
 
 

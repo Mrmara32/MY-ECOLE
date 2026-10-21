@@ -84,7 +84,8 @@ def test_parcours_complet_paiement_reussi(client, entetes, creer_eleve, creer_pa
     assert 'Paiement confirmé' in page.get_data(as_text=True)
     assert _reste(client, entetes, e['id']) == 100000
     liste = client.get('/api/orange-money/paiements', headers=entetes).get_json()
-    assert liste[0]['statut'] == 'reussi' and liste[0]['numero_recu'].startswith('REC-')
+    mien = next(x for x in liste if x['id'] == rid)  # (plusieurs paiements peuvent partager la même seconde)
+    assert mien['statut'] == 'reussi' and mien['numero_recu'].startswith('REC-')
 
 
 def test_paiement_echoue_et_montants_invalides(client, entetes, creer_eleve, creer_paiement, faux_om):
@@ -182,7 +183,7 @@ def test_public_paiement_api_redirige_vers_orange(client, entetes, creer_eleve, 
     assert client.get('/api/orange-money/public/config').get_json()['mode'] == 'api'
     r = client.post('/api/orange-money/public/payer', json={'nom': 'Diané', 'prenom': 'Aïssatou', 'matricule': mat, 'montant': 600000})
     assert r.status_code == 200 and r.get_json()['payment_url'] == 'https://pay.example/abc'
-    rid = client.get('/api/orange-money/paiements', headers=entetes).get_json()[0]['id']
+    rid = next(x['id'] for x in client.get('/api/orange-money/paiements', headers=entetes).get_json() if x['statut'] == 'en_attente')
     etat['statut'] = 'SUCCESS'  # Orange confirme : tout est automatique, sans aucune intervention
     assert client.post(f'/api/orange-money/notification?ref={rid}', json={'notif_token': 'NT1'}).status_code == 200
     assert _reste(client, entetes, e['id']) == 0
@@ -193,3 +194,30 @@ def test_public_page_servie_et_blocage_des_devinettes(client):
     for _ in range(45):
         r = client.post('/api/orange-money/public/verifier', json={'nom': 'a', 'prenom': 'b', 'matricule': 'ZZZ999'})
     assert r.status_code == 429
+    from database import db
+    db.execute("DELETE FROM echecs_connexion WHERE cle LIKE 'ip:payer:%'")  # ne pas bloquer les tests suivants
+    db.commit()
+
+
+def test_sms_de_confirmation_au_payeur_apres_validation(client, entetes, creer_eleve, creer_paiement, monkeypatch):
+    import sms_service
+    envoyes = []
+    monkeypatch.setenv('ORANGE_SMS_AUTH', 'Basic x'); monkeypatch.setenv('ORANGE_SMS_SENDER', '224622000000')
+    monkeypatch.setattr(sms_service, 'envoyer_sms', lambda tel, msg: envoyes.append((tel, msg)) or 'ok')
+    e, mat = _eleve_matricule(client, entetes, creer_eleve, creer_paiement)
+    client.post('/api/orange-money/public/payer', json={'nom': 'Diané', 'prenom': 'Aïssatou', 'matricule': mat, 'montant': 100000,
+                                                       'transaction_id': 'TX-SMS-0001', 'telephone': '622 11 22 33'})
+    assert envoyes == []  # rien tant que ce n'est pas validé
+    did = client.get('/api/orange-money/declarations?statut=a_valider', headers=entetes).get_json()[0]['id']
+    client.post(f'/api/orange-money/declarations/{did}/valider', headers=entetes)
+    assert len(envoyes) == 1 and envoyes[0][0] == '622 11 22 33' and 'REC-' in envoyes[0][1] and '100 000 GNF' in envoyes[0][1]
+
+
+def test_qr_de_l_ecole_visible_sans_connexion(client, entetes):
+    import io
+    import segno
+    buf = io.BytesIO(); segno.make('TEST').save(buf, kind='png', scale=4)
+    r = client.post('/api/orange-money/qr', data={'qr': (io.BytesIO(buf.getvalue()), 'qr.png')}, headers=entetes, content_type='multipart/form-data')
+    assert r.status_code == 200, r.get_json()
+    url = client.get('/api/orange-money/public/config').get_json()['qr_url']
+    assert url and client.get(url).status_code == 200  # la page publique doit pouvoir l'afficher
