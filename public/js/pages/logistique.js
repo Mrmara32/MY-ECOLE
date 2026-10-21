@@ -247,7 +247,7 @@ function modalCommande() {
       <datalist id="dl-produits">${_logProduits.map(p=>`<option value="${esc(p.nom)}">`).join('')}</datalist>
       <label>Articles</label>
       <div id="lignes-cmd">${_ligneCommandeHtml(0)}</div>
-      <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('lignes-cmd').insertAdjacentHTML('beforeend', _ligneCommandeHtml(_achatLignesCount++))">+ Ajouter une ligne</button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="ajouterLigneCommande()">+ Ajouter une ligne</button>
       <div class="fg"><label>Notes</label><textarea name="notes" rows="2"></textarea></div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline" onclick="closeModal()">Annuler</button>
@@ -572,3 +572,8 @@ window.modalItineraire = modalItineraire;
 window.delItineraire = delItineraire;
 window.modalEleveTransport = modalEleveTransport;
 window.retirerEleveTransport = retirerEleveTransport;
+
+function ajouterLigneCommande() {
+  document.getElementById('lignes-cmd').insertAdjacentHTML('beforeend', _ligneCommandeHtml(_achatLignesCount++));
+}
+window.ajouterLigneCommande = ajouterLigneCommande;

@@ -647,8 +647,9 @@ function omImprimerQr() {
     <h1 style="color:#ff7900">Payez la scolarité avec Orange Money</h1><h2>${esc(c.nom || '')}</h2>
     <img src="${esc(c.qr_url)}" style="width:360px"><p style="font-size:20px">${c.code ? 'Code marchand : <b>' + esc(c.code) + '</b>' : ''}</p>
     <p style="font-size:18px;white-space:pre-line">${esc(c.instructions || 'Orange Money → Paiement marchand → Scanner le code QR.\nGardez le SMS de confirmation et présentez-le à l\'école.')}</p>
-    <script>onload=()=>print()<\/script></body>`);
+    </body>`);
   w.document.close();
+  setTimeout(() => w.print(), 400);
 }
 window.modalOrangeMoney = modalOrangeMoney; window.omAfficher = omAfficher; window.omEnregistrer = omEnregistrer;
 window.omDecider = omDecider; window.omSauverConfig = omSauverConfig; window.omImprimerQr = omImprimerQr;

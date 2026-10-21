@@ -509,6 +509,7 @@ async function ptImprimerBadges() {
     body{font-family:Arial,sans-serif;margin:8mm}.g{display:flex;flex-wrap:wrap;gap:4mm}
     .b{width:54mm;height:86mm;border:1px solid #333;border-radius:3mm;text-align:center;padding:3mm;box-sizing:border-box;page-break-inside:avoid}
     .e{font-size:9pt;font-weight:bold}.q svg{width:42mm;height:42mm;margin:3mm 0}.n{font-size:11pt;font-weight:bold}.d{font-size:9pt;color:#444}
-    </style><div class="g">${cartes}</div><script>onload=()=>print()<\/script>`);
+    </style><div class="g">${cartes}</div>`);
   w.document.close();
+  setTimeout(() => w.print(), 400);
 }

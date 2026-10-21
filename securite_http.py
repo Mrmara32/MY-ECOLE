@@ -6,7 +6,7 @@ import os
 
 CSP = "; ".join([
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",           # l'interface utilise des gestionnaires onclick en ligne
+    "script-src 'self'",                           # aucun script en ligne : les onclick passent par js/handlers.js
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data: blob: https:",
