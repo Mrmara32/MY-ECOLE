@@ -95,6 +95,18 @@ def _lignes_excel(contenu):
         classeur.close()
 
 
+def lignes_brutes(contenu, extension):
+    """Toutes les lignes non vides du fichier (listes de cellules), sans interprétation.
+    Renvoie (lignes, message_erreur)."""
+    if extension == '.csv':
+        brutes = _lignes_csv(contenu)
+    elif extension == '.xlsx':
+        brutes = _lignes_excel(contenu)
+    else:
+        return None, "Format non pris en charge : enregistrez le relevé au format .xlsx ou .csv"
+    return [l for l in brutes if l and any(c is not None and str(c).strip() for c in l)], None
+
+
 def lire_releve(contenu, extension):
     """Renvoie (lignes, message_erreur). Chaque ligne :
     {'date': 'AAAA-MM-JJ', 'description': str, 'montant': float positif, 'type': 'entree'|'sortie'}.

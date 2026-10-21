@@ -501,3 +501,74 @@ def payer_public():
     log_action(_systeme(ecole_id), 'declaration_orange_money', 'paiement_om', did,
                {'eleve': f"{e['prenom']} {e['nom']}", 'montant': montant, 'transaction': transaction, 'origine': 'page publique'})
     return jsonify({'mode': 'qr', 'ok': True})
+
+
+# ───────────── Rapprochement avec le relevé Orange Money Marchand ─────────────
+@bp.route('/declarations/rapprocher', methods=['POST'])
+@require_auth
+@require_role(*ROLES_LIEN)
+def rapprocher():
+    """Compare les paiements « à valider » au relevé d'opérations téléchargé depuis Orange Money Marchand
+    (CSV ou Excel, n'importe quelle disposition de colonnes). Un paiement n'est « confirmé » que si son numéro
+    de transaction ET son montant figurent sur la MÊME ligne du relevé. Sans `appliquer=1`, rien n'est modifié."""
+    import os
+    from releve_bancaire import lignes_brutes, lire_montant
+    fichier = request.files.get('fichier')
+    if not fichier or not fichier.filename:
+        return jsonify({'error': 'Aucun fichier reçu'}), 400
+    contenu = fichier.read(5 * 1024 * 1024 + 1)
+    if len(contenu) > 5 * 1024 * 1024:
+        return jsonify({'error': 'Fichier trop volumineux (5 Mo maximum)'}), 413
+    lignes, erreur = lignes_brutes(contenu, os.path.splitext(fichier.filename)[1].lower())
+    if erreur:
+        return jsonify({'error': erreur}), 400
+    analysees = []
+    for ligne in lignes:
+        cellules = [_normaliser_transaction(c) for c in ligne if c is not None]
+        montants = set()
+        for c in ligne:
+            m = lire_montant(c)
+            if m is not None:
+                montants.add(round(abs(m)))
+        analysees.append((cellules, montants))
+
+    ecole_id = g.user['ecole_id']
+    attente = db.execute(
+        "SELECT d.id, d.montant, d.transaction_id, e.nom, e.prenom FROM paiements_om_declares d "
+        "JOIN eleves e ON e.id=d.eleve_id WHERE d.ecole_id=? AND d.statut='a_valider' ORDER BY d.created_at", (ecole_id,)).fetchall()
+    resultat = []
+    for d in attente:
+        etat, trouves = 'introuvable', []
+        for cellules, montants in analysees:
+            if any(c == d['transaction_id'] or (len(d['transaction_id']) >= 8 and d['transaction_id'] in c) for c in cellules):
+                if round(d['montant']) in montants:
+                    etat, trouves = 'confirme', []
+                    break
+                etat, trouves = 'montant_different', sorted(m for m in montants if m >= MONTANT_MIN)
+        resultat.append({'id': d['id'], 'eleve': f"{d['prenom']} {d['nom']}", 'montant': d['montant'],
+                         'transaction_id': d['transaction_id'], 'etat': etat, 'montants_releve': trouves})
+    valides = 0
+    if request.form.get('appliquer') == '1':
+        debut_ecriture_exclusive()
+        for r in resultat:
+            if r['etat'] != 'confirme':
+                continue
+            d = db.execute("SELECT * FROM paiements_om_declares WHERE id=? AND ecole_id=? AND statut='a_valider'", (r['id'], ecole_id)).fetchone()
+            if not d:
+                continue
+            numero, affectes = _appliquer_declaration(d, g.user)
+            statut = 'valide' if affectes else 'a_verifier'
+            db.execute("UPDATE paiements_om_declares SET statut=?, valide_par=?, valide_le=?, numero_recu=? WHERE id=?",
+                       (statut, g.user['id'], datetime.now().strftime('%Y-%m-%d %H:%M:%S'), numero, d['id']))
+            r['etat'], r['numero_recu'] = statut, numero
+            valides += 1
+        db.commit()
+        for r in resultat:
+            if r.get('numero_recu'):
+                log_action(g.user, 'validation_orange_money', 'paiement_om', r['id'],
+                           {'montant': r['montant'], 'transaction': r['transaction_id'], 'numero_recu': r['numero_recu'], 'via': 'relevé Orange'})
+                d = db.execute("SELECT * FROM paiements_om_declares WHERE id=?", (r['id'],)).fetchone()
+                if r['etat'] == 'valide':
+                    _confirmer_au_payeur(ecole_id, d, r['numero_recu'])
+    compte = {k: sum(1 for r in resultat if r['etat'] == k) for k in ('confirme', 'montant_different', 'introuvable', 'valide', 'a_verifier')}
+    return jsonify({'resultat': resultat, 'compte': compte, 'valides': valides})
