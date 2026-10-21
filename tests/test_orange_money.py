@@ -221,3 +221,27 @@ def test_qr_de_l_ecole_visible_sans_connexion(client, entetes):
     assert r.status_code == 200, r.get_json()
     url = client.get('/api/orange-money/public/config').get_json()['qr_url']
     assert url and client.get(url).status_code == 200  # la page publique doit pouvoir l'afficher
+
+
+def test_rapprochement_avec_le_releve_orange(client, entetes, creer_eleve, creer_paiement):
+    import io
+    e, mat = _eleve_matricule(client, entetes, creer_eleve, creer_paiement)
+    ident = {'nom': 'Diané', 'prenom': 'Aïssatou', 'matricule': mat}
+    for tx, m in (('RAPP-OK-0001', 100000), ('RAPP-MONTANT-02', 150000), ('RAPP-ABSENT-03', 50000)):
+        assert client.post('/api/orange-money/public/payer', json={**ident, 'montant': m, 'transaction_id': tx}).status_code == 200
+    csv = ("Date;Référence;Détail;Montant;Solde\n"
+           "21/10/2026;RAPP-OK-0001;Paiement marchand;100 000;900 000\n"
+           "21/10/2026;RAPP-MONTANT-02;Paiement marchand;120 000;1 020 000\n").encode('utf-8')
+
+    def envoyer(appliquer):
+        return client.post('/api/orange-money/declarations/rapprocher', headers=entetes, content_type='multipart/form-data',
+                           data={'fichier': (io.BytesIO(csv), 'releve.csv'), 'appliquer': '1' if appliquer else '0'})
+    apercu = envoyer(False).get_json()
+    etats = {x['transaction_id']: x['etat'] for x in apercu['resultat']}
+    assert etats['RAPP-OK-0001'] == 'confirme' and etats['RAPP-MONTANT-02'] == 'montant_different' and etats['RAPP-ABSENT-03'] == 'introuvable'
+    assert _reste(client, entetes, e['id']) == 600000  # l'aperçu ne modifie rien
+    r = envoyer(True).get_json()
+    assert r['valides'] == 1 and _reste(client, entetes, e['id']) == 500000  # seul le paiement confirmé est encaissé
+    restants = {x['transaction_id'] for x in client.get('/api/orange-money/declarations?statut=a_valider', headers=entetes).get_json()}
+    assert {'RAPP-MONTANT-02', 'RAPP-ABSENT-03'} <= restants
+    assert client.post('/api/orange-money/declarations/rapprocher', headers=entetes, data={}).status_code == 400

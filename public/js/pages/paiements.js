@@ -552,13 +552,38 @@ async function omValider() {
   let liste;
   try { liste = await apiFetch('/orange-money/declarations?statut=a_valider'); }
   catch (e) { $('#om-corps').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`; return; }
-  $('#om-corps').innerHTML = liste.length ? `<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Élève</th><th>Montant</th><th>N° transaction</th><th></th></tr></thead><tbody>
+  $('#om-corps').innerHTML = `<div class="alert alert-info" style="font-size:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span>Gagnez du temps : importez le relevé d'opérations téléchargé depuis Orange Money Marchand (Excel ou CSV). Un paiement est confirmé si son numéro de transaction <strong>et</strong> son montant figurent sur la même ligne.</span>
+      <label class="btn btn-outline btn-sm" style="cursor:pointer">📎 Rapprocher avec le relevé<input type="file" id="om-releve" accept=".csv,.xlsx" style="display:none"></label></div>
+    <div id="om-rapprochement"></div>` + (liste.length ? `<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Élève</th><th>Montant</th><th>N° transaction</th><th></th></tr></thead><tbody>
     ${liste.map(d => `<tr><td>${fmtDate(String(d.created_at).slice(0, 10))}</td><td>${esc(d.prenom)} ${esc(d.nom)}<br><span class="text-muted" style="font-size:11px">${esc(d.classe || '')}</span></td>
       <td class="mono">${fmtMoney(d.montant)}</td><td class="mono">${esc(d.transaction_id)}</td>
       <td><button class="btn btn-ok btn-xs" onclick="omDecider('${escJs(d.id)}','valider')">✔ Valider</button>
           <button class="btn btn-danger btn-xs" onclick="omDecider('${escJs(d.id)}','rejeter')">✖ Rejeter</button></td></tr>`).join('')}
-    </tbody></table></div>` : emptyHtml('✅', 'Aucun paiement en attente de validation');
+    </tbody></table></div>` : emptyHtml('✅', 'Aucun paiement en attente de validation'));
+  $('#om-releve').addEventListener('change', e => omRapprocher(e.target.files[0], false));
 }
+
+const OM_ETATS = { confirme: ['✅ Confirmé', 'bdg-ok'], valide: ['✅ Validé', 'bdg-ok'], a_verifier: ['⚠ À vérifier', 'bdg-warn'],
+                   montant_different: ['⚠ Montant différent', 'bdg-warn'], introuvable: ['❌ Introuvable', 'bdg-err'] };
+let _omReleve = null;
+async function omRapprocher(fichier, appliquer) {
+  if (!fichier) return;
+  _omReleve = fichier;
+  const fd = new FormData(); fd.append('fichier', fichier); fd.append('appliquer', appliquer ? '1' : '0');
+  let r;
+  try { r = await apiUpload('/orange-money/declarations/rapprocher', fd); } catch (e) { return toast(e.message, 'error'); }
+  const c = r.compte;
+  $('#om-rapprochement').innerHTML = `
+    <div style="margin:10px 0"><strong>${appliquer ? `${r.valides} paiement(s) validé(s)` : `${c.confirme} confirmé(s) sur le relevé`}</strong>
+      · ${c.montant_different} montant différent · ${c.introuvable} introuvable(s)
+      ${!appliquer && c.confirme ? `<button class="btn btn-ok btn-sm" style="margin-left:10px" onclick="omRapprocher(_omReleve, true)">✔ Valider les ${c.confirme} confirmés</button>` : ''}</div>
+    <div class="tbl-wrap"><table><thead><tr><th>Élève</th><th>Montant</th><th>N° transaction</th><th>Résultat</th></tr></thead><tbody>
+    ${r.resultat.map(x => `<tr><td>${esc(x.eleve)}</td><td class="mono">${fmtMoney(x.montant)}</td><td class="mono">${esc(x.transaction_id)}</td>
+      <td><span class="badge ${OM_ETATS[x.etat][1]}">${OM_ETATS[x.etat][0]}</span>${x.etat === 'montant_different' && x.montants_releve.length ? ` <span class="text-muted" style="font-size:11px">relevé : ${x.montants_releve.map(fmtMoney).join(', ')}</span>` : ''}</td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+window.omRapprocher = omRapprocher;
 
 async function omDecider(id, action) {
   try {
