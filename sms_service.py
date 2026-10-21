@@ -6,7 +6,14 @@ avec Orange Money ou du crédit : de 80 à 200 GNF le SMS (≈ 0,01 à 0,02 USD)
 fois moins que les agrégateurs internationaux (≈ 0,09 USD). Voir
 https://developer.orange.com/apis/sms-gn/pricing — tarifs à reconfirmer avant achat.
 
-Mise en route (une fois) :
+Deux fournisseurs possibles (SMS_FOURNISSEUR=orange|smsmode ; par défaut smsmode dès que
+SMSMODE_API_KEY est défini) :
+  smsmode (https://www.smsmode.com, API REST) — réglages Render :
+       SMSMODE_API_KEY     clé API créée dans le compte smsmode
+       SMSMODE_EXPEDITEUR  optionnel : nom d'expéditeur (11 caractères max, soumis à validation)
+  Orange (ci-dessous).
+
+Mise en route Orange (une fois) :
   1. Créer un compte sur developer.orange.com, ajouter l'API « SMS Guinée Conakry » et créer
      une application (MyApps) : le portail donne un « Authorization header » (Basic …).
   2. Acheter un lot de SMS (Configure → bouton d'achat), payable avec Orange Money.
@@ -52,7 +59,17 @@ def _en_tete_auth():
     return ''
 
 
+def fournisseur():
+    """'smsmode' ou 'orange'. SMS_FOURNISSEUR le force ; sinon smsmode dès que SMSMODE_API_KEY existe."""
+    choix = _val('SMS_FOURNISSEUR').lower()
+    if choix in ('smsmode', 'orange'):
+        return choix
+    return 'smsmode' if _val('SMSMODE_API_KEY') else 'orange'
+
+
 def reglages_manquants():
+    if fournisseur() == 'smsmode':
+        return [] if _val('SMSMODE_API_KEY') else ['SMSMODE_API_KEY']
     manquants = []
     if not _en_tete_auth():
         manquants.append('ORANGE_SMS_AUTH')
@@ -118,8 +135,36 @@ def _obtenir_jeton():
         return _jeton['valeur']
 
 
+def _envoyer_smsmode(destinataire, texte):
+    """smsmode : POST {SMSMODE_API_URL}/sms/v1/messages, clé dans l'en-tête X-Api-Key."""
+    base = (_val('SMSMODE_API_URL') or 'https://rest.smsmode.com').rstrip('/')
+    demande = {'recipient': {'to': destinataire}, 'body': {'text': texte}}
+    if _val('SMSMODE_EXPEDITEUR'):
+        demande['from'] = _val('SMSMODE_EXPEDITEUR')
+    req = urllib.request.Request(
+        base + '/sms/v1/messages', data=json.dumps(demande).encode(), method='POST',
+        headers={'X-Api-Key': _val('SMSMODE_API_KEY'), 'Content-Type': 'application/json', 'Accept': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            rep = json.loads(r.read() or b'{}')
+        return str(rep.get('messageId') or rep.get('id') or rep.get('ref') or 'ok')
+    except urllib.error.HTTPError as e:
+        try:
+            brut = json.loads(e.read())
+            detail = brut.get('message') or brut.get('error') or brut.get('detail') or ''
+        except Exception:
+            detail = ''
+        if e.code in (401, 403):
+            detail = 'clé API refusée : vérifiez SMSMODE_API_KEY. ' + str(detail)
+        elif e.code == 402 or any(m in str(detail).lower() for m in ('credit', 'balance')):
+            detail = 'Crédit smsmode épuisé — rechargez le compte. ' + str(detail)
+        raise RuntimeError(f"smsmode a refusé le SMS (HTTP {e.code}) : {detail}"[:300])
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"smsmode injoignable : {e.reason}")
+
+
 def envoyer_sms(telephone, message):
-    """Envoie un SMS. Renvoie l'identifiant d'Orange, ou lève RuntimeError."""
+    """Envoie un SMS. Renvoie l'identifiant du fournisseur, ou lève RuntimeError."""
     if not actif():
         raise RuntimeError('SMS automatique non configuré : ' + ', '.join(reglages_manquants()))
     destinataire = numero_international(telephone)
@@ -128,6 +173,8 @@ def envoyer_sms(telephone, message):
     texte = nettoyer(message)
     if not texte:
         raise RuntimeError('Message vide')
+    if fournisseur() == 'smsmode':
+        return _envoyer_smsmode(destinataire, texte)
     expediteur = re.sub(r'\D', '', _val('ORANGE_SMS_SENDER'))
     demande = {'address': f'tel:+{destinataire}', 'senderAddress': f'tel:+{expediteur}',
                'outboundSMSTextMessage': {'message': texte}}
