@@ -26,6 +26,11 @@ def _deja_envoye(ecole_id, action, entite, entite_id, depuis_h):
         (ecole_id, action, entite, entite_id, limite)).fetchone() is not None
 
 
+def _echec(erreur, objet, objet_id):
+    log_action(g.user, 'echec_envoi', objet, objet_id,
+               {'canal': 'sms_auto', 'fournisseur': sms_service.fournisseur(), 'erreur': str(erreur)[:200]})
+
+
 def _message(defaut):
     texte = ((request.get_json(silent=True) or {}).get('message') or '').strip()
     return texte or defaut
@@ -35,6 +40,41 @@ def _message(defaut):
 @require_auth
 def statut():
     return jsonify({'actif': sms_service.actif()})
+
+
+@bp.route('/sante', methods=['GET'])
+@require_auth
+@require_role('admin', 'directeur')
+def sante():
+    """Envois automatiques des 30 derniers jours (SMS et WhatsApp) : réussis, échecs, dernière erreur."""
+    import json
+    import whatsapp_service
+    limite = (datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')
+    lignes = db.execute(
+        "SELECT action, details, created_at FROM journal_audit WHERE ecole_id=? AND created_at>=? "
+        "AND (details LIKE '%sms_auto%' OR details LIKE '%whatsapp_auto%') ORDER BY created_at DESC",
+        (g.user['ecole_id'], limite)).fetchall()
+    canaux = {c: {'envoyes': 0, 'echecs': 0, 'derniere_erreur': None, 'date_erreur': None}
+              for c in ('sms_auto', 'whatsapp_auto')}
+    for l in lignes:
+        try:
+            d = json.loads(l['details'] or '{}')
+        except ValueError:
+            continue
+        c = canaux.get(d.get('canal'))
+        if not c:
+            continue
+        if l['action'] == 'echec_envoi':
+            c['echecs'] += 1
+            if not c['derniere_erreur']:
+                c['derniere_erreur'], c['date_erreur'] = d.get('erreur'), l['created_at']
+        else:
+            c['envoyes'] += 1
+    canaux['sms_auto'].update(actif=sms_service.actif(), fournisseur=sms_service.fournisseur(),
+                              manquants=sms_service.reglages_manquants())
+    canaux['whatsapp_auto'].update(actif=whatsapp_service.actif(), manquants=whatsapp_service.reglages_manquants()
+                                   if hasattr(whatsapp_service, 'reglages_manquants') else [])
+    return jsonify({'jours': 30, **canaux})
 
 
 @bp.route('/absence/<absence_id>', methods=['POST'])
@@ -61,6 +101,7 @@ def prevenir_absence(absence_id):
     try:
         mid = sms_service.envoyer_sms(contact['telephone'], _message(defaut))
     except RuntimeError as e:
+        _echec(e, 'absence', absence_id)
         return jsonify({'error': str(e)}), 502
     log_action(g.user, 'prevenir_parent', 'absence', absence_id,
                {'canal': 'sms_auto', 'eleve': f"{a['prenom']} {a['nom']}", 'date': a['date_abs'],
@@ -95,6 +136,7 @@ def relancer_impaye(eleve_id):
     try:
         mid = sms_service.envoyer_sms(contact['telephone'], _message(defaut))
     except RuntimeError as err:
+        _echec(err, 'relance', eleve_id)
         return jsonify({'error': str(err)}), 502
     log_action(g.user, 'relance', 'relance', eleve_id,
                {'canal': 'sms_auto', 'eleve': f"{e['prenom']} {e['nom']}", 'reste': reste, 'message_id': mid})

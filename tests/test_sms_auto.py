@@ -135,3 +135,19 @@ def test_smsmode_cle_refusee_et_choix(faux_smsmode):
     faux_smsmode.delenv('SMSMODE_API_KEY')
     faux_smsmode.setenv('SMS_FOURNISSEUR', 'smsmode')
     assert sms_service.reglages_manquants() == ['SMSMODE_API_KEY']
+
+
+def test_sante_envois(client, entetes, faux_smsmode):
+    from database import log_action
+    faux_smsmode.setenv('SMSMODE_API_KEY', 'CLE')
+    avant = client.get('/api/sms/sante', headers=entetes).get_json()
+    assert avant['sms_auto']['actif'] and avant['sms_auto']['fournisseur'] == 'smsmode' and avant['jours'] == 30
+    ecole = client.get('/api/auth/me', headers=entetes).get_json()
+    ecole_id = (ecole.get('user') or ecole).get('ecole_id', 1)
+    u = {'id': None, 'name': 'Test', 'ecole_id': ecole_id}
+    log_action(u, 'echec_envoi', 'relance', 'x', {'canal': 'sms_auto', 'erreur': 'Crédit smsmode épuisé'})
+    log_action(u, 'relance', 'relance', 'y', {'canal': 'sms_auto', 'message_id': '1'})
+    apres = client.get('/api/sms/sante', headers=entetes).get_json()['sms_auto']
+    assert apres['echecs'] == avant['sms_auto']['echecs'] + 1
+    assert apres['envoyes'] == avant['sms_auto']['envoyes'] + 1
+    assert 'Crédit' in apres['derniere_erreur']
