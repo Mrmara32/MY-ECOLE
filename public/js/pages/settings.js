@@ -305,6 +305,7 @@ async function pageSettings() {
     }
     afficherCarteSauvegardes();
     afficherCarteConservation();
+    afficherCarteEnvois();
   } catch(e) { $('#content').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`; }
 }
 
@@ -578,4 +579,27 @@ async function afficherCarteConservation() {
       } catch (e) { toast(e.message, 'error'); }
     };
   } catch (e) { /* réservé à la direction : silencieux sinon */ }
+}
+
+
+async function afficherCarteEnvois() {
+  try {
+    const r = await apiFetch('/sms/sante');
+    const ligne = (nom, c, extra) => `<tr><td>${nom}</td>
+      <td>${c.actif ? '<span class="badge badge-green">Actif</span>' : '<span class="badge badge-gray">Inactif</span>'}${extra || ''}</td>
+      <td>${c.envoyes}</td><td>${c.echecs ? `<b style="color:var(--danger,#c0392b)">${c.echecs}</b>` : 0}</td>
+      <td style="font-size:12px">${c.derniere_erreur ? esc(c.derniere_erreur) + ' <span class="text-muted">(' + esc((c.date_erreur || '').slice(0, 16)) + ')</span>' : '—'}</td></tr>`;
+    const manque = c => (!c.actif && c.manquants && c.manquants.length) ? `<div style="font-size:11px">à définir : ${c.manquants.map(v => `<code>${esc(v)}</code>`).join(', ')}</div>` : '';
+    const carte = document.createElement('div');
+    carte.className = 'card';
+    carte.style.marginTop = '16px';
+    carte.innerHTML = `
+      <div class="card-header"><span class="card-title">📨 Santé des envois automatiques (${r.jours} derniers jours)</span></div>
+      <div class="card-body"><div class="table-wrap"><table>
+        <thead><tr><th>Canal</th><th>État</th><th>Envoyés</th><th>Échecs</th><th>Dernière erreur</th></tr></thead>
+        <tbody>${ligne('SMS (' + esc(r.sms_auto.fournisseur) + ')', r.sms_auto, manque(r.sms_auto))}${ligne('WhatsApp', r.whatsapp_auto, manque(r.whatsapp_auto))}</tbody>
+      </table></div>
+      <div class="text-muted" style="font-size:12px;margin-top:8px">Un échec « crédit épuisé » ou « clé refusée » signifie qu'il faut recharger le compte du fournisseur ou corriger la clé sur Render.</div></div>`;
+    $('#content').appendChild(carte);
+  } catch (e) { /* carte réservée admin / directeur */ }
 }

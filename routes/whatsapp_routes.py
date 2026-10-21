@@ -27,6 +27,10 @@ def _nom_ecole(ecole_id):
     return get_settings(ecole_id).get('ecole_nom') or 'Votre école'
 
 
+def _echec(erreur, objet, objet_id):
+    log_action(g.user, 'echec_envoi', objet, objet_id, {'canal': 'whatsapp_auto', 'erreur': str(erreur)[:200]})
+
+
 @bp.route('/statut', methods=['GET'])
 @require_auth
 def statut():
@@ -59,6 +63,7 @@ def prevenir_absence(absence_id):
             contact['telephone'], whatsapp_service.modele_absence(),
             [contact['nom'] or 'Madame, Monsieur', f"{a['prenom']} {a['nom']}", situation, date_fr, _nom_ecole(ecole_id)])
     except RuntimeError as e:
+        _echec(e, 'absence', absence_id)
         return jsonify({'error': str(e)}), 502
     log_action(g.user, 'prevenir_parent', 'absence', absence_id,
                {'canal': 'whatsapp_auto', 'eleve': f"{a['prenom']} {a['nom']}", 'date': a['date_abs'],
@@ -92,6 +97,7 @@ def relancer_impaye(eleve_id):
             contact['telephone'], whatsapp_service.modele_relance(),
             [contact['nom'] or 'Madame, Monsieur', _nom_ecole(ecole_id), f"{e['prenom']} {e['nom']}", e['classe'] or '-', montant])
     except RuntimeError as err:
+        _echec(err, 'relance', eleve_id)
         return jsonify({'error': str(err)}), 502
     log_action(g.user, 'relance', 'relance', eleve_id,
                {'canal': 'whatsapp_auto', 'eleve': f"{e['prenom']} {e['nom']}", 'reste': reste, 'message_id': mid})
