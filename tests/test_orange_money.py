@@ -245,3 +245,21 @@ def test_rapprochement_avec_le_releve_orange(client, entetes, creer_eleve, creer
     restants = {x['transaction_id'] for x in client.get('/api/orange-money/declarations?statut=a_valider', headers=entetes).get_json()}
     assert {'RAPP-MONTANT-02', 'RAPP-ABSENT-03'} <= restants
     assert client.post('/api/orange-money/declarations/rapprocher', headers=entetes, data={}).status_code == 400
+
+
+def test_export_mensuel(client, entetes, creer_eleve, creer_paiement):
+    from datetime import datetime
+    e, p1, p2 = _dossier(client, entetes, creer_eleve, creer_paiement)
+    d = client.post('/api/orange-money/declarations', json={'eleve_id': e['id'], 'montant': 400000, 'transaction_id': 'MP.EXPORT.1'}, headers=entetes).get_json()
+    client.post('/api/orange-money/declarations', json={'eleve_id': e['id'], 'montant': 1000, 'transaction_id': 'MP.EXPORT.2'}, headers=entetes)  # reste à valider
+    mois = datetime.utcnow().strftime('%Y-%m')
+    avant = client.get(f'/api/orange-money/export?format=json&mois={mois}', headers=entetes).get_json()
+    client.post(f"/api/orange-money/declarations/{d['id']}/valider", headers=entetes)
+    apres = client.get(f'/api/orange-money/export?format=json&mois={mois}', headers=entetes).get_json()
+    assert apres['nombre'] == avant['nombre'] + 1 and apres['total'] == avant['total'] + 400000
+    csv_ = client.get(f'/api/orange-money/export?mois={mois}', headers=entetes)
+    texte = csv_.data.decode('utf-8-sig')
+    assert csv_.mimetype == 'text/csv' and 'MP.EXPORT.1' in texte and 'MP.EXPORT.2' not in texte
+    assert texte.splitlines()[-1].startswith('TOTAL;')
+    assert client.get('/api/orange-money/export?mois=2026-13', headers=entetes).status_code == 400
+    assert client.get('/api/orange-money/export?mois=2020-01&format=json', headers=entetes).get_json()['nombre'] == 0
