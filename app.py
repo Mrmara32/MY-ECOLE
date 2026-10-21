@@ -143,7 +143,7 @@ def create_app():
     # pas faire attendre les autres pendant l'échange avec le serveur d'e-mail.
     SANS_VERROU_ECRITURE = {'finances_routes.envoyer_releve_email', 'orange_money_routes.creer_lien',
                             'orange_money_routes.notification', 'orange_money_routes.retour',
-                            'orange_money_routes.verifier'}
+                            'orange_money_routes.verifier', 'orange_money_routes.payer_public'}
     ATTENTE_MAX_VERROU_S = 90
 
     @app.before_request
@@ -253,6 +253,13 @@ def create_app():
     @app.route('/ecole/<code_ecole>/vitrine')
     def serve_vitrine(code_ecole=None):
         return send_from_directory(PUBLIC_DIR, 'vitrine.html')
+
+    # ── Page publique « Payer la scolarité » (Orange Money), accessible sans connexion ──
+    @app.route('/payer.html')
+    @app.route('/payer')
+    @app.route('/ecole/<code_ecole>/payer')
+    def serve_payer(code_ecole=None):
+        return send_from_directory(PUBLIC_DIR, 'payer.html')
 
     # ── Page publique de pré-inscription élève (accessible sans connexion) ──
     @app.route('/preinscription.html')

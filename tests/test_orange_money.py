@@ -144,3 +144,52 @@ def test_config_marchand(client, entetes):
     r = client.put('/api/orange-money/config', json={'nom': 'GS El Hadji Mountaga Djely', 'code': '123456', 'instructions': 'Scannez le QR'}, headers=entetes)
     assert r.status_code == 200 and r.get_json()['code'] == '123456'
     assert client.get('/api/orange-money/config', headers=entetes).get_json()['nom'].startswith('GS El Hadji')
+
+
+# ───────────── page publique « Payer la scolarité » ─────────────
+def _eleve_matricule(client, entetes, creer_eleve, creer_paiement):
+    e = creer_eleve(nom='Diané', prenom='Aïssatou', classe='CE1')
+    creer_paiement(e['id'], 600000, 'Tranche 1')
+    return e, client.get(f"/api/eleves/{e['id']}", headers=entetes).get_json()['matricule']
+
+
+def test_public_verification_identite_sans_accents(client, entetes, creer_eleve, creer_paiement):
+    e, mat = _eleve_matricule(client, entetes, creer_eleve, creer_paiement)
+    r = client.post('/api/orange-money/public/verifier', json={'nom': 'DIANE', 'prenom': 'aissatou', 'matricule': mat.lower()})
+    assert r.status_code == 200 and r.get_json()['reste'] == 600000 and r.get_json()['eleve']['classe'] == 'CE1'
+    for faux in ({'nom': 'Diané', 'prenom': 'Aïssatou', 'matricule': 'XXX'}, {'nom': 'Autre', 'prenom': 'Aïssatou', 'matricule': mat},
+                 {'nom': '', 'prenom': '', 'matricule': mat}):
+        assert client.post('/api/orange-money/public/verifier', json=faux).status_code == 404
+
+
+def test_public_paiement_qr_attend_validation_puis_comptabilise(client, entetes, creer_eleve, creer_paiement):
+    e, mat = _eleve_matricule(client, entetes, creer_eleve, creer_paiement)
+    ident = {'nom': 'Diané', 'prenom': 'Aïssatou', 'matricule': mat}
+    assert client.post('/api/orange-money/public/payer', json={**ident, 'montant': 200000}).status_code == 400  # n° transaction requis
+    assert client.post('/api/orange-money/public/payer', json={**ident, 'montant': 900000, 'transaction_id': 'MP.PUB.0001'}).status_code == 400  # > solde
+    r = client.post('/api/orange-money/public/payer', json={**ident, 'montant': 200000, 'transaction_id': 'MP.PUB.0001', 'telephone': '622000000'})
+    assert r.status_code == 200 and r.get_json()['mode'] == 'qr'
+    assert _reste(client, entetes, e['id']) == 600000  # rien n'est comptabilisé sans validation
+    assert client.post('/api/orange-money/public/payer', json={**ident, 'montant': 200000, 'transaction_id': 'mp.pub.0001'}).status_code == 409
+    liste = client.get('/api/orange-money/declarations?statut=a_valider', headers=entetes).get_json()
+    assert liste[0]['montant'] == 200000 and liste[0]['nom'] == 'Diané'
+    assert client.post(f"/api/orange-money/declarations/{liste[0]['id']}/valider", headers=entetes).status_code == 200
+    assert _reste(client, entetes, e['id']) == 400000
+
+
+def test_public_paiement_api_redirige_vers_orange(client, entetes, creer_eleve, creer_paiement, faux_om):
+    e, mat = _eleve_matricule(client, entetes, creer_eleve, creer_paiement)
+    assert client.get('/api/orange-money/public/config').get_json()['mode'] == 'api'
+    r = client.post('/api/orange-money/public/payer', json={'nom': 'Diané', 'prenom': 'Aïssatou', 'matricule': mat, 'montant': 600000})
+    assert r.status_code == 200 and r.get_json()['payment_url'] == 'https://pay.example/abc'
+    rid = client.get('/api/orange-money/paiements', headers=entetes).get_json()[0]['id']
+    etat['statut'] = 'SUCCESS'  # Orange confirme : tout est automatique, sans aucune intervention
+    assert client.post(f'/api/orange-money/notification?ref={rid}', json={'notif_token': 'NT1'}).status_code == 200
+    assert _reste(client, entetes, e['id']) == 0
+
+
+def test_public_page_servie_et_blocage_des_devinettes(client):
+    assert client.get('/payer').status_code == 200 and client.get('/ecole/ecole-1/payer').status_code == 200
+    for _ in range(45):
+        r = client.post('/api/orange-money/public/verifier', json={'nom': 'a', 'prenom': 'b', 'matricule': 'ZZZ999'})
+    assert r.status_code == 429
