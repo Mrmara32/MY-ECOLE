@@ -337,7 +337,7 @@ function messageRelance(el, modele) {
     .replaceAll('{montant}', montant)
     .replaceAll('{ecole}', _nomEcoleRelance || 'Groupe scolaire')
     .replaceAll('{paiement}', _omConfigRelance && (_omConfigRelance.qr_url || _omConfigRelance.code)
-      ? `Vous pouvez payer par Orange Money (Paiement marchand${_omConfigRelance.code ? ', code ' + _omConfigRelance.code : ''}${_omConfigRelance.nom ? ' : ' + _omConfigRelance.nom : ''}).` : '')
+      ? `Vous pouvez payer par Orange Money (Paiement marchand${_omConfigRelance.code ? ', code ' + _omConfigRelance.code : ''}${_omConfigRelance.nom ? ' : ' + _omConfigRelance.nom : ''}). Page de paiement : ${location.origin}/payer` : '')
     .replace(/ {2,}/g, ' ').trim();
 }
 
@@ -583,6 +583,7 @@ function omQr() {
       ${c.qr_url ? `<img src="${esc(c.qr_url)}" style="max-width:320px;max-height:320px;border:1px solid #E5E7EB;border-radius:12px"><br>` : '<div class="text-muted" style="margin:20px 0">Aucun QR enregistré</div>'}
       <div style="margin:10px 0"><strong>${esc(c.nom || '')}</strong>${c.code ? `<br>Code marchand : <span class="mono">${esc(c.code)}</span>` : ''}</div>
       <div class="text-muted" style="font-size:13px;white-space:pre-line">${esc(c.instructions || '')}</div>
+      <div class="alert alert-info" style="font-size:12px;margin-top:12px">Lien à donner aux parents (il saisit nom, prénom et matricule puis paie) : <strong>${esc(location.origin)}/payer</strong></div>
       ${c.qr_url ? `<button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="omImprimerQr()">🖨 Imprimer l'affiche</button>` : ''}
     </div>
     ${admin ? `<hr><div class="form-section-title">Réglages (administrateur)</div>

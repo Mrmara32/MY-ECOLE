@@ -97,6 +97,27 @@ def statut():
     return jsonify({'actif': om.actif(), 'mode': om.mode()})
 
 
+def _creer_lien_paiement(ecole_id, eleve, eleve_id, montant, cree_par, user=None):
+    """Crée le paiement chez Orange et le suit en base. Renvoie (dict, None) ou (None, message d'erreur)."""
+    rid = gen_id('pol')
+    order_id = 'MYE' + rid.replace('-', '')[-14:]
+    base = url_application()
+    try:
+        lien = om.creer_paiement(order_id, montant, f"Scolarite {eleve['matricule'] or ''}".strip(),
+                                 f"{base}/api/orange-money/retour?ref={rid}", f"{base}/api/orange-money/retour?ref={rid}",
+                                 f"{base}/api/orange-money/notification?ref={rid}")
+    except RuntimeError as e:
+        return None, str(e)
+    debut_ecriture_exclusive()
+    db.execute("INSERT INTO paiements_en_ligne (ecole_id,id,eleve_id,montant,order_id,pay_token,notif_token,payment_url,cree_par) "
+               "VALUES (?,?,?,?,?,?,?,?,?)",
+               (ecole_id, rid, eleve_id, montant, order_id, lien['pay_token'], lien['notif_token'], lien['payment_url'], cree_par))
+    db.commit()
+    log_action(user or _systeme(ecole_id), 'lien_orange_money', 'paiement_en_ligne', rid,
+               {'eleve': f"{eleve['prenom']} {eleve['nom']}", 'montant': montant, 'origine': 'caisse' if user else 'parent'})
+    return {'id': rid, 'payment_url': lien['payment_url'], 'montant': montant}, None
+
+
 @bp.route('/lien', methods=['POST'])
 @require_auth
 @require_role(*ROLES_LIEN)
@@ -120,23 +141,10 @@ def creer_lien():
     if montant < MONTANT_MIN or montant > total_du:
         return jsonify({'error': f'Le montant doit être compris entre {MONTANT_MIN} GNF et le solde dû ({total_du} GNF)'}), 400
 
-    rid = gen_id('pol')
-    order_id = 'MYE' + rid.replace('-', '')[-14:]
-    base = url_application()
-    try:
-        lien = om.creer_paiement(order_id, montant, f"Scolarite {eleve['matricule'] or ''}".strip(),
-                                 f"{base}/api/orange-money/retour?ref={rid}", f"{base}/api/orange-money/retour?ref={rid}",
-                                 f"{base}/api/orange-money/notification?ref={rid}")
-    except RuntimeError as e:
-        return jsonify({'error': str(e)}), 502
-    debut_ecriture_exclusive()
-    db.execute("INSERT INTO paiements_en_ligne (ecole_id,id,eleve_id,montant,order_id,pay_token,notif_token,payment_url,cree_par) "
-               "VALUES (?,?,?,?,?,?,?,?,?)",
-               (ecole_id, rid, eleve_id, montant, order_id, lien['pay_token'], lien['notif_token'], lien['payment_url'], g.user['id']))
-    db.commit()
-    log_action(g.user, 'lien_orange_money', 'paiement_en_ligne', rid,
-               {'eleve': f"{eleve['prenom']} {eleve['nom']}", 'montant': montant})
-    return jsonify({'id': rid, 'payment_url': lien['payment_url'], 'montant': montant})
+    lien, erreur = _creer_lien_paiement(ecole_id, eleve, eleve_id, montant, g.user['id'], g.user)
+    if erreur:
+        return jsonify({'error': erreur}), 502
+    return jsonify(lien)
 
 
 @bp.route('/notification', methods=['POST'])
@@ -370,3 +378,107 @@ def rejeter_declaration(did):
         return jsonify({'error': 'Déclaration introuvable ou déjà traitée'}), 404
     log_action(g.user, 'rejet_orange_money', 'paiement_om', did, {'motif': motif})
     return jsonify({'statut': 'rejete'})
+
+
+# ───────────── Page publique « Payer la scolarité » ─────────────
+# Le parent saisit nom, prénom et matricule de l'élève : l'application retrouve la fiche, puis
+#  - avec l'API Orange : envoie le parent payer chez Orange, la confirmation et la comptabilité sont automatiques ;
+#  - sans API (QR marchand) : il paie avec le QR de l'école et saisit le n° de transaction ; la déclaration attend
+#    la validation de la comptabilité (sinon n'importe qui pourrait se faire créditer avec un faux numéro).
+def _sans_accent(t):
+    import unicodedata
+    return ' '.join(unicodedata.normalize('NFD', str(t or '')).encode('ascii', 'ignore').decode().lower().split())
+
+
+def _cle_limite():
+    import securite
+    return [f"ip:payer:{securite.adresse_client()}"]
+
+
+def _eleve_public(ecole_id, nom, prenom, matricule):
+    """Retrouve l'élève à partir des trois informations saisies, ou None. Comptage des échecs par adresse."""
+    import securite
+    if securite.secondes_restantes(_cle_limite()):
+        return 'bloque'
+    mat = ''.join(str(matricule or '').upper().split())
+    n, p = _sans_accent(nom), _sans_accent(prenom)
+    if mat and n and p:
+        for e in db.execute("SELECT id, nom, prenom, classe, matricule, statut FROM eleves WHERE ecole_id=? AND UPPER(REPLACE(matricule,' ',''))=?",
+                            (ecole_id, mat)).fetchall():
+            if {_sans_accent(e['nom']), _sans_accent(e['prenom'])} == {n, p} or \
+               (_sans_accent(e['nom']) == n and _sans_accent(e['prenom']) == p):
+                return e
+    securite.enregistrer_echec(_cle_limite())
+    return None
+
+
+def _reponse_eleve(e):
+    return {'nom': e['nom'], 'prenom': e['prenom'], 'classe': e['classe']}
+
+
+def _ecole_publique():
+    from database import ecole_id_depuis_code
+    return ecole_id_depuis_code(request.args.get('ecole') or (request.get_json(silent=True) or {}).get('ecole'))
+
+
+@bp.route('/public/config', methods=['GET'])
+def config_publique():
+    ecole_id = _ecole_publique()
+    c = _config(ecole_id)
+    return jsonify({'ecole_nom': get_settings(ecole_id).get('ecole_nom', ''), 'mode': 'api' if om.actif() else 'qr',
+                    'qr_url': c['qr_url'], 'code': c['code'], 'nom': c['nom'], 'instructions': c['instructions']})
+
+
+def _identifier():
+    ecole_id = _ecole_publique()
+    b = request.get_json(silent=True) or {}
+    e = _eleve_public(ecole_id, b.get('nom'), b.get('prenom'), b.get('matricule'))
+    if e == 'bloque':
+        return ecole_id, b, None, (jsonify({'error': 'Trop de tentatives : réessayez dans quelques minutes.'}), 429)
+    if not e:
+        return ecole_id, b, None, (jsonify({'error': "Aucun élève ne correspond à ces trois informations (nom, prénom, matricule). Vérifiez la saisie."}), 404)
+    return ecole_id, b, e, None
+
+
+@bp.route('/public/verifier', methods=['POST'])
+def verifier_eleve_public():
+    ecole_id, b, e, erreur = _identifier()
+    if erreur:
+        return erreur
+    reste = round(sum(p['montant_du'] - p['montant_paye'] for p in _paiements_dus(ecole_id, e['id'])))
+    return jsonify({'eleve': _reponse_eleve(e), 'reste': reste})
+
+
+@bp.route('/public/payer', methods=['POST'])
+def payer_public():
+    ecole_id, b, e, erreur = _identifier()
+    if erreur:
+        return erreur
+    reste = round(sum(p['montant_du'] - p['montant_paye'] for p in _paiements_dus(ecole_id, e['id'])))
+    if reste <= 0:
+        return jsonify({'error': "Aucun solde à régler pour cet élève : merci !"}), 400
+    try:
+        montant = round(float(b.get('montant'))) if b.get('montant') not in (None, '') else reste
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Montant invalide'}), 400
+    if montant < MONTANT_MIN or montant > reste:
+        return jsonify({'error': f'Le montant doit être compris entre {MONTANT_MIN} et {reste} GNF'}), 400
+    if om.actif():
+        lien, err = _creer_lien_paiement(ecole_id, e, e['id'], montant, None)
+        if err:
+            return jsonify({'error': "Le paiement en ligne est momentanément indisponible. Réessayez plus tard."}), 502
+        return jsonify({'mode': 'api', 'payment_url': lien['payment_url']})
+    transaction = _normaliser_transaction(b.get('transaction_id'))
+    if len(transaction) < 6:
+        return jsonify({'error': "Saisissez le numéro de transaction reçu par SMS après votre paiement Orange Money"}), 400
+    did = gen_id('omd')
+    debut_ecriture_exclusive()
+    if db.execute("SELECT 1 FROM paiements_om_declares WHERE ecole_id=? AND transaction_id=?", (ecole_id, transaction)).fetchone():
+        db.commit()
+        return jsonify({'error': 'Ce numéro de transaction a déjà été enregistré'}), 409
+    db.execute("INSERT INTO paiements_om_declares (ecole_id,id,eleve_id,montant,transaction_id,telephone,declare_par) VALUES (?,?,?,?,?,?,?)",
+               (ecole_id, did, e['id'], montant, transaction, str(b.get('telephone') or '')[:20], 'parent (page publique)'))
+    db.commit()
+    log_action(_systeme(ecole_id), 'declaration_orange_money', 'paiement_om', did,
+               {'eleve': f"{e['prenom']} {e['nom']}", 'montant': montant, 'transaction': transaction, 'origine': 'page publique'})
+    return jsonify({'mode': 'qr', 'ok': True})
