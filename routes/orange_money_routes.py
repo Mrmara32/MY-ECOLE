@@ -264,7 +264,7 @@ def televerser_qr():
     ext = os.path.splitext(fichier.filename)[1].lower()
     if ext not in ('.png', '.jpg', '.jpeg', '.webp') or not securite_http.est_image(fichier):
         return jsonify({'error': 'Le fichier doit être une vraie image (PNG, JPEG ou WebP)'}), 400
-    nom = f"om_qr_{secrets.token_hex(12)}{ext}"
+    nom = f"e{g.user['ecole_id']}_om_qr_{secrets.token_hex(12)}{ext}"
     fichier.save(os.path.join(current_app.config['UPLOAD_DIR'], nom))
     url = '/uploads/' + nom
     db.execute("INSERT OR REPLACE INTO settings (ecole_id, cle, valeur) VALUES (?,?,?)", (g.user['ecole_id'], 'om_qr_image', url))

@@ -91,3 +91,14 @@ def test_logo_reste_public(client, jeton_admin):
     url = r.get_json().get('logo_url') or r.get_json().get('url')
     client.delete_cookie('gs_media', path='/uploads')
     assert client.get(url).status_code == 200
+
+
+def test_fichier_d_une_autre_ecole_refuse(client, jeton_admin):
+    _creer_utilisateur(client, jeton_admin, 'sec_ecole')
+    jeton = _connexion(client, 'sec_ecole', 'Motdepasse#2026')
+    r = client.post('/api/auth/change-password', headers=_entete(jeton),
+                    json={'oldPassword': 'Motdepasse#2026', 'newPassword': 'Nouveau#Motdepasse7'})
+    jeton = r.get_json()['token']
+    client.delete_cookie('gs_media', path='/uploads')
+    assert client.get('/uploads/e999_abc.png', headers=_entete(jeton)).status_code == 403
+    assert client.get('/uploads/e1_abc.png', headers=_entete(jeton)).status_code != 403  # sa propre école : pas refusé

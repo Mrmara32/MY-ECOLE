@@ -7,6 +7,7 @@ import os
 import sys
 import hashlib
 import secrets
+import re
 import traceback
 import webbrowser
 import threading
@@ -197,6 +198,10 @@ def create_app():
             payload, erreur = auth.charger_session(jeton) if jeton else (None, 'x')
             if erreur or payload.get('mdp_provisoire'):
                 return jsonify({'error': 'Non authentifié'}), 401
+            # Les fichiers récents portent le numéro de leur école (« e2_… ») : refusés aux autres écoles.
+            m = re.match(r'e(\d+)_', filename)
+            if m and int(m.group(1)) != payload.get('ecole_id') and not payload.get('est_super_admin'):
+                return jsonify({'error': 'Accès refusé'}), 403
         reponse = send_from_directory(UPLOAD_DIR, filename)
         reponse.headers['Cache-Control'] = 'private, max-age=3600' if not public else 'public, max-age=3600'
         return reponse
