@@ -35,3 +35,10 @@ def test_entete_csp_servi(client):
 def test_interpreteur_charge_et_precache(client):
     assert client.get('/js/handlers.js').status_code == 200
     assert "/js/handlers.js" in client.get('/sw.js').get_data(as_text=True)
+
+
+def test_pages_publiques_chargent_la_couche_accessibilite():
+    for f in glob.glob('public/*.html'):
+        if f.endswith('confidentialite.html'):
+            continue
+        assert 'js/a11y.js' in open(f, encoding='utf-8').read(), f

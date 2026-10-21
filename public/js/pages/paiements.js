@@ -50,7 +50,7 @@ async function pagePaiements() {
         <span class="card-title">💰 Paiements & Frais de scolarité</span>
         <div class="card-actions">
           ${['admin','directeur','comptable'].includes(currentUser.role)?`<button class="btn btn-outline btn-sm" onclick="modalPaiementsSupprimes()" title="Paiements supprimés : qui, quand, pourquoi">🗂 Supprimés</button>`:''}
-          ${['admin','directeur','comptable','secretaire'].includes(currentUser.role)?`<button class="btn btn-outline btn-sm" style="border-color:#ff7900;color:#ff7900" onclick="modalOrangeMoney()" title="Paiements reçus par Orange Money (QR marchand de l'école)">🟠 Orange Money</button>`:''}
+          ${['admin','directeur','comptable','secretaire'].includes(currentUser.role)?`<button class="btn btn-outline btn-sm" style="border-color:#ff7900;color:#A04400" onclick="modalOrangeMoney()" title="Paiements reçus par Orange Money (QR marchand de l'école)">🟠 Orange Money</button>`:''}
           ${['admin','directeur','comptable'].includes(currentUser.role)?`<button class="btn btn-outline btn-sm" onclick="modalRelances()" title="Parents à relancer par WhatsApp ou SMS">📣 Relances</button>`:''}
           <button class="btn btn-outline btn-sm" onclick="modalGenPaiements()">⚡ Générer échéances</button>
           <button class="btn btn-primary btn-sm" onclick="modalBaremes()">⚙ Barèmes</button>
@@ -387,7 +387,7 @@ async function modalRelances() {
       const i = _relances.indexOf(r);
       const intl = r.contact ? numeroInternational(r.contact.telephone) : '';
       const actions = r.contact ? `
-        ${_omRel ? `<button class="btn btn-outline btn-xs" style="border-color:#ff7900;color:#ff7900" onclick="lienOrangeMoney(${i})">🟠 Lien de paiement</button>` : ''}
+        ${_omRel ? `<button class="btn btn-outline btn-xs" style="border-color:#ff7900;color:#A04400" onclick="lienOrangeMoney(${i})">🟠 Lien de paiement</button>` : ''}
         ${intl && _smsAutoRel ? `<button class="btn btn-primary btn-xs" onclick="envoyerRelanceSmsAuto(${i})">📨 SMS auto</button>` : ''}
         ${intl && _waAutoRel ? `<button class="btn btn-primary btn-xs" onclick="envoyerRelanceAuto(${i})">📤 Auto</button>` : ''}
         ${intl ? `<button class="btn btn-ok btn-xs" onclick="envoyerRelance(${i},'whatsapp')">WhatsApp</button>` : ''}

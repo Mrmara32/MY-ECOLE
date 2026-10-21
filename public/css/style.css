@@ -3,11 +3,11 @@
 ============================================================ */
 :root {
   --c-primary:#1E3A8A; --c-primary-d:#1E40AF; --c-primary-l:#EEF2FF;
-  --c-accent:#F59E0B;  --c-accent-d:#D97706;
-  --c-ok:#059669;      --c-ok-l:#ECFDF5;
+  --c-accent:#F59E0B;  --c-accent-d:#B45309;
+  --c-ok:#047857;      --c-ok-l:#ECFDF5;
   --c-err:#DC2626;     --c-err-l:#FEF2F2;
-  --c-warn:#D97706;    --c-warn-l:#FFFBEB;
-  --c-info:#0284C7;    --c-info-l:#F0F9FF;
+  --c-warn:#B45309;    --c-warn-l:#FFFBEB;
+  --c-info:#0369A1;    --c-info-l:#F0F9FF;
   --g0:#F9FAFB; --g1:#F3F4F6; --g2:#E5E7EB; --g3:#D1D5DB;
   --g4:#9CA3AF; --g5:#6B7280; --g6:#4B5563; --g7:#374151;
   --g8:#1F2937; --g9:#111827;
@@ -51,7 +51,7 @@ img{display:block}
   box-shadow:none;text-align:left}
 .login-logo-wrap{margin-bottom:16px;display:flex;justify-content:flex-start}
 .login-logo-icon{font-size:44px}
-.login-eyebrow{color:#B8873A;font-weight:700;font-size:12px;letter-spacing:.12em;margin-bottom:10px}
+.login-eyebrow{color:#8A6212;font-weight:700;font-size:12px;letter-spacing:.12em;margin-bottom:10px}
 .login-title{font-family:Georgia,'Times New Roman',serif;font-size:30px;font-weight:700;color:#0B4A38;margin-bottom:6px}
 .login-sub{color:#6B7570;font-size:13.5px;margin-bottom:20px}
 .login-card form{text-align:left;display:flex;flex-direction:column;gap:16px}

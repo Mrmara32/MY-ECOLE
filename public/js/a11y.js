@@ -31,6 +31,20 @@
       const alpha = /[A-Za-zÀ-ÿ0-9]/.test(texte);
       if (!alpha && el.title) el.setAttribute('aria-label', el.title);
     });
+    // Champs sans aucun nom accessible (sélecteur de langue, filtres de mois…) : on reprend infobulle,
+    // texte indicatif, étiquette voisine ou nom du champ.
+    racine.querySelectorAll('input:not([type=hidden]), select, textarea').forEach(c => {
+      if (c.getAttribute('aria-label') || c.getAttribute('aria-labelledby') || (c.labels && c.labels.length)) return;
+      const voisin = (c.closest('.fg') && c.closest('.fg').querySelector('label'))
+        || (c.previousElementSibling && c.previousElementSibling.tagName === 'LABEL' ? c.previousElementSibling : null)
+        || (c.parentElement && c.parentElement.querySelector('label'));
+      const nom = c.title || c.getAttribute('placeholder') || (voisin && voisin.textContent.trim())
+        || (c.id && c.id.indexOf('lang-switcher') === 0 ? 'Langue' : '') || (c.id === 'edt-cls-sel' ? 'Classe' : '') || (c.type === 'month' ? 'Mois' : '') || c.name || '';
+      if (nom) c.setAttribute('aria-label', nom);
+    });
+    // Zone de contenu défilante : atteignable au clavier
+    const contenu = document.getElementById('content');
+    if (contenu && contenu.getAttribute('tabindex') !== '0') contenu.setAttribute('tabindex', '0');
     // Champs de formulaire reliés à leur étiquette (.fg > label + champ)
     racine.querySelectorAll('.fg').forEach(fg => {
       const label = fg.querySelector('label');
