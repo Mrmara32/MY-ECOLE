@@ -190,7 +190,7 @@ def create_app():
         # publiques les images de l'établissement affichées avant la connexion (logo, fond)
         # et les médias des actualités.
         url = '/uploads/' + filename
-        public = (database.db.execute("SELECT 1 FROM settings WHERE valeur=? LIMIT 1", (url,)).fetchone()
+        public = (database.db.execute("SELECT 1 FROM settings WHERE valeur=? AND cle IN ('ecole_logo','ecole_fond_url','om_qr_image') LIMIT 1", (url,)).fetchone()
                   or database.db.execute("SELECT 1 FROM articles_media WHERE url=? LIMIT 1", (url,)).fetchone())
         if not public:
             entete = request.headers.get('Authorization', '')
@@ -380,6 +380,8 @@ def create_app():
 
     # Copie automatique quotidienne de la base (voir sauvegarde.py)
     sauvegarde.demarrer_sauvegardes_automatiques()
+    import retention
+    retention.demarrer_purge_automatique()
 
     # ── Page principale + SPA fallback ──
     @app.route('/')
