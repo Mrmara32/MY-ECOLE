@@ -219,6 +219,18 @@ def create_app():
                                    httponly=True, samesite='Strict', secure=request.is_secure)
         return reponse
 
+    @app.route('/manifest.webmanifest')
+    def serve_manifest():
+        r = send_from_directory(PUBLIC_DIR, 'manifest.webmanifest', mimetype='application/manifest+json')
+        r.headers['Cache-Control'] = 'public, max-age=3600'
+        return r
+
+    @app.route('/icons/<path:filename>')
+    def serve_icons(filename):
+        r = send_from_directory(os.path.join(PUBLIC_DIR, 'icons'), filename)
+        r.headers['Cache-Control'] = 'public, max-age=86400'
+        return r
+
     @app.route('/css/<path:filename>')
     def serve_css(filename):
         return send_from_directory(os.path.join(PUBLIC_DIR, 'css'), filename)

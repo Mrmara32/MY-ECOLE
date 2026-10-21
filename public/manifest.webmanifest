@@ -1,0 +1,38 @@
+{
+  "name": "MY-ECOLE — Gestion scolaire",
+  "short_name": "MY-ECOLE",
+  "description": "Gestion scolaire : élèves, notes, paiements, comptabilité, communication.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "lang": "fr",
+  "dir": "ltr",
+  "background_color": "#ffffff",
+  "theme_color": "#1E3A8A",
+  "categories": [
+    "education",
+    "business"
+  ],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
