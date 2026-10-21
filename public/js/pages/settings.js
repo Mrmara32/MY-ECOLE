@@ -304,6 +304,7 @@ async function pageSettings() {
       };
     }
     afficherCarteSauvegardes();
+    afficherCarteConservation();
   } catch(e) { $('#content').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`; }
 }
 
@@ -539,3 +540,42 @@ async function retirerImageCarousel(url) {
   } catch(err) { toast(err.message, 'error'); }
 }
 window.retirerImageCarousel = retirerImageCarousel;
+
+
+/* ── Durées de conservation des données personnelles ── */
+async function afficherCarteConservation() {
+  try {
+    const r = await apiFetch('/eleves/retention');
+    const carte = document.createElement('div');
+    carte.className = 'card';
+    carte.style.marginTop = '16px';
+    carte.innerHTML = `
+      <div class="card-header"><span class="card-title">🗄️ Conservation des données personnelles</span></div>
+      <div class="card-body">
+        <div class="text-muted mb-3" style="font-size:12px">Limiter la durée de conservation est une obligation de la protection des données. L'anonymisation efface l'identité d'un ancien élève (les chiffres comptables et statistiques sont gardés) ; elle est irréversible et jamais automatique.</div>
+        <div class="form-2">
+          <div class="form-group"><label for="ret-eleves">Conserver les anciens élèves (années)</label><input type="number" id="ret-eleves" min="1" max="100" value="${r.politique.eleves_annees}"></div>
+          <div class="form-group"><label for="ret-journal">Conserver le journal d'audit (mois, 12 minimum)</label><input type="number" id="ret-journal" min="12" max="100" value="${r.politique.journal_mois}"></div>
+        </div>
+        <div class="flex gap-2 mb-3"><button type="button" class="btn btn-primary btn-sm" id="ret-save">Enregistrer les durées</button></div>
+        <div class="alert ${r.a_anonymiser ? 'alert-warning' : 'alert-info'}">
+          ${r.a_anonymiser ? `<b>${r.a_anonymiser}</b> dossier(s) d'ancien(s) élève(s) sans activité depuis plus de ${r.politique.eleves_annees} ans.` : 'Aucun dossier n\'a dépassé la durée de conservation.'}
+        </div>
+        ${r.a_anonymiser ? `<button type="button" class="btn btn-danger btn-sm" id="ret-anon">Anonymiser ces ${r.a_anonymiser} dossier(s)…</button>` : ''}
+      </div>`;
+    $('#content').appendChild(carte);
+    $('#ret-save').onclick = async () => {
+      try {
+        await apiFetch('/eleves/retention', { method: 'PUT', body: JSON.stringify({ eleves_annees: $('#ret-eleves').value, journal_mois: $('#ret-journal').value }) });
+        toast('Durées enregistrées', 'success'); carte.remove(); afficherCarteConservation();
+      } catch (e) { toast(e.message, 'error'); }
+    };
+    if ($('#ret-anon')) $('#ret-anon').onclick = async () => {
+      if (prompt(`Action irréversible : ${r.a_anonymiser} dossier(s) seront définitivement anonymisés.\nTapez ANONYMISER pour confirmer.`) !== 'ANONYMISER') return;
+      try {
+        const res = await apiFetch('/eleves/retention/anonymiser', { method: 'POST', body: JSON.stringify({ confirmation: 'ANONYMISER' }) });
+        toast(`${res.anonymises} dossier(s) anonymisé(s)`, 'success'); carte.remove(); afficherCarteConservation();
+      } catch (e) { toast(e.message, 'error'); }
+    };
+  } catch (e) { /* réservé à la direction : silencieux sinon */ }
+}

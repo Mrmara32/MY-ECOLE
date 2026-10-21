@@ -36,6 +36,19 @@ def _colonnes(table):
     return {r['name'] for r in db.execute(f"PRAGMA table_info({table})").fetchall()}
 
 
+def anonymiser_eleve(ecole, e):
+    """Efface l'identité d'un élève (irréversible) ; les chiffres comptables et statistiques restent."""
+    eleve_id = e['id']
+    sets = ["nom='ANONYME'", "prenom=?"] + [f"{c}=NULL" for c in CHAMPS_IDENTITE_A_EFFACER if c in e.keys()]
+    db.execute(f"UPDATE eleves SET {', '.join(sets)} WHERE id=? AND ecole_id=?", (e['matricule'], eleve_id, ecole))
+    db.execute("UPDATE examen_candidats SET nom='ANONYME', prenom=?, date_naissance=NULL, telephone=NULL WHERE eleve_id=? AND ecole_id=?",
+               (e['matricule'], eleve_id, ecole))
+    db.execute("UPDATE prets_livres SET emprunteur_nom=? WHERE emprunteur_id=? AND ecole_id=?", (f"Ancien élève {e['matricule']}", eleve_id, ecole))
+    db.execute("UPDATE discipline SET description=NULL WHERE eleve_id=? AND ecole_id=?", (eleve_id, ecole))
+    db.execute("DELETE FROM parents_eleves WHERE eleve_id=?", (eleve_id,))
+    db.commit()
+
+
 @bp.route('/<eleve_id>/donnees', methods=['GET'])
 @require_auth
 @require_role('admin', 'directeur')
@@ -68,14 +81,54 @@ def anonymiser(eleve_id):
         return jsonify({'error': "Un élève actuellement inscrit ne peut pas être anonymisé : changez d'abord son statut"}), 409
     if (request.get_json(silent=True) or {}).get('confirmation') != e['matricule']:
         return jsonify({'error': "Confirmation incorrecte : saisissez le matricule de l'élève"}), 400
-    ecole = g.user['ecole_id']
-    sets = ["nom='ANONYME'", f"prenom='{e['matricule']}'"] + [f"{c}=NULL" for c in CHAMPS_IDENTITE_A_EFFACER if c in e.keys()]
-    db.execute(f"UPDATE eleves SET {', '.join(sets)} WHERE id=? AND ecole_id=?", (eleve_id, ecole))
-    db.execute("UPDATE examen_candidats SET nom='ANONYME', prenom=?, date_naissance=NULL, telephone=NULL WHERE eleve_id=? AND ecole_id=?",
-               (e['matricule'], eleve_id, ecole))
-    db.execute("UPDATE prets_livres SET emprunteur_nom=? WHERE emprunteur_id=? AND ecole_id=?", (f"Ancien élève {e['matricule']}", eleve_id, ecole))
-    db.execute("UPDATE discipline SET description=NULL WHERE eleve_id=? AND ecole_id=?", (eleve_id, ecole))
-    db.execute("DELETE FROM parents_eleves WHERE eleve_id=?", (eleve_id,))
-    db.commit()
+    anonymiser_eleve(g.user['ecole_id'], e)
     log_action(g.user, 'anonymisation', 'eleve', eleve_id, {'matricule': e['matricule']})
     return jsonify({'success': True})
+
+
+# ── Durées de conservation ────────────────────────────────────────────────────
+@bp.route('/retention', methods=['GET'])
+@require_auth
+@require_role('admin', 'directeur')
+def rapport_conservation():
+    """Politique de conservation de l'école et dossiers d'anciens élèves ayant dépassé la durée prévue."""
+    import retention
+    ecole = g.user['ecole_id']
+    pol = retention.politique(ecole)
+    cands = retention.candidats_anonymisation(ecole, pol['eleves_annees'])
+    return jsonify({'politique': pol, 'a_anonymiser': len(cands),
+                    'dossiers': [{'id': c['id'], 'matricule': c['matricule'], 'nom': c['nom'], 'prenom': c['prenom'],
+                                  'statut': c['statut'], 'derniere_activite': c['derniere_activite']} for c in cands[:200]]})
+
+
+@bp.route('/retention', methods=['PUT'])
+@require_auth
+@require_role('admin', 'directeur')
+def modifier_politique_conservation():
+    import retention
+    body = request.get_json(silent=True) or {}
+    try:
+        retention.enregistrer_politique(g.user['ecole_id'], body.get('eleves_annees'), body.get('journal_mois'))
+    except ValueError as err:
+        return jsonify({'error': str(err)}), 400
+    log_action(g.user, 'politique_conservation', 'ecole', str(g.user['ecole_id']), body)
+    return jsonify(retention.politique(g.user['ecole_id']))
+
+
+@bp.route('/retention/anonymiser', methods=['POST'])
+@require_auth
+@require_role('admin', 'directeur')
+def anonymiser_echus():
+    """Anonymise d'un coup tous les anciens élèves ayant dépassé la durée de conservation (irréversible)."""
+    import retention
+    if (request.get_json(silent=True) or {}).get('confirmation') != 'ANONYMISER':
+        return jsonify({'error': 'Confirmation incorrecte : saisissez ANONYMISER'}), 400
+    ecole = g.user['ecole_id']
+    n = 0
+    for c in retention.candidats_anonymisation(ecole, retention.politique(ecole)['eleves_annees']):
+        e = db.execute("SELECT * FROM eleves WHERE id=? AND ecole_id=?", (c['id'], ecole)).fetchone()
+        if e:
+            anonymiser_eleve(ecole, e)
+            n += 1
+    log_action(g.user, 'anonymisation_en_lot', 'ecole', str(ecole), {'dossiers': n})
+    return jsonify({'success': True, 'anonymises': n})
