@@ -8,6 +8,7 @@ import secrets
 from datetime import datetime
 from html import escape
 
+import re
 from flask import Blueprint, Response, g, jsonify, request
 
 import orange_money_service as om
@@ -355,6 +356,55 @@ def lister_declarations():
         params.append(statut)
     sql += " ORDER BY d.created_at DESC LIMIT 200"
     return jsonify(rows_to_list(db.execute(sql, params).fetchall()))
+
+
+def _lignes_export(ecole_id, mois):
+    """Paiements Orange Money du mois (déclarations validées ou à vérifier + paiements automatiques réussis)."""
+    lignes = []
+    for d in db.execute(
+            """SELECT d.montant, d.transaction_id, d.telephone, d.statut, d.numero_recu,
+                      COALESCE(d.valide_le, d.created_at) AS date_op, e.nom, e.prenom, e.matricule, e.classe
+               FROM paiements_om_declares d JOIN eleves e ON e.id=d.eleve_id AND e.ecole_id=d.ecole_id
+               WHERE d.ecole_id=? AND d.statut IN ('valide','a_verifier')
+                 AND substr(COALESCE(d.valide_le, d.created_at),1,7)=?""", (ecole_id, mois)).fetchall():
+        lignes.append((d['date_op'], d, 'QR marchand'))
+    for d in db.execute(
+            """SELECT p.montant, p.order_id AS transaction_id, '' AS telephone, p.statut, p.numero_recu,
+                      COALESCE(p.confirme_le, p.created_at) AS date_op, e.nom, e.prenom, e.matricule, e.classe
+               FROM paiements_en_ligne p JOIN eleves e ON e.id=p.eleve_id AND e.ecole_id=p.ecole_id
+               WHERE p.ecole_id=? AND p.statut IN ('reussi','a_verifier')
+                 AND substr(COALESCE(p.confirme_le, p.created_at),1,7)=?""", (ecole_id, mois)).fetchall():
+        lignes.append((d['date_op'], d, 'API Orange'))
+    lignes.sort(key=lambda x: str(x[0]))
+    return lignes
+
+
+@bp.route('/export', methods=['GET'])
+@require_auth
+@require_role(*ROLES_LIEN)
+def exporter_mois():
+    """Rapport mensuel pour la comptabilité : ?mois=AAAA-MM (CSV Excel français) ou &format=json (totaux)."""
+    import csv
+    import io
+    mois = (request.args.get('mois') or '')[:7]
+    if not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])', mois):
+        return jsonify({'error': 'Mois invalide (format AAAA-MM)'}), 400
+    lignes = _lignes_export(g.user['ecole_id'], mois)
+    total = round(sum(d['montant'] for _, d, _ in lignes))
+    if request.args.get('format') == 'json':
+        return jsonify({'mois': mois, 'nombre': len(lignes), 'total': total,
+                        'a_verifier': sum(1 for _, d, _ in lignes if d['statut'] == 'a_verifier')})
+    sortie = io.StringIO()
+    w = csv.writer(sortie, delimiter=';')
+    w.writerow(['Date', 'Matricule', 'Nom', 'Prénom', 'Classe', 'Montant (GNF)', 'N° transaction Orange', 'Téléphone payeur',
+                'Mode', 'N° reçu', 'État'])
+    for date_op, d, mode in lignes:
+        w.writerow([str(date_op)[:10], d['matricule'] or '', d['nom'], d['prenom'], d['classe'] or '', round(d['montant']),
+                    d['transaction_id'], d['telephone'] or '', mode, d['numero_recu'] or '',
+                    'À vérifier (versement non imputé)' if d['statut'] == 'a_verifier' else 'Comptabilisé'])
+    w.writerow(['TOTAL', '', '', '', '', total, '', '', '', '', f'{len(lignes)} paiement(s)'])
+    return Response('\ufeff' + sortie.getvalue(), mimetype='text/csv; charset=utf-8',
+                    headers={'Content-Disposition': f'attachment; filename="orange-money-{mois}.csv"'})
 
 
 @bp.route('/declarations/<did>/valider', methods=['POST'])

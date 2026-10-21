@@ -496,7 +496,7 @@ window.lienOrangeMoney = lienOrangeMoney;
    reçoit un SMS avec un numéro de transaction. On l'enregistre ici : il est unique, le versement
    et le reçu suivent. */
 let _omConfig = {}, _omEleves = [];
-const OM_ONGLETS = [['encaisser', 'Enregistrer un paiement'], ['valider', 'À valider'], ['qr', 'QR de l\'école']];
+const OM_ONGLETS = [['encaisser', 'Enregistrer un paiement'], ['valider', 'À valider'], ['qr', 'QR de l\'école'], ['export', 'Rapport mensuel']];
 
 async function modalOrangeMoney(onglet = 'encaisser') {
   openModal('🟠 Orange Money', loadingHtml, { wide: true });
@@ -509,10 +509,30 @@ async function modalOrangeMoney(onglet = 'encaisser') {
 function omAfficher(onglet) {
   const gestion = ['admin', 'directeur', 'comptable'].includes(currentUser.role);
   $('#modal-body').innerHTML = `
-    <div class="tabs" style="margin-bottom:12px">${OM_ONGLETS.filter(o => gestion || o[0] !== 'valider').map(o =>
+    <div class="tabs" style="margin-bottom:12px">${OM_ONGLETS.filter(o => gestion || !['valider', 'export'].includes(o[0])).map(o =>
       `<div class="tab ${o[0] === onglet ? 'active' : ''}" onclick="omAfficher('${o[0]}')">${o[1]}</div>`).join('')}</div>
     <div id="om-corps"></div>`;
-  ({ encaisser: omEncaisser, valider: omValider, qr: omQr })[onglet]();
+  ({ encaisser: omEncaisser, valider: omValider, qr: omQr, export: omExport })[onglet]();
+}
+
+function omExport() {
+  const mois = new Date().toISOString().slice(0, 7);
+  $('#om-corps').innerHTML = `
+    <div class="alert alert-info" style="font-size:12px">Liste des paiements Orange Money comptabilisés dans le mois (date de validation), avec le total, à remettre à la comptabilité. Les lignes « À vérifier » ont été reçues mais pas encore imputées sur une échéance.</div>
+    <div class="form-2"><div class="fg"><label>Mois</label><input id="om-mois" type="month" value="${mois}"></div></div>
+    <div id="om-resume" class="text-muted" style="margin:8px 0"></div>
+    <button class="btn btn-primary" id="om-dl">⬇ Télécharger (Excel / CSV)</button>`;
+  const maj = async () => {
+    try {
+      const r = await apiFetch('/orange-money/export?format=json&mois=' + $('#om-mois').value);
+      $('#om-resume').innerHTML = `<b>${r.nombre}</b> paiement(s) — total <b>${fmtMoney(r.total)}</b>` + (r.a_verifier ? ` — <span style="color:#c0392b">${r.a_verifier} à vérifier</span>` : '');
+    } catch (e) { $('#om-resume').textContent = e.message; }
+  };
+  $('#om-mois').onchange = maj; maj();
+  $('#om-dl').onclick = async () => {
+    try { const m = $('#om-mois').value; await apiTelechargerFichier('/orange-money/export?mois=' + m, `orange-money-${m}.csv`); }
+    catch (e) { toast(e.message, 'error'); }
+  };
 }
 
 function omEncaisser() {
