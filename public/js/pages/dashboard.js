@@ -24,6 +24,7 @@ async function pageDashboard() {
       <button class="btn btn-outline btn-xs" style="margin-left:10px" onclick="navigate('absences')">Voir</button>
     </div>` : ''}
 
+    ${typeof modulesCartesHtml === 'function' ? modulesCartesHtml() : ''}
     <div class="stats-grid">
       <div class="stat">
         <div class="stat-icon">🎓</div><div class="stat-label">Élèves inscrits</div>

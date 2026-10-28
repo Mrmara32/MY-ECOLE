@@ -32,7 +32,11 @@ const PAGES = {
   candidatures:    { icon:'📋', labelKey:'nav_candidatures',         fn: pageCandidatures,    roles:['admin','directeur'] },
   users:           { icon:'👥', labelKey:'nav_users',         fn: pageUsers,           roles:['admin'] },
   journal:         { icon:'🗂️', labelKey:'nav_journal',     fn: pageJournal,         roles:['admin'] },
-  parametres:      { icon:'🔐', labelKey:'nav_parametres',        fn: pageParametres,      roles:['admin','directeur'] },
+  mod_scolarite:     { icon:'🎓', labelKey:'mod_scolarite',     fn: () => pageModule('scolarite'),     roles: TOUS_ROLES, module:true },
+  mod_finances:      { icon:'💼', labelKey:'mod_finances',      fn: () => pageModule('finances'),      roles: TOUS_ROLES, module:true },
+  mod_rh:            { icon:'👫', labelKey:'mod_rh',            fn: () => pageModule('rh'),            roles: TOUS_ROLES, module:true },
+  mod_communication: { icon:'📢', labelKey:'mod_communication', fn: () => pageModule('communication'), roles: TOUS_ROLES, module:true },
+  mod_admin:         { icon:'🔐', labelKey:'mod_admin',         fn: () => pageModule('admin'),         roles: TOUS_ROLES, module:true },
   settings:        { icon:'⚙️', labelKey:'nav_settings',          fn: pageSettings,        roles:['admin','directeur'] },
   aide:            { icon:'❓', labelKey:'nav_aide',                 fn: pageAide,            roles:['admin','directeur','comptable','enseignant','secretaire','charge_communication','directeur_etudes','parent'] },
   ecoles:          { icon:'🏢', labelKey:'nav_ecoles',             fn: pageEcoles,          superAdminOnly:true },
@@ -41,10 +45,11 @@ const PAGES = {
 // Groupes de navigation
 const NAV_GROUPS = [
   { labelKey: null, pages: ['dashboard'] },
-  { labelKey: 'nav_section_scolarite', pages: ['eleves','eleveDuMois','notes','devoirs','emploi','seances','absences','pointage','discipline','examens','bibliotheque','classes','salles','reinscriptions'] },
-  { labelKey: 'nav_section_finances', pages: ['paiements','cantine','comptabilite','fournisseurs','logistique','revision','paie'] },
-  { labelKey: 'nav_section_vie_ecole', pages: ['communication','actualites','personnel'] },
-  { labelKey: 'nav_section_administration', pages: ['parametres','users','journal','settings'] },
+  { labelKey: 'mod_scolarite', module: 'mod_scolarite', pages: ['eleves','eleveDuMois','notes','devoirs','emploi','seances','absences','pointage','discipline','examens','bibliotheque','classes','salles','reinscriptions'] },
+  { labelKey: 'mod_finances', module: 'mod_finances', pages: ['paiements','cantine','comptabilite','fournisseurs','logistique','revision','paie'] },
+  { labelKey: 'mod_rh', module: 'mod_rh', pages: ['personnel','candidatures'] },
+  { labelKey: 'mod_communication', module: 'mod_communication', pages: ['communication','actualites'] },
+  { labelKey: 'mod_admin', module: 'mod_admin', pages: ['users','journal','settings'] },
   { labelKey: 'nav_section_super_admin', pages: ['ecoles'] },
   { labelKey: null, pages: ['aide'] },
 ];
@@ -224,8 +229,9 @@ function buildNav() {
     if (!visiblePages.length) return;
     if (group.labelKey) {
       const title = document.createElement('div');
-      title.className = 'nav-section-title';
+      title.className = 'nav-section-title' + (group.module ? ' nav-section-lien' : '');
       title.textContent = t(group.labelKey);
+      if (group.module) { title.title = 'Ouvrir le module'; title.addEventListener('click', () => navigate(group.module)); }
       nav.appendChild(title);
     }
     visiblePages.forEach(k => {
@@ -257,10 +263,11 @@ function navigate(page) {
   const groupe = NAV_GROUPS.find(g => g.pages.includes(page));
   const crumbs = [`<a href="#" onclick="navigate('dashboard');return false">🏠 ${esc(t('nav_dashboard'))}</a>`];
   if (page !== 'dashboard') {
-    if (groupe && groupe.labelKey) crumbs.push(`<span>${esc(t(groupe.labelKey))}</span>`);
+    if (groupe && groupe.labelKey) crumbs.push(groupe.module ? `<a href="#" onclick="navigate('${groupe.module}');return false">${esc(t(groupe.labelKey))}</a>` : `<span>${esc(t(groupe.labelKey))}</span>`);
     crumbs.push(`<span class="breadcrumb-current">${esc(t(pg.labelKey))}</span>`);
   }
-  $('#pg-breadcrumb').innerHTML = crumbs.join('<span class="breadcrumb-sep">›</span>');
+  $('#pg-breadcrumb').innerHTML = crumbs.join('<span class="breadcrumb-sep">›</span>')
+    + (page !== 'dashboard' ? `<span class="crumb-actions"><button class="btn btn-outline btn-xs" onclick="retourPage()">← Retour</button><button class="btn btn-outline btn-xs" onclick="navigate('dashboard')">🏠 Accueil</button></span>` : '');
   // Sur mobile, la sidebar est un tiroir : on la referme après avoir choisi une page
   toggleSidebar(false);
   // Charger la page
