@@ -497,11 +497,9 @@ async function imprimerCarteScolaire(eleveId) {
     }
   </style></head><body>
   <div class="carte">
-    <div class="flag-bar"><div style="background:#CE1126"></div><div style="background:#FCD116"></div><div style="background:#009460"></div></div>
+    <div class="flag-bar"><div style="background:#1E2A4A"></div><div style="background:#F39200"></div><div style="background:#1E2A4A"></div></div>
     <div class="header">
-      <div class="pays">République de Guinée</div>
-      <div class="devise">Travail — Justice — Solidarité</div>
-      <div class="ministere">MINISTÈRE DE L'ÉDUCATION NATIONALE</div>
+      ${settings.ecole_logo ? `<img src="${esc(settings.ecole_logo)}" alt="" style="height:1.9cm;width:1.9cm;object-fit:contain;display:block;margin:0 auto 2px">` : ''}
       <div class="titre-carte-wrap"><div class="ln"></div><div class="titre-carte">CARTE SCOLAIRE</div><div class="ln"></div></div>
       <div class="ecole-nom">${esc(ecoleNomAffiche)}</div>
       <div class="ecole-lieu">${esc(ecoleLieuAffiche)}</div>
@@ -575,6 +573,7 @@ async function imprimerBadgeEleve(eleveId) {
   const lieu = settings.ecole_adresse || '';
   const initiales = ecole.split(/\s+/).filter(m => m.length > 2).map(m => m[0]).join('').slice(0, 3).toUpperCase() || 'ME';
   const photo = e.photo_url ? esc(e.photo_url) : '';
+  const logo = settings.ecole_logo ? esc(settings.ecole_logo) : '';
   const nomMaj = (e.nom || '').toUpperCase();
   const expireFr = fmtDate(sec.expire);
   const mrz1 = _ligneMachine(`BDG<${nomMaj}<<${e.prenom || ''}`);
@@ -591,6 +590,8 @@ async function imprimerBadgeEleve(eleveId) {
     .fond{position:absolute;inset:0;background:linear-gradient(115deg,#eaf6f6 0%,#f7f3e6 52%,#e8eef9 100%)}
     .arc-en-ciel{position:absolute;left:0;right:0;top:0;height:.16cm;background:linear-gradient(90deg,#1b6ca8,#12a594,#e8b923,#e2574c,#8e5bd0,#1b6ca8)}
     .entete{position:absolute;left:.3cm;right:.3cm;top:.26cm;display:flex;justify-content:space-between;align-items:flex-start}
+    .logo-ec{mix-blend-mode:multiply;height:.78cm;width:.78cm;object-fit:contain;flex-shrink:0;margin-right:.15cm}
+    .filigrane-logo{mix-blend-mode:multiply;position:absolute;left:3.9cm;top:1.2cm;width:2.6cm;height:2.6cm;object-fit:contain;opacity:.07}
     .entete .ec{font-weight:800;font-size:9.5px;color:#12365a;line-height:1.1;max-width:5.3cm}
     .entete .sc{font-size:6px;color:#4a5d70;font-weight:700;letter-spacing:.06em;margin-top:1px}
     .titre{font-size:7px;font-weight:800;letter-spacing:.2em;color:#0f7a6c;text-align:right}
@@ -634,8 +635,9 @@ async function imprimerBadgeEleve(eleveId) {
   <div class="carte recto">
     <div class="fond"></div>${_guilloche('#2f8f9d', 160, 100)}
     <div class="arc-en-ciel"></div>
-    <div class="entete"><div><div class="ec">${esc(ecole)}</div><div class="sc">${esc(lieu)}</div></div><div class="titre">BADGE ÉLÈVE<br>${esc(sec.annee||'')}</div></div>
+    <div class="entete"><div style="display:flex;align-items:center">${logo?`<img class="logo-ec" src="${logo}" alt="">`:''}<div><div class="ec">${esc(ecole)}</div><div class="sc">${esc(lieu)}</div></div></div><div class="titre">BADGE ÉLÈVE<br>${esc(sec.annee||'')}</div></div>
     <div class="micro" style="top:.95cm">${_microtexte(ecole.toUpperCase() + ' • BADGE ÉLÈVE • ' + (sec.annee||''), 400)}</div>
+    ${logo ? `<img class="filigrane-logo" src="${logo}" alt="">` : ''}
     ${photo ? `<div class="fantome-grand"><img src="${photo}"></div>` : ''}
     <div class="photo">${photo ? `<img src="${photo}">` : silhouette}</div>
     ${photo ? `<div class="fantome"><img src="${photo}"></div>` : ''}
@@ -654,6 +656,7 @@ async function imprimerBadgeEleve(eleveId) {
   <div class="carte verso">
     <div class="fond"></div>${_guilloche('#7a8fc4', 160, 100)}
     <div class="arc-en-ciel"></div>
+    ${logo ? `<img src="${logo}" alt="" style="mix-blend-mode:multiply;position:absolute;right:.35cm;bottom:.55cm;width:1.1cm;height:1.1cm;object-fit:contain">` : ''}
     <div class="qr">${sec.qr_svg}</div>
     <div class="txt"><b>Vérifier l'authenticité :</b> scannez le QR code avec un téléphone. Une page officielle de ${esc(ecole)} confirme l'identité et la validité du badge. Un badge dont le QR ne confirme pas l'identité affichée est un faux.<br><br>
       <b>Valable</b> pour l'année scolaire ${esc(sec.annee||'en cours')} — jusqu'au ${esc(expireFr)}.</div>
