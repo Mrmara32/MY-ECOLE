@@ -528,6 +528,7 @@ const apiCreateTransaction  = (b)       => apiFetch('/transactions', {
     await offlinePatcherVariantes('/transactions', (liste) => Array.isArray(liste) ? [{ ...b, id: idTemp, statut_validation: 'auto', _hors_ligne: true }, ...liste] : liste);
   },
 });
+const apiBadgeSecurise = (id) => apiFetch(`/eleves/${id}/badge-securise`);
 const apiGetDettesFournisseurs = (toutes=false) => apiFetch('/dettes-fournisseurs'+(toutes?'?toutes=1':''));
 const apiGetReglements = (id) => apiFetch(`/transactions/${id}/reglements`);
 const apiReglerFournisseur = (id, d) => apiFetch(`/transactions/${id}/regler`, { method:'POST', body:d });

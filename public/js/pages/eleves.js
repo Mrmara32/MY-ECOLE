@@ -75,6 +75,7 @@ function renderElevesRows(list) {
     <td><div class="td-actions">
       ${e.statut==='preinscrit' && ['admin','directeur','comptable'].includes(currentUser.role) ? `<button class="btn btn-ok btn-xs" onclick="modalValiderPreinscription('${escJs(e.id)}','${escJs(e.prenom)} ${escJs(e.nom)}')" title="Valider la préinscription">✔ Valider</button>` : ''}
       <button class="btn btn-outline btn-xs" onclick="imprimerCarteScolaire('${escJs(e.id)}')" title="Carte scolaire">🪪</button>
+      <button class="btn btn-outline btn-xs" onclick="imprimerBadgeEleve('${escJs(e.id)}')" title="Badge sécurisé (QR + hologramme)">🛡</button>
       ${cycleDeClasse(e.classe)==='maternelle' ? `<button class="btn btn-outline btn-xs" onclick="imprimerCarteRetrait('${escJs(e.id)}')" title="Carte de retrait">🧸</button>` : ''}
       <button class="btn btn-outline btn-xs" onclick="ficheEleve('${escJs(e.id)}')" title="Fiche complète">📋</button>
       <button class="btn btn-outline btn-xs" onclick="modalEleve('${escJs(e.id)}')" title="Modifier">✏️</button>
@@ -539,6 +540,134 @@ async function imprimerCarteScolaire(eleveId) {
   finaliserCarteImprimable(win, '.carte', `carte_scolaire_${(e.matricule||e.nom||'eleve')}.png`);
 }
 window.imprimerCarteScolaire = imprimerCarteScolaire;
+
+
+/* ===================== BADGE ÉLÈVE SÉCURISÉ =====================
+   Carte au format ID-1 (8,56 × 5,40 cm), recto/verso. Éléments de sécurité :
+   fond guilloché, photo + photo fantôme, micro-texte, hologramme, QR code signé (vérifiable en ligne),
+   ligne lisible par machine, numéro de série et date d'expiration. */
+function _guilloche(couleur, w, h) {
+  let d = '';
+  for (let i = 0; i < 26; i++) {
+    const ph = i * 0.42, amp = 5 + (i % 5) * 1.6, y0 = h * (0.04 + i * 0.037);
+    let path = '';
+    for (let x = 0; x <= w; x += 4) {
+      const y = y0 + Math.sin(x / 11 + ph) * amp + Math.sin(x / 27 + ph * 1.7) * amp * 0.7;
+      path += (x ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1);
+    }
+    d += `<path d="${path}" fill="none" stroke="${couleur}" stroke-width=".35" opacity="${(0.22 + (i % 3) * 0.08).toFixed(2)}"/>`;
+  }
+  let ros = '';
+  for (let k = 0; k < 14; k++) ros += `<ellipse cx="0" cy="0" rx="26" ry="9" transform="rotate(${k * 12.857})" fill="none" stroke="${couleur}" stroke-width=".3" opacity=".3"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">${d}<g transform="translate(${w * 0.72} ${h * 0.55})">${ros}</g></svg>`;
+}
+function _microtexte(texte, largeur, id) {
+  const t = (texte + ' • ').repeat(40);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${largeur} 3" style="display:block;width:100%;height:.12cm"><text x="0" y="2.3" font-size="2.2" font-family="Arial" fill="#1b3a5c" textLength="${largeur}" lengthAdjust="spacing">${t.replace(/&/g,'&amp;')}</text></svg>`;
+}
+function _ligneMachine(s, n = 34) {
+  return String(s).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]+/g, '<').padEnd(n, '<').slice(0, n);
+}
+
+async function imprimerBadgeEleve(eleveId) {
+  const [e, settings, sec] = await Promise.all([apiGetEleve(eleveId), apiGetSettings(), apiBadgeSecurise(eleveId)]);
+  const ecole = settings.ecole_nom || 'MY-ECOLE';
+  const lieu = settings.ecole_adresse || '';
+  const initiales = ecole.split(/\s+/).filter(m => m.length > 2).map(m => m[0]).join('').slice(0, 3).toUpperCase() || 'ME';
+  const photo = e.photo_url ? esc(e.photo_url) : '';
+  const nomMaj = (e.nom || '').toUpperCase();
+  const expireFr = fmtDate(sec.expire);
+  const mrz1 = _ligneMachine(`BDG<${nomMaj}<<${e.prenom || ''}`);
+  const mrz2 = _ligneMachine(`${e.matricule || ''}<${(sec.annee || '').replace(/\D/g, '')}<${(e.classe || '')}<${sec.signature.slice(0, 6)}`);
+  const silhouette = '<svg viewBox="0 0 24 24" fill="#9aa8b8" width="70%" height="70%"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4.4 0-9 2.2-9 5v2h18v-2c0-2.8-4.6-5-9-5z"/></svg>';
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Badge — ${esc(e.prenom)} ${esc(e.nom)}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:'Nunito Sans',Arial,sans-serif;margin:0;padding:24px;background:#dfe5ec}
+    .planche{display:flex;flex-direction:column;gap:.6cm;align-items:center}
+    .carte{width:8.56cm;height:5.4cm;position:relative;overflow:hidden;border-radius:.32cm;background:#f6fbfb;
+      border:1px solid #b9c8d6;box-shadow:0 .2cm .5cm rgba(20,40,60,.28)}
+    .fond{position:absolute;inset:0;background:linear-gradient(115deg,#eaf6f6 0%,#f7f3e6 52%,#e8eef9 100%)}
+    .arc-en-ciel{position:absolute;left:0;right:0;top:0;height:.16cm;background:linear-gradient(90deg,#1b6ca8,#12a594,#e8b923,#e2574c,#8e5bd0,#1b6ca8)}
+    .entete{position:absolute;left:.3cm;right:.3cm;top:.26cm;display:flex;justify-content:space-between;align-items:flex-start}
+    .entete .ec{font-weight:800;font-size:9.5px;color:#12365a;line-height:1.1;max-width:5.3cm}
+    .entete .sc{font-size:6px;color:#4a5d70;font-weight:700;letter-spacing:.06em;margin-top:1px}
+    .titre{font-size:7px;font-weight:800;letter-spacing:.2em;color:#0f7a6c;text-align:right}
+    .micro{position:absolute;left:.3cm;right:.3cm}
+    .photo{position:absolute;left:.3cm;top:1.2cm;width:2.05cm;height:2.6cm;border:1.2px solid #12365a;border-radius:2px;background:#fff;overflow:hidden;display:flex;align-items:center;justify-content:center}
+    .photo img{width:100%;height:100%;object-fit:cover;object-position:center top}
+    .fantome{position:absolute;left:2.5cm;top:2.5cm;width:1.05cm;height:1.3cm;border-radius:2px;overflow:hidden;opacity:.55;filter:grayscale(1) contrast(1.1);border:.5px solid #9fb0c2;background:#fff}
+    .fantome img{width:100%;height:100%;object-fit:cover;object-position:center top}
+    .fantome-grand{position:absolute;right:.35cm;top:1.05cm;width:2.6cm;height:3.1cm;opacity:.10;filter:grayscale(1)}
+    .fantome-grand img{width:100%;height:100%;object-fit:cover;object-position:center top}
+    .infos{position:absolute;left:3.7cm;top:1.2cm;right:1.9cm;display:grid;gap:.13cm}
+    .lbl{font-size:5.2px;color:#0f7a6c;font-weight:800;letter-spacing:.07em;text-transform:uppercase}
+    .val{font-size:10.5px;font-weight:800;color:#12365a;line-height:1.1;overflow-wrap:anywhere}
+    .val.p{font-size:9px;font-weight:700}
+    .deux{display:flex;gap:.3cm}
+    .holo{position:absolute;right:.33cm;bottom:1.42cm;width:1.25cm;height:1.25cm;border-radius:50%;
+      background:linear-gradient(135deg,#ff7ac6 0%,#ffd86b 22%,#7dffb8 45%,#63c7ff 68%,#b58cff 100%);
+      border:.6px solid rgba(255,255,255,.9);box-shadow:inset 0 0 .22cm rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .holo:before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,.55) 0 1px,transparent 1px 3px);mix-blend-mode:overlay}
+    .holo span{position:relative;font-weight:800;font-size:8px;color:#12365a;letter-spacing:.03em;text-shadow:0 0 2px #fff}
+    .serie{position:absolute;left:.3cm;bottom:1.05cm;font-family:'DM Mono',monospace;font-size:7px;color:#12365a}
+    .mrz{position:absolute;left:0;right:0;bottom:0;height:.88cm;background:rgba(255,255,255,.82);padding:.08cm .3cm;font-family:'DM Mono','Courier New',monospace;font-size:7px;letter-spacing:.07em;color:#111;line-height:1.35;border-top:.5px solid #b9c8d6}
+    .valid{position:absolute;left:3.7cm;bottom:1.05cm;font-size:6px;color:#4a5d70;font-weight:700}
+    .verso .qr{position:absolute;left:.35cm;top:.55cm;width:2.5cm;height:2.5cm;background:#fff;padding:.1cm;border:.6px solid #12365a;border-radius:3px}
+    .verso .qr svg{width:100%;height:100%}
+    .verso .txt{position:absolute;left:3.1cm;right:.35cm;top:.5cm;font-size:6.6px;color:#1f2f40;line-height:1.45}
+    .verso .txt b{color:#12365a}
+    .verso .urgence{position:absolute;left:.35cm;right:2.9cm;top:3.2cm;font-size:7px;color:#1f2f40;line-height:1.4}
+    .verso .sig{position:absolute;right:.35cm;top:3.3cm;width:2.4cm;text-align:center;font-size:5.5px;color:#4a5d70}
+    .verso .sig img{max-height:.7cm;max-width:2.1cm;display:block;margin:0 auto 1px}
+    .verso .sig .ln{border-top:.5px solid #8a9aab;margin-bottom:1px}
+    .verso .pied{position:absolute;left:.35cm;right:.35cm;bottom:.22cm;font-size:5.4px;color:#4a5d70;text-align:center}
+    @media print{
+      @page{size:8.56cm 5.4cm;margin:0}
+      body{background:#fff;padding:0}
+      .planche{gap:0;display:block}
+      .carte{box-shadow:none;border:none;border-radius:0;page-break-after:always;break-after:page}
+      .carte:last-child{page-break-after:auto;break-after:auto}
+    }
+  </style></head><body><div class="planche">
+  <div class="carte recto">
+    <div class="fond"></div>${_guilloche('#2f8f9d', 160, 100)}
+    <div class="arc-en-ciel"></div>
+    <div class="entete"><div><div class="ec">${esc(ecole)}</div><div class="sc">${esc(lieu)}</div></div><div class="titre">BADGE ÉLÈVE<br>${esc(sec.annee||'')}</div></div>
+    <div class="micro" style="top:.95cm">${_microtexte(ecole.toUpperCase() + ' • BADGE ÉLÈVE • ' + (sec.annee||''), 400)}</div>
+    ${photo ? `<div class="fantome-grand"><img src="${photo}"></div>` : ''}
+    <div class="photo">${photo ? `<img src="${photo}">` : silhouette}</div>
+    ${photo ? `<div class="fantome"><img src="${photo}"></div>` : ''}
+    <div class="infos">
+      <div><div class="lbl">Nom</div><div class="val">${esc(nomMaj)}</div></div>
+      <div><div class="lbl">Prénom(s)</div><div class="val p">${esc(e.prenom||'')}</div></div>
+      <div class="deux"><div><div class="lbl">Classe</div><div class="val p">${esc(e.classe||'—')}</div></div>
+        <div><div class="lbl">Né(e) le</div><div class="val p">${fmtDate(e.date_naissance)}</div></div></div>
+      <div><div class="lbl">Matricule</div><div class="val p" style="font-family:'DM Mono',monospace">${esc(e.matricule||'—')}</div></div>
+    </div>
+    <div class="holo"><span>${esc(initiales)}</span></div>
+    <div class="serie">N° ${esc(sec.numero)}</div>
+    <div class="valid">Expire le ${esc(expireFr)}</div>
+    <div class="mrz">${esc(mrz1)}<br>${esc(mrz2)}</div>
+  </div>
+  <div class="carte verso">
+    <div class="fond"></div>${_guilloche('#7a8fc4', 160, 100)}
+    <div class="arc-en-ciel"></div>
+    <div class="qr">${sec.qr_svg}</div>
+    <div class="txt"><b>Vérifier l'authenticité :</b> scannez le QR code avec un téléphone. Une page officielle de ${esc(ecole)} confirme l'identité et la validité du badge. Un badge dont le QR ne confirme pas l'identité affichée est un faux.<br><br>
+      <b>Valable</b> pour l'année scolaire ${esc(sec.annee||'en cours')} — jusqu'au ${esc(expireFr)}.</div>
+    <div class="urgence"><b>En cas d'urgence :</b> ${esc(e.contact_urgence_nom||e.pere_telephone||e.mere_telephone||e.tuteur_telephone||'—')}${e.contact_urgence_telephone?' — '+esc(e.contact_urgence_telephone):''}<br>
+      <b>Si trouvé, merci de le rapporter à :</b> ${esc(ecole)}${settings.ecole_telephone?' — Tél '+esc(settings.ecole_telephone):''}</div>
+    <div class="sig">${settings.signature_directeur?`<img src="${settings.signature_directeur}">`:''}<div class="ln"></div>Le Directeur</div>
+    <div class="micro" style="bottom:.48cm">${_microtexte(ecole.toUpperCase() + ' • DOCUMENT PERSONNEL ET NON CESSIBLE', 400)}</div>
+    <div class="pied">Document personnel et non cessible — ${esc(sec.numero)}</div>
+  </div>
+  </div></body></html>`;
+  const win = ouvrirDocumentImprimable(html);
+  finaliserCarteImprimable(win, '.planche', `badge_${(e.matricule||e.nom||'eleve')}.png`);
+}
+window.imprimerBadgeEleve = imprimerBadgeEleve;
 
 /* ── Carte de retrait (maternelle) : identifie les personnes autorisées à venir
    chercher l'enfant à la sortie des classes. Basée sur les contacts déjà

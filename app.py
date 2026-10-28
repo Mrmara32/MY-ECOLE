@@ -366,6 +366,8 @@ def create_app():
     app.register_blueprint(users_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(eleves_bp)
+    from routes.eleves_routes import bp_verif as badge_verif_bp
+    app.register_blueprint(badge_verif_bp)
     app.register_blueprint(scolarite_bp)
     app.register_blueprint(finances_bp)
     app.register_blueprint(communication_bp)
