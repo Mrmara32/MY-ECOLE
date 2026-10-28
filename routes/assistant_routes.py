@@ -78,6 +78,12 @@ def _cle_api():
     return os.environ.get('ANTHROPIC_API_KEY', '').strip()
 
 
+def _assistant_actif(ecole_id):
+    """L'administrateur peut désactiver l'assistante pour son établissement (paramètre assistant_actif = 0)."""
+    r = db.execute("SELECT valeur FROM settings WHERE ecole_id=? AND cle='assistant_actif'", (ecole_id,)).fetchone()
+    return not (r and str(r['valeur']) == '0')
+
+
 def _quota_jour():
     try:
         return int(os.environ.get('ASSISTANT_MAX_JOUR', QUOTA_JOUR_DEFAUT))
@@ -134,7 +140,8 @@ def _appeler_modele(systeme, messages, user):
 @bp.route('/statut', methods=['GET'])
 @require_auth
 def statut():
-    return jsonify({'actif': bool(_cle_api()), 'quota_jour': _quota_jour(),
+    return jsonify({'actif': bool(_cle_api()) and _assistant_actif(g.user['ecole_id']),
+                    'desactivee_par_ecole': not _assistant_actif(g.user['ecole_id']), 'quota_jour': _quota_jour(),
                     'donnees': [o['name'] for o in assistant_donnees.outils_pour(g.user.get('role'))]})
 
 
@@ -143,6 +150,8 @@ def statut():
 def alertes():
     """Le point de l'assistante sur le tableau de bord : calculé par règles, sans clé d'API ni appel externe."""
     try:
+        if not _assistant_actif(g.user['ecole_id']):
+            return jsonify({'alertes': []})
         return jsonify({'alertes': assistant_donnees.alertes(g.user)})
     except Exception as e:
         print(f"[assistant] alertes: {type(e).__name__}: {e}")
@@ -152,6 +161,9 @@ def alertes():
 @bp.route('/discuter', methods=['POST'])
 @require_auth
 def discuter():
+    if not _assistant_actif(g.user['ecole_id']):
+        return jsonify({'error': "L'assistante est désactivée par l'administration de votre établissement.",
+                        'code': 'ASSISTANT_DESACTIVE'}), 403
     if not _cle_api():
         return jsonify({'error': "L'assistante n'est pas encore activée sur ce serveur (clé ANTHROPIC_API_KEY à renseigner par l'administrateur).",
                         'code': 'ASSISTANT_NON_CONFIGURE'}), 503
