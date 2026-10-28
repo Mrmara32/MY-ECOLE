@@ -37,26 +37,25 @@ async function pageComptabilite() {
           <div class="stat"><div class="stat-label">Solde net</div><div class="stat-val" style="font-size:16px;color:${(r2-d2)>=0?'var(--c-ok)':'var(--c-err)'}">${fmtMoney(r2-d2)}</div></div>
           <div class="stat"><div class="stat-label">Transactions</div><div class="stat-val">${data.length}</div></div>
         </div>`;
-      $('#tb-compta').innerHTML = data.length ? items.map(t => `<tr>
-        <td>${fmtDate(t.date_op)}</td>
-        <td><span class="badge ${t.type==='entree'?'bdg-ok':'bdg-err'}">${t.type==='entree'?'➕ Recette':'➖ Dépense'}</span></td>
-        <td>${JOURNAL_LABELS[t.journal]||''}</td>
-        <td>${esc(t.description||t.categorie||'—')}</td>
-        <td><span class="badge bdg-gray">${esc(t.categorie||'—')}</span></td>
-        <td>${esc(t.moyen_paiement||'—')}${t.a_regler?(t.montant-t.montant_regle>0.5?`<br><span class="badge bdg-warn">⏳ Reste ${fmtMoney(t.montant-t.montant_regle)}</span>`:`<br><span class="badge bdg-ok">✅ Réglée</span>`):''}</td>
-        <td class="mono text-right fw-600 ${t.type==='entree'?'text-ok':'text-err'}">${t.type==='entree'?'+':'−'}${fmtMoney(t.montant)}</td>
+      $('#tb-compta').innerHTML = data.length ? items.map(t => {
+        const doit = t.a_regler && t.montant - t.montant_regle > 0.5;
+        const valide = t.statut_validation==='auto' || t.statut_validation==='valide';
+        return `<tr>
+        <td style="white-space:nowrap">${fmtDate(t.date_op)}<br><span class="text-muted" style="font-size:11px">${esc(t.cree_par_nom||'')}</span></td>
+        <td style="white-space:nowrap"><span class="badge ${t.type==='entree'?'bdg-ok':'bdg-err'}">${t.type==='entree'?'➕ Recette':'➖ Dépense'}</span><br><span class="text-muted" style="font-size:11px">${JOURNAL_LABELS[t.journal]||''}</span></td>
+        <td style="min-width:200px;max-width:340px;overflow-wrap:anywhere">${esc(t.description||t.categorie||'—')}${t.eleve_nom?`<br><span class="text-muted" style="font-size:11px">${esc(t.eleve_prenom||'')} ${esc(t.eleve_nom||'')}</span>`:''}<br><span class="badge bdg-gray" style="margin-top:3px">${esc(t.categorie||'—')}</span></td>
+        <td style="min-width:130px">${esc(t.moyen_paiement||'—')}${t.a_regler?(doit?`<br><span class="badge bdg-warn">⏳ Reste ${fmtMoney(t.montant-t.montant_regle)}</span>`:`<br><span class="badge bdg-ok">✅ Réglée</span>`):''}</td>
+        <td class="mono text-right fw-600 ${t.type==='entree'?'text-ok':'text-err'}" style="white-space:nowrap">${t.type==='entree'?'+':'−'}${fmtMoney(t.montant)}</td>
         <td>${STATUT_VAL_BADGE[t.statut_validation]||''}</td>
-        <td class="text-muted" style="font-size:11px">${esc(t.cree_par_nom||'—')}</td>
-        <td>
-          ${t.eleve_nom?`<span class="text-muted" style="font-size:11px">${esc(t.eleve_prenom||'')} ${esc(t.eleve_nom||'')}</span><br>`:''}
-          <div class="td-actions">
-            ${(t.statut_validation==='auto'||t.statut_validation==='valide')?`<button class="btn btn-outline btn-xs" onclick="reimprimerTransaction('${escJs(t.id)}')" title="Réimprimer le reçu">🖨</button>`:''}
-            ${(t.a_regler&&t.montant-t.montant_regle>0.5&&['admin','directeur','comptable'].includes(currentUser.role)&&(t.statut_validation==='auto'||t.statut_validation==='valide'))?`<button class="btn btn-primary btn-xs" onclick="modalRegler('${escJs(t.id)}')" title="Régler le fournisseur">💸 Régler</button>`:''}
+        <td style="min-width:130px">
+          <div class="td-actions" style="flex-wrap:wrap;justify-content:flex-end">
+            ${(doit&&valide&&['admin','directeur','comptable'].includes(currentUser.role))?`<button class="btn btn-primary btn-xs" style="flex:1 1 100%" onclick="modalRegler('${escJs(t.id)}')" title="Régler le fournisseur">💸 Régler</button>`:''}
+            ${valide?`<button class="btn btn-outline btn-xs" onclick="reimprimerTransaction('${escJs(t.id)}')" title="Réimprimer le reçu">🖨</button>`:''}
             ${t.a_regler?`<button class="btn btn-outline btn-xs" onclick="voirReglements('${escJs(t.id)}')" title="Historique des règlements">📜</button>`:''}
             ${currentUser.role==='admin'?`<button class="btn btn-danger btn-xs" onclick="delTransaction('${escJs(t.id)}')">🗑</button>`:''}
           </div>
         </td>
-      </tr>`).join('') : `<tr><td colspan="9">${emptyHtml('💳','Aucune transaction pour cette période')}</td></tr>`;
+      </tr>`;}).join('') : `<tr><td colspan="7">${emptyHtml('💳','Aucune transaction pour cette période')}</td></tr>`;
       $('#pag-compta').innerHTML = paginationHtml('compta', page, totalPages, total);
     };
     window._comptaTransactionsCache = transactions;
@@ -101,7 +100,7 @@ async function pageComptabilite() {
         <button class="btn btn-outline btn-sm" style="align-self:flex-end" onclick="reloadTransactions()">🔍</button>
       </div>
       <div class="tbl-wrap"><table>
-        <thead><tr id="th-compta"><th>Date</th><th>Type</th><th>Journal</th><th>Description</th><th>Catégorie</th><th>Moyen</th><th class="text-right">Montant</th><th>Statut</th><th>Créé par</th><th>Lié / Actions</th></tr></thead>
+        <thead><tr id="th-compta"><th>Date</th><th>Type / Journal</th><th>Description</th><th>Moyen</th><th class="text-right">Montant</th><th>Statut</th><th class="text-right">Actions</th></tr></thead>
         <tbody id="tb-compta"></tbody>
       </table></div>
       <div id="pag-compta"></div>
@@ -111,7 +110,7 @@ async function pageComptabilite() {
     render(transactions);
 
     makeSortableTable('#th-compta', () => curr, render,
-      ['date_op', 'type', 'journal', 'description', 'categorie', 'moyen_paiement', 'montant', 'statut_validation', 'cree_par_nom', null]);
+      ['date_op', 'type', 'description', 'moyen_paiement', 'montant', 'statut_validation', null]);
 
     window.reloadTransactions = async () => {
       const deb = $('#f-tdeb').value;
@@ -589,7 +588,7 @@ async function pageDettesFournisseurs() {
       </table></div>
       <div class="tbl-wrap"><table>
         <thead><tr><th>Date</th><th>Fournisseur</th><th>Référence</th><th>Description</th><th class="text-right">Montant</th><th class="text-right">Reste</th><th>Action</th></tr></thead>
-        <tbody>${d.dettes.map(t=>`<tr><td>${fmtDate(t.date_op)}</td><td>${esc(t.fournisseur_nom||'—')}</td><td>${esc(t.reference||'')}</td><td>${esc(t.description||'')}</td><td class="text-right mono">${fmtMoney(t.montant)}</td><td class="text-right mono fw-600 text-err">${fmtMoney(t.solde)}</td><td>${['admin','directeur','comptable'].includes(currentUser.role)?`<button class="btn btn-primary btn-xs" onclick="modalRegler('${escJs(t.id)}', pageDettesFournisseurs)">💸 Régler</button>`:''}</td></tr>`).join('')}</tbody>
+        <tbody>${d.dettes.map(t=>`<tr><td>${fmtDate(t.date_op)}</td><td>${esc(t.fournisseur_nom||'—')}</td><td>${esc(t.reference||'')}</td><td style="min-width:180px;overflow-wrap:anywhere">${esc(t.description||'')}</td><td class="text-right mono" style="white-space:nowrap">${fmtMoney(t.montant)}</td><td class="text-right mono fw-600 text-err">${fmtMoney(t.solde)}</td><td>${['admin','directeur','comptable'].includes(currentUser.role)?`<button class="btn btn-primary btn-xs" onclick="modalRegler('${escJs(t.id)}', pageDettesFournisseurs)">💸 Régler</button>`:''}</td></tr>`).join('')}</tbody>
       </table></div>` : emptyHtml('✅','Aucune dette fournisseur','Tous les achats sont réglés.')}
     </div>`;
 }
