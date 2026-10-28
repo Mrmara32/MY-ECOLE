@@ -507,3 +507,18 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
   display:flex;flex-direction:column;align-items:center;gap:10px;font-weight:700;font-size:13px;color:var(--g9,#1f2937);transition:box-shadow .15s,transform .15s}
 .hub-tuile:hover{box-shadow:0 6px 16px rgba(109,40,217,.16);transform:translateY(-2px)}
 .hub-ico{width:56px;height:56px;border-radius:14px;background:#ede9fe;display:flex;align-items:center;justify-content:center;font-size:28px}
+
+.hub-cartes{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:14px;margin-bottom:20px}
+.hub-carte{background:#fff;border:1px solid var(--g2);border-top:4px solid var(--couleur);border-radius:14px;padding:18px 16px;cursor:pointer;
+  box-shadow:0 2px 8px rgba(0,0,0,.05);transition:box-shadow .15s,transform .15s;text-align:center}
+.hub-carte:hover{box-shadow:0 8px 20px rgba(0,0,0,.12);transform:translateY(-2px)}
+.hub-carte-ico{font-size:34px;margin-bottom:6px}
+.hub-carte-titre{font-weight:800;font-size:15px;color:var(--couleur);margin-bottom:4px}
+.hub-carte-desc{font-size:12px;color:var(--g6);line-height:1.35}
+.hub-onglets{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px}
+.hub-onglet{border:none;background:var(--g1);border-radius:999px;padding:8px 14px;font-size:13px;cursor:pointer;color:var(--g8)}
+.hub-onglet:hover{background:var(--g2)}
+.hub-onglet.actif{background:var(--couleur);color:#fff;font-weight:700}
+.nav-section-lien{cursor:pointer}
+.nav-section-lien:hover{text-decoration:underline}
+.crumb-actions{margin-left:auto;display:inline-flex;gap:6px}
