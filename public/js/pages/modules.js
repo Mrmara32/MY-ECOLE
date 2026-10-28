@@ -14,8 +14,8 @@ const MODULES = {
     desc: 'Frais de scolarité, cantine, comptabilité, fournisseurs, achats, paie',
     rubriques: [
       { titre: 'Encaissements', tuiles: [{page:'paiements'},{page:'cantine'},{page:'revision'}] },
-      { titre: 'Comptabilité', tuiles: [{page:'comptabilite'},{page:'fournisseurs'}] },
-      { titre: 'Achats et logistique', tuiles: [{page:'logistique'}] },
+      { titre: 'Comptabilité', tuiles: [{page:'comptabilite'}] },
+      { titre: 'Achats et logistique', tuiles: [{page:'fournisseurs'},{page:'logistique'}] },
       { titre: 'Paie', tuiles: [{page:'paie'}] },
     ] },
   rh: { icone: '👫', couleur: '#b45309', titre: 'Ressources Humaines',
