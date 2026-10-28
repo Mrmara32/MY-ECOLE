@@ -137,7 +137,7 @@ async function initLogin() {
         rep = await apiLogin(username, password, codeEcole, code);
       }
       const { token, user } = rep;
-      apiSetToken(token);
+      apiSetToken(token, rep.refresh_token);
       currentUser = user;
       localStorage.setItem('gs_user', JSON.stringify(user));
       try {
@@ -146,6 +146,7 @@ async function initLogin() {
       } catch (_) { /* stockage indisponible : simple confort, sans conséquence */ }
       await startApp();
       if (user.doit_changer_mot_de_passe) showPwdModal(true);
+      else if (user.double_auth_requise) show2faModal(false, true);
       if (user.codes_secours_restants !== undefined) toast(`Code de secours utilisé — il vous en reste ${user.codes_secours_restants}.`, 'warning');
       const civ = user.civilite ? user.civilite + ' ' : '';
       toast(`Bienvenue ${civ}${user.full_name || user.username} 👋`, 'success');
@@ -321,7 +322,7 @@ function showPwdModal(obligatoire = false) {
     if (newPwd !== conf) { toast('Les mots de passe ne correspondent pas','error'); return; }
     try {
       const r = await apiChangePwd(oldPwd, newPwd);
-      if (r && r.token) apiSetToken(r.token);          // jeton sans la mention « mot de passe provisoire »
+      if (r && r.token) apiSetToken(r.token, r.refresh_token);          // jeton sans la mention « mot de passe provisoire »
       toast('Mot de passe modifié ✅','success'); closeModal();
       if (obligatoire) { try { currentUser.doit_changer_mot_de_passe = false; localStorage.setItem('gs_user', JSON.stringify(currentUser)); } catch (_) {} navigate && navigate('dashboard'); }
     } catch(err) { toast(err.message,'error'); }
@@ -346,7 +347,7 @@ function demanderCode2fa() {
   });
 }
 
-async function show2faModal() {
+async function show2faModal(_x, obligatoire) {
   let st;
   try { st = await api2faStatut(); } catch (err) { toast(err.message, 'error'); return; }
   if (st.actif) {
@@ -366,6 +367,7 @@ async function show2faModal() {
     };
     return;
   }
+  if (obligatoire) toast('La double authentification est obligatoire pour votre rôle.', 'warning');
   openModal('Activer la double authentification', `
     <div class="alert alert-info" style="margin-bottom:12px">Même si votre mot de passe est volé, personne ne pourra se connecter sans votre téléphone.</div>
     <div style="margin-bottom:12px"><b>1.</b> Installez une application d'authentification (Google Authenticator, Microsoft Authenticator, Aegis…).</div>
@@ -386,6 +388,7 @@ async function show2faModal() {
         e.preventDefault();
         try {
           const r = await api2faActiver($('#on-code').value);
+          if (r.token) apiSetToken(r.token);
           openModal('Codes de secours', `
             <div class="alert alert-warning" style="margin-bottom:12px">Notez ces codes dans un endroit sûr. Chacun ne sert qu'une fois, si vous perdez votre téléphone. <b>Ils ne seront plus affichés.</b></div>
             <pre style="font-size:1.1rem;line-height:1.8;text-align:center">${r.codes_secours.join('\n')}</pre>
@@ -397,6 +400,49 @@ async function show2faModal() {
 }
 window.show2faModal = show2faModal;
 
+async function showAppareilsModal() {
+  let liste;
+  try { liste = await apiGetAppareils(); } catch (err) { toast(err.message, 'error'); return; }
+  const f = t => new Date(t * 1000).toLocaleString('fr-FR');
+  openModal('Appareils connectés', `
+    <p style="color:var(--text-muted);margin-bottom:10px">Appareils actuellement connectés à votre compte. Déconnectez ceux que vous ne reconnaissez pas.</p>
+    <table class="table"><thead><tr><th>Appareil</th><th>Adresse</th><th>Dernière activité</th><th></th></tr></thead><tbody>
+    ${liste.map(a => `<tr><td>${esc(a.appareil || '')}${a.courante ? ' <b>(cet appareil)</b>' : ''}</td><td>${esc(a.ip || '')}</td><td>${f(a.derniere_activite)}</td>
+      <td>${a.courante ? '' : `<button class="btn btn-outline btn-xs" onclick="deconnecterAppareil('${a.id}')">Déconnecter</button>`}</td></tr>`).join('')}
+    </tbody></table>`);
+}
+async function deconnecterAppareil(id) {
+  try { await apiDeconnecterAppareil(id); toast('Appareil déconnecté', 'success'); showAppareilsModal(); } catch (err) { toast(err.message, 'error'); }
+}
+window.showAppareilsModal = showAppareilsModal; window.deconnecterAppareil = deconnecterAppareil;
+
+/* ── Motif obligatoire des suppressions (tracé au journal d'audit) ── */
+function demanderMotif() {
+  return new Promise(resolve => {
+    openModal('Motif de la suppression', `
+      <form id="f-motif" style="display:flex;flex-direction:column;gap:12px">
+        <p style="color:var(--text-muted)">Cette suppression sera enregistrée au journal d'audit avec votre nom. Indiquez le motif (5 caractères minimum).</p>
+        <textarea id="motif-txt" required minlength="5" rows="3" placeholder="Ex : doublon saisi par erreur"></textarea>
+        <div class="modal-footer"><button type="button" class="btn btn-outline" id="motif-x">Annuler</button>
+          <button class="btn btn-danger" type="submit">Confirmer</button></div>
+      </form>`, { narrow: true });
+    setTimeout(() => { const i = $('#motif-txt'); i && i.focus(); }, 50);
+    $('#motif-x').onclick = () => { closeModal(); resolve(null); };
+    $('#f-motif').onsubmit = e => { e.preventDefault(); const v = $('#motif-txt').value.trim(); closeModal(); resolve(v.length >= 5 ? v : null); };
+  });
+}
+window.demanderMotif = demanderMotif;
+
+/* ── Déconnexion après 30 minutes d'inactivité (le serveur applique aussi cette limite) ── */
+(function () {
+  let dernier = Date.now();
+  ['click', 'keydown', 'mousemove', 'touchstart', 'scroll'].forEach(ev =>
+    document.addEventListener(ev, () => { dernier = Date.now(); }, { passive: true }));
+  setInterval(() => {
+    if (_token && Date.now() - dernier > 30 * 60 * 1000) authLogout();
+  }, 30000);
+})();
+
 /* ── Raccourci Escape ── */
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeModal();
@@ -406,7 +452,7 @@ document.addEventListener('keydown', e => {
 // La session survit désormais à une actualisation de la page : si un jeton encore
 // valide existe, il est vérifié auprès du serveur (route /auth/me) et la session
 // est restaurée directement, sans redemander les identifiants. Le jeton expire de
-// lui-même au bout de 12h (voir auth.py), ce qui garantit une déconnexion naturelle
+// lui-même au bout d'1 h (renouvelé automatiquement, 7 jours, 30 min d'inactivité — voir auth.py), ce qui garantit une déconnexion naturelle
 // et une traçabilité réelle sans imposer une reconnexion à chaque simple rafraîchissement.
 async function init() {
   // Vérification de licence (n'a d'effet que sur une installation autonome / .exe ;

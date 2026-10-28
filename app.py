@@ -148,6 +148,51 @@ def create_app():
     ATTENTE_MAX_VERROU_S = 90
 
     @app.before_request
+    def limiter_debit():
+        """Limitation de débit : 10/min sur la connexion, 60/min visiteur anonyme, 300/min utilisateur connecté."""
+        from flask import request
+        import securite
+        if app.config.get('TESTING') and not app.config.get('DEBIT_ACTIF'):
+            return None
+        chemin = request.path
+        if not (chemin.startswith('/api/') or chemin.startswith('/v/')) or request.method == 'OPTIONS':
+            return None
+        ip = securite.adresse_client()
+        if chemin in ('/api/auth/login', '/api/auth/refresh'):
+            categorie, cle = 'connexion', ip
+        elif request.headers.get('Authorization', '').startswith('Bearer '):
+            categorie, cle = 'connecte', request.headers['Authorization'][-24:] + ip
+        else:
+            categorie, cle = 'anonyme', ip
+        attente = securite.debit_depasse(categorie, cle)
+        if attente:
+            r = jsonify({'error': f"Trop de requêtes. Réessayez dans {attente} seconde{'s' if attente > 1 else ''}."})
+            r.status_code = 429
+            r.headers['Retry-After'] = str(attente)
+            return r
+        return None
+
+    MOTIF_REQUIS_ENDPOINTS = ('finances_routes.', 'paie_routes.', 'fournisseurs_routes.', 'logistique_routes.delete_commande',
+                              'eleves_routes.delete_eleve', 'users_routes.delete_user', 'scolarite_routes.delete_personnel',
+                              'scolarite_routes.delete_reinscription', 'ecoles_routes.')
+
+    @app.before_request
+    def exiger_motif_suppression():
+        """Toute suppression d'une donnée financière ou d'un dossier sensible doit porter un motif écrit (en-tête X-Motif),
+        conservé au journal d'audit."""
+        from flask import request
+        if request.method != 'DELETE' or not request.path.startswith('/api/'):
+            return None
+        if app.config.get('TESTING') and not app.config.get('MOTIF_ACTIF'):
+            return None
+        if not (request.endpoint or '').startswith(MOTIF_REQUIS_ENDPOINTS):
+            return None
+        if len(__import__('urllib.parse').parse.unquote(request.headers.get('X-Motif') or '').strip()) < 5:
+            return jsonify({'error': 'Un motif écrit (5 caractères minimum) est obligatoire pour cette suppression.',
+                            'code': 'MOTIF_REQUIS'}), 400
+        return None
+
+    @app.before_request
     def ecritures_une_par_une():
         from flask import request, g
         if request.method in ('GET', 'HEAD', 'OPTIONS') or request.endpoint in SANS_VERROU_ECRITURE:
@@ -229,8 +274,9 @@ def create_app():
                 and request.path not in ('/api/auth/logout', '/api/auth/logout-all'):
             jeton = entete[7:]
             if request.cookies.get('gs_media') != jeton:
-                reponse.set_cookie('gs_media', jeton, max_age=12 * 3600, path='/uploads',
-                                   httponly=True, samesite='Strict', secure=request.is_secure)
+                reponse.set_cookie('gs_media', jeton, max_age=3600, path='/uploads',
+                                   httponly=True, samesite='Strict',
+                                   secure=__import__('securite_http').requete_securisee(request))
         return reponse
 
     @app.route('/manifest.webmanifest')

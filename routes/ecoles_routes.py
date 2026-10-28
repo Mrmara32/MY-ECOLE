@@ -68,8 +68,8 @@ def inscription_ecole():
         return refus
     if not nom_ecole or not admin_full_name or not admin_username or not admin_password:
         return jsonify({'error': "Nom de l'école, nom de l'administrateur, identifiant et mot de passe sont requis"}), 400
-    if erreur_mot_de_passe(admin_password):
-        return jsonify({'error': erreur_mot_de_passe(admin_password)}), 400
+    if erreur_mot_de_passe(admin_password, admin_username, 'admin'):
+        return jsonify({'error': erreur_mot_de_passe(admin_password, admin_username, 'admin')}), 400
     if not email_contact or '@' not in email_contact:
         return jsonify({'error': "Une adresse e-mail valide est requise pour confirmer votre inscription"}), 400
 

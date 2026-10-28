@@ -36,6 +36,7 @@ const MODULES = {
       { titre: 'Sécurité et accès', tuiles: [
         {page:'users'},
         {icone:'🔑', label:'Sécurité (2FA)', roles:TOUS_ROLES, action:'show2faModal()'},
+        {icone:'💻', label:'Appareils connectés', roles:TOUS_ROLES, action:'showAppareilsModal()'},
         {icone:'🔐', label:'Mot de passe', roles:TOUS_ROLES, action:'showPwdModal()'},
         {page:'journal'},
         {icone:'💾', label:'Sauvegarde', superAdmin:true, action:"_versCarteParametres('Sauvegardes')"},

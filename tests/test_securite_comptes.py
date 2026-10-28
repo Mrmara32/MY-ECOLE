@@ -24,7 +24,12 @@ def test_regles_de_mot_de_passe():
     assert securite.erreur_mot_de_passe('12345678') is not None          # pas de lettre
     assert securite.erreur_mot_de_passe('Password1') is not None         # mot de passe courant
     assert securite.erreur_mot_de_passe('admin@2025!') is not None       # mot de passe par défaut publié
-    assert securite.erreur_mot_de_passe('Rentree2026') is None
+    assert securite.erreur_mot_de_passe('Rentree2026') is not None       # pas de symbole
+    assert securite.erreur_mot_de_passe('Rentree-2026') is None
+    assert securite.erreur_mot_de_passe('Rentree-2026', role='comptable') is None
+    assert securite.erreur_mot_de_passe('Rentree-26', role='comptable') is not None   # 12 caractères pour les rôles sensibles
+    assert securite.erreur_mot_de_passe('12345678') is not None          # uniquement numérique
+    assert securite.erreur_mot_de_passe('Mara-Conakry-9', username='mara') is not None  # proche du nom d'utilisateur
 
 
 def test_creation_de_compte_refuse_mot_de_passe_faible(client, entetes):

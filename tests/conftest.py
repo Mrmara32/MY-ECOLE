@@ -17,6 +17,7 @@ _DOSSIER_TEMP = tempfile.mkdtemp(prefix='my-ecole-tests-')
 # Ces variables DOIVENT être définies avant l'import de l'application, car la base
 # de données est initialisée au moment de l'import.
 os.environ.update({
+    'GS_2FA_OBLIGATOIRE': '0',
     'GS_DATA_DIR': os.path.join(_DOSSIER_TEMP, 'data'),
     'GS_UPLOADS_DIR': os.path.join(_DOSSIER_TEMP, 'uploads'),
     'GS_LOGS_DIR': os.path.join(_DOSSIER_TEMP, 'logs'),
