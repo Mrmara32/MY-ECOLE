@@ -82,3 +82,18 @@ def test_regler_depense_ordinaire_refuse(client, entetes):
     assert r.status_code in (200, 201), r.get_json()
     tid = r.get_json().get('id')
     assert client.post(f'/api/transactions/{tid}/regler', json={'montant': 100}, headers=entetes).status_code == 400
+
+
+def test_badge_eleve_securise_et_verification_publique(client, entetes):
+    r = client.post('/api/eleves', json={'nom': 'Mara', 'prenom': 'Test', 'classe': '7ème', 'date_naissance': '2012-01-01', 'annee_scolaire': '2099-2100'}, headers=entetes)
+    assert r.status_code in (200, 201), r.get_json()
+    eid = r.get_json()['id']
+    b = client.get(f'/api/eleves/{eid}/badge-securise', headers=entetes).get_json()
+    assert b['signature'] and '<svg' in b['qr_svg'] and b['expire'].endswith('-07-31')
+    chemin = b['url'].split('://', 1)[1].split('/', 1)[1]
+    ok = client.get('/api/' + chemin).get_json()           # public : sans authentification
+    assert ok['valide'] is True and ok['nom'] == 'Mara'
+    faux = client.get('/api/' + chemin[:-3] + 'abc').get_json()
+    assert faux['valide'] is False
+    page = client.get('/' + chemin)
+    assert page.status_code == 200 and 'Badge authentique' in page.get_data(as_text=True)

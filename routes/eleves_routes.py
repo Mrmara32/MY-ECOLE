@@ -10,6 +10,7 @@ from permissions import require_permission
 from offline_sync import idempotent
 
 bp = Blueprint('eleves_routes', __name__, url_prefix='/api/eleves')
+bp_verif = Blueprint('badge_verification', __name__)
 
 FIELDS_BASE = ['matricule', 'nom', 'prenom', 'date_naissance', 'lieu_naissance', 'sexe',
                'nationalite', 'classe', 'annee_scolaire', 'statut', 'adresse',
@@ -308,3 +309,90 @@ def delete_eleve(eleve_id):
     db.commit()
     log_action(g.user, 'suppression', 'eleve', eleve_id, {'nom': existing['nom'], 'prenom': existing['prenom']})
     return jsonify({'success': True})
+
+
+# ─────────────────────────────────────────────────────────────
+# BADGE ÉLÈVE SÉCURISÉ : QR signé + page publique de vérification
+# ─────────────────────────────────────────────────────────────
+def _signature_badge_eleve(ecole_id, eleve_id, annee):
+    import hmac, hashlib
+    from auth import get_secret
+    msg = f"badge-eleve|{ecole_id}|{eleve_id}|{annee}".encode()
+    return hmac.new(get_secret().encode(), msg, hashlib.sha256).hexdigest()[:16]
+
+
+def _fin_annee_scolaire(annee):
+    """« 2026-2027 » -> 31/07/2027 (fin d'année scolaire ; sinon 31/07 de l'année suivante)."""
+    import re
+    from datetime import date
+    m = re.search(r'(\d{4})\D+(\d{4})', annee or '')
+    an = int(m.group(2)) if m else date.today().year + 1
+    return f"{an}-07-31"
+
+
+@bp.route('/<eleve_id>/badge-securise', methods=['GET'])
+@require_auth
+@require_role('admin', 'directeur', 'secretaire', 'comptable')
+def badge_securise(eleve_id):
+    import segno
+    from database import get_settings
+    ecole_id = g.user['ecole_id']
+    e = db.execute("SELECT id, matricule, annee_scolaire FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, ecole_id)).fetchone()
+    if not e:
+        return jsonify({'error': 'Élève introuvable'}), 404
+    annee = e['annee_scolaire'] or get_settings(ecole_id).get('annee_scolaire') or ''
+    sig = _signature_badge_eleve(ecole_id, e['id'], annee)
+    url = f"{request.host_url.rstrip('/')}/verifier-badge/{ecole_id}/{e['id']}/{annee or '-'}/{sig}"
+    qr = segno.make(url, error='q')
+    return jsonify({
+        'annee': annee, 'signature': sig, 'url': url, 'expire': _fin_annee_scolaire(annee),
+        'numero': f"{ecole_id:02d}-{(annee or '0000')[:4]}-{(e['matricule'] or e['id'])[-6:]}".upper(),
+        'qr_svg': qr.svg_inline(scale=4, border=0, dark='#111', light=None),
+    })
+
+
+@bp_verif.route('/api/verifier-badge/<int:ecole_id>/<eleve_id>/<annee>/<sig>', methods=['GET'])
+def verifier_badge_api(ecole_id, eleve_id, annee, sig):
+    import hmac
+    from datetime import date
+    from database import get_settings
+    annee = '' if annee == '-' else annee
+    if not hmac.compare_digest(sig, _signature_badge_eleve(ecole_id, eleve_id, annee)):
+        return jsonify({'valide': False, 'motif': 'Signature invalide : ce badge est un faux ou a été falsifié.'}), 200
+    e = db.execute("SELECT nom, prenom, classe, matricule, statut FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, ecole_id)).fetchone()
+    if not e:
+        return jsonify({'valide': False, 'motif': "Cet élève n'existe plus dans l'établissement."}), 200
+    if (e['statut'] or 'actif') not in ('actif', 'reinscrit', 'reinsrit'):
+        return jsonify({'valide': False, 'motif': "L'élève n'est plus inscrit dans l'établissement."}), 200
+    expire = _fin_annee_scolaire(annee)
+    expire_ok = date.today().isoformat() <= expire
+    st = get_settings(ecole_id)
+    return jsonify({
+        'valide': expire_ok, 'motif': None if expire_ok else 'Badge expiré (année scolaire terminée).',
+        'ecole': st.get('ecole_nom') or '', 'nom': e['nom'], 'prenom': e['prenom'],
+        'classe': e['classe'], 'matricule': e['matricule'], 'annee': annee, 'expire': expire,
+    })
+
+
+@bp_verif.route('/verifier-badge/<int:ecole_id>/<eleve_id>/<annee>/<sig>', methods=['GET'])
+def verifier_badge_page(ecole_id, eleve_id, annee, sig):
+    """Page publique ouverte quand on scanne le QR du badge avec un téléphone."""
+    from html import escape
+    r = verifier_badge_api(ecole_id, eleve_id, annee, sig).get_json()
+    if r.get('valide'):
+        corps = (f"<div class='ok'>✔ Badge authentique</div><h1>{escape(r['prenom'] or '')} {escape((r['nom'] or '').upper())}</h1>"
+                 f"<p>Classe : <b>{escape(r['classe'] or '—')}</b></p><p>Matricule : <b>{escape(r['matricule'] or '—')}</b></p>"
+                 f"<p>{escape(r['ecole'])}</p><p>Année scolaire {escape(r['annee'])} — valable jusqu'au {escape(r['expire'])}</p>")
+    else:
+        corps = f"<div class='ko'>✖ Badge non valide</div><p>{escape(r.get('motif') or '')}</p>"
+        if r.get('ecole'):
+            corps += f"<p>{escape(r['ecole'])}</p>"
+    page = ("<!DOCTYPE html><html lang='fr'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<title>Vérification du badge</title><style>body{font-family:Arial,sans-serif;background:#f3f4f6;margin:0;padding:24px;text-align:center;color:#111}"
+            ".c{max-width:380px;margin:30px auto;background:#fff;border-radius:14px;padding:26px;box-shadow:0 4px 18px rgba(0,0,0,.12)}"
+            ".ok{background:#16a34a;color:#fff;padding:10px;border-radius:8px;font-weight:700}.ko{background:#dc2626;color:#fff;padding:10px;border-radius:8px;font-weight:700}"
+            "h1{font-size:22px;margin:18px 0 6px}p{margin:6px 0;color:#374151}</style></head><body><div class='c'>" + corps + "</div></body></html>")
+    from flask import make_response
+    resp = make_response(page)
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
