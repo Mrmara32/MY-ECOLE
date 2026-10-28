@@ -169,9 +169,15 @@ async function modalResetPwd(id, username) {
 }
 
 async function deleteUser(id) {
-  if (!confirmDel('Supprimer définitivement cet utilisateur ?')) return;
+  if (!confirmDel('Supprimer cet utilisateur ? (impossible si le compte a déjà agi : il sera alors désactivé)')) return;
   try { await apiDeleteUser(id); toast('Supprimé', 'success'); pageUsers(); }
-  catch(e) { toast(e.message, 'error'); }
+  catch(e) {
+    // Un compte qui a déjà agi n'est jamais supprimé (traçabilité) : on propose de le désactiver.
+    if (/Désactivez/i.test(e.message || '') && confirm('Ce compte a déjà effectué des actions : il ne peut pas être supprimé.\n\nLe désactiver à la place (il ne pourra plus se connecter, son historique est conservé) ?')) {
+      try { await apiUpdateUser(id, { active: false, motif: 'Désactivation (compte avec historique)' }); toast('Compte désactivé', 'success'); pageUsers(); }
+      catch(e2) { toast(e2.message, 'error'); }
+    } else toast(e.message, 'error');
+  }
 }
 window.modalAddUser = modalAddUser;
 window.modalEditUser = modalEditUser;

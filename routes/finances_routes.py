@@ -1167,6 +1167,8 @@ def payer_abonnement(a_id):
 @require_permission('cantine', 'peut_supprimer')
 def delete_abonnement(a_id):
     avant = db.execute("SELECT * FROM cantine_abonnements WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id'])).fetchone()
+    if avant and avant['paye'] and g.user['role'] != 'admin':
+        return jsonify({'error': "Seul l'administrateur de l'école peut supprimer un enregistrement qui a déjà fait l'objet d'une transaction."}), 403
     db.execute("DELETE FROM cantine_abonnements WHERE id=? AND ecole_id=?", (a_id, g.user['ecole_id']))
     db.commit()
     if avant:

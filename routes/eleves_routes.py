@@ -305,9 +305,14 @@ def delete_eleve(eleve_id):
     existing = db.execute("SELECT * FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id'])).fetchone()
     if not existing:
         return jsonify({'error': 'Introuvable'}), 404
+    from database import eleve_a_des_operations
+    avec_operations = eleve_a_des_operations(g.user['ecole_id'], eleve_id)
+    if avec_operations and g.user['role'] != 'admin':
+        return jsonify({'error': "Seul l'administrateur de l'école peut supprimer un enregistrement qui a déjà fait l'objet d'une transaction. Archivez plutôt l'élève (statut inactif)."}), 403
     db.execute("DELETE FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, g.user['ecole_id']))
     db.commit()
-    log_action(g.user, 'suppression', 'eleve', eleve_id, {'nom': existing['nom'], 'prenom': existing['prenom']})
+    log_action(g.user, 'suppression', 'eleve', eleve_id, {'nom': existing['nom'], 'prenom': existing['prenom'],
+                                                          'matricule': existing['matricule'], 'avec_operations': avec_operations})
     return jsonify({'success': True})
 
 

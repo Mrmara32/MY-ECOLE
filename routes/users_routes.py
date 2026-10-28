@@ -147,6 +147,13 @@ def delete_user(user_id):
     if not existing:
         return jsonify({'error': 'Introuvable'}), 404
 
+    # Traçabilité : un compte qui a déjà agi sur la plateforme (connexion, opérations, journal) n'est
+    # jamais supprimé — on le désactive. Son historique reste ainsi attribuable à une personne.
+    from database import compte_a_une_activite
+    if compte_a_une_activite(user_id):
+        return jsonify({'error': "Ce compte a déjà effectué des actions sur la plateforme : il ne peut pas être supprimé "
+                                 "(traçabilité). Désactivez-le plutôt.", 'code': 'compte_avec_activite'}), 409
+
     # Sécurité renforcée : supprimer un compte administrateur exige de re-saisir
     # son propre mot de passe, pour éviter une suppression accidentelle ou par un
     # tiers ayant momentanément accès à une session déjà ouverte.

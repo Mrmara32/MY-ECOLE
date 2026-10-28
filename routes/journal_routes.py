@@ -51,3 +51,25 @@ def entites_journal():
     entites = [r['entite'] for r in db.execute("SELECT DISTINCT entite FROM journal_audit WHERE ecole_id=? ORDER BY entite", (g.user['ecole_id'],)).fetchall()]
     actions = [r['action'] for r in db.execute("SELECT DISTINCT action FROM journal_audit WHERE ecole_id=? ORDER BY action", (g.user['ecole_id'],)).fetchall()]
     return jsonify({'entites': entites, 'actions': actions})
+
+
+@bp.route('/integrite', methods=['GET'])
+@require_auth
+@require_role('admin')
+def verifier_integrite():
+    """Recalcule la chaîne d'empreintes du journal : détecte toute ligne modifiée, supprimée ou insérée après coup."""
+    from database import _empreinte_journal
+    ecole_id = g.user['ecole_id']
+    rows = db.execute("SELECT * FROM journal_audit WHERE ecole_id=? AND rang IS NOT NULL ORDER BY rang", (ecole_id,)).fetchall()
+    precedente, attendu, anomalies = None, None, []
+    for r in rows:
+        if precedente is None:
+            precedente = ''   # point de départ : la plus ancienne ligne conservée
+        if attendu is not None and r['rang'] != attendu:
+            anomalies.append({'rang': attendu, 'probleme': 'entrée manquante (supprimée ?)'})
+        calcul = _empreinte_journal(precedente if attendu is not None else '', r['ecole_id'], r['rang'], r['user_id'], r['user_nom'],
+                                    r['action'], r['entite'], r['entite_id'], r['details'], r['ip'], r['created_at'])
+        if attendu is not None and calcul != r['empreinte']:
+            anomalies.append({'rang': r['rang'], 'id': r['id'], 'probleme': 'contenu modifié'})
+        precedente, attendu = r['empreinte'], r['rang'] + 1
+    return jsonify({'entrees_verifiees': len(rows), 'integre': not anomalies, 'anomalies': anomalies[:50]})

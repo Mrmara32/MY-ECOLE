@@ -1246,6 +1246,11 @@ MIGRATIONS = {
         'a_regler': "INTEGER NOT NULL DEFAULT 0",
         'montant_regle': "REAL NOT NULL DEFAULT 0",
     },
+    'journal_audit': {
+        'ip': "TEXT",
+        'rang': "INTEGER",
+        'empreinte': "TEXT",
+    },
     'cours_revision_enseignants': {
         'jour': "TEXT",
         'creneau': "TEXT",
@@ -2143,21 +2148,88 @@ def get_classes_enseignant(user_id):
     return [r['classe'] for r in rows]
 
 
+def _adresse_ip():
+    try:
+        from flask import request, has_request_context
+        if has_request_context():
+            return (request.headers.get('X-Forwarded-For') or request.remote_addr or '').split(',')[0].strip()[:64]
+    except Exception:
+        pass
+    return None
+
+
+def _empreinte_journal(precedente, ecole_id, rang, uid, uname, action, entite, entite_id, det, ip, horodatage):
+    import hashlib
+    brut = '|'.join(str(x) for x in (precedente or '', ecole_id, rang, uid, uname, action, entite, entite_id, det, ip, horodatage))
+    return hashlib.sha256(brut.encode('utf-8')).hexdigest()
+
+
 def log_action(user, action, entite, entite_id=None, details=None):
-    """Enregistre une entrée dans le journal d'audit (fondation du point 6 du cahier des charges).
-    `user` est le dict g.user (issu du JWT) ou None pour une action système.
+    """Enregistre une entrée dans le journal d'audit : qui, quoi, quand, depuis quelle adresse.
+    Chaque entrée est chaînée à la précédente par une empreinte SHA-256 : toute modification ou
+    suppression après coup d'une ligne du journal est détectable (voir /api/journal/integrite).
     Cette fonction ne doit jamais lever d'exception qui bloquerait l'opération principale.
     """
     try:
         import json as _json
+        from datetime import datetime as _dt
         uid = user.get('id') if user else None
         uname = user.get('name') if user else 'Système'
         ecole_id = user.get('ecole_id', 1) if user else 1
         det = _json.dumps(details, ensure_ascii=False, default=str) if details is not None else None
+        ip = _adresse_ip()
+        derniere = db.execute("SELECT rang, empreinte FROM journal_audit WHERE ecole_id=? AND rang IS NOT NULL ORDER BY rang DESC LIMIT 1",
+                              (ecole_id,)).fetchone()
+        rang = (derniere['rang'] + 1) if derniere else 1
+        horodatage = _dt.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+        empreinte = _empreinte_journal(derniere['empreinte'] if derniere else '', ecole_id, rang, uid, uname,
+                                       action, entite, entite_id, det, ip, horodatage)
         db.execute(
-            "INSERT INTO journal_audit (id,ecole_id,user_id,user_nom,action,entite,entite_id,details) VALUES (?,?,?,?,?,?,?,?)",
-            (gen_id('jrn'), ecole_id, uid, uname, action, entite, entite_id, det),
+            "INSERT INTO journal_audit (id,ecole_id,user_id,user_nom,action,entite,entite_id,details,ip,rang,empreinte,created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (gen_id('jrn'), ecole_id, uid, uname, action, entite, entite_id, det, ip, rang, empreinte, horodatage),
         )
         db.commit()
+        try:
+            from flask import g as _g, has_request_context
+            if has_request_context():
+                _g.audit_deja_trace = True
+        except Exception:
+            pass
     except Exception as e:
         print(f"[journal_audit] Erreur d'enregistrement (non bloquante): {e}")
+
+
+# ─────────────────────────────────────────────────────────────
+# INTÉGRITÉ : comptes et enregistrements qui ont déjà servi
+# ─────────────────────────────────────────────────────────────
+TABLES_AVEC_CREE_PAR = ('transactions', 'transactions_recurrentes', 'commandes', 'stock_mouvements',
+                        'avances_salaire', 'seances_cours', 'reglements_fournisseurs')
+
+
+def compte_a_une_activite(user_id):
+    """Vrai si ce compte a déjà agi sur la plateforme (connexion, écriture au journal, enregistrement créé).
+    Un tel compte ne doit jamais être supprimé : seulement désactivé."""
+    if db.execute("SELECT 1 FROM journal_audit WHERE user_id=? LIMIT 1", (user_id,)).fetchone():
+        return True
+    u = db.execute("SELECT last_login FROM users WHERE id=?", (user_id,)).fetchone()
+    if u and u['last_login']:
+        return True
+    for t in TABLES_AVEC_CREE_PAR:
+        try:
+            if db.execute(f"SELECT 1 FROM {t} WHERE cree_par=? LIMIT 1", (user_id,)).fetchone():
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def eleve_a_des_operations(ecole_id, eleve_id):
+    """Un élève a des « opérations » dès qu'un paiement, une transaction, un versement ou un abonnement cantine existe."""
+    for t in ('paiements', 'transactions', 'versements', 'cantine_abonnements', 'paiements_en_ligne'):
+        try:
+            if db.execute(f"SELECT 1 FROM {t} WHERE ecole_id=? AND eleve_id=? LIMIT 1", (ecole_id, eleve_id)).fetchone():
+                return True
+        except Exception:
+            continue
+    return False
