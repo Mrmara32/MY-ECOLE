@@ -648,9 +648,16 @@ def update_personnel(p_id):
 @require_role('admin', 'directeur', 'secretaire')
 @require_permission('personnel', 'peut_supprimer')
 def delete_personnel(p_id):
+    avant = db.execute("SELECT nom, prenom, poste FROM personnel WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id'])).fetchone()
+    if not avant:
+        return jsonify({'error': 'Introuvable'}), 404
+    a_paie = db.execute("SELECT 1 FROM bulletins_salaire WHERE personnel_id=? AND ecole_id=? LIMIT 1", (p_id, g.user['ecole_id'])).fetchone() \
+        or db.execute("SELECT 1 FROM avances_salaire WHERE personnel_id=? AND ecole_id=? LIMIT 1", (p_id, g.user['ecole_id'])).fetchone()
+    if a_paie and g.user['role'] != 'admin':
+        return jsonify({'error': "Seul l'administrateur de l'école peut supprimer un enregistrement qui a déjà fait l'objet d'une transaction. Désactivez plutôt la fiche."}), 403
     db.execute("DELETE FROM personnel WHERE id=? AND ecole_id=?", (p_id, g.user['ecole_id']))
     db.commit()
-    log_action(g.user, 'suppression', 'personnel', p_id, {})
+    log_action(g.user, 'suppression', 'personnel', p_id, {**dict(avant), 'avec_operations': bool(a_paie)})
     return jsonify({'success': True})
 
 

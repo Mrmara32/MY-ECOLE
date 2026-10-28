@@ -66,11 +66,15 @@ def candidats_anonymisation(ecole_id, annees):
     return res
 
 
+# Un journal d'audit se conserve au moins 10 ans (pratique comptable internationale / OHADA).
+MIN_JOURNAL_MOIS = 120
+
+
 def purger():
     """Purge technique quotidienne (idempotente) : journaux au-delà de la durée de l'école, jetons expirés."""
     db.execute("DELETE FROM jetons_revoques WHERE expire_le < ?", (int(time.time()),))
     for e in db.execute("SELECT id FROM ecoles").fetchall():
-        mois = politique(e['id'])['journal_mois']
+        mois = max(politique(e['id'])['journal_mois'], MIN_JOURNAL_MOIS)
         limite = (datetime.utcnow() - timedelta(days=30 * mois)).strftime('%Y-%m-%d')
         db.execute("DELETE FROM journal_audit WHERE ecole_id=? AND created_at < ?", (e['id'], limite))
     db.commit()

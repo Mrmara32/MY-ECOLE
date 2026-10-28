@@ -306,6 +306,7 @@ def delete_commande(c_id):
         return jsonify({'error': 'Impossible de supprimer une commande déjà réceptionnée'}), 409
     db.execute("DELETE FROM commandes WHERE id=? AND ecole_id=?", (c_id, g.user['ecole_id']))
     db.commit()
+    log_action(g.user, 'suppression', 'commande', c_id, {'numero': c['numero'], 'statut': c['statut']})
     return jsonify({'success': True})
 
 

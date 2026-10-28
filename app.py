@@ -207,6 +207,20 @@ def create_app():
         return reponse
 
     @app.after_request
+    def tracer_actions(reponse):
+        """Toute action qui modifie des données (création, modification, suppression) est tracée : qui, quoi, quand, d'où.
+        Les routes qui ont déjà écrit une entrée détaillée au journal ne sont pas doublées."""
+        try:
+            from flask import g as _g
+            if (request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.path.startswith('/api/')
+                    and reponse.status_code < 400 and getattr(_g, 'user', None) and not getattr(_g, 'audit_deja_trace', False)):
+                database.log_action(_g.user, request.method.lower(), 'api', request.path[:200],
+                                    {'statut': reponse.status_code, 'route': request.endpoint})
+        except Exception as e:
+            print(f"[audit] trace générique ignorée: {e}")
+        return reponse
+
+    @app.after_request
     def poser_cookie_medias(reponse):
         # Les <img> ne peuvent pas envoyer l'en-tête Authorization : le jeton de session est
         # aussi déposé dans un cookie HttpOnly limité à /uploads (jamais lisible par un script).

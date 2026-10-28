@@ -119,4 +119,5 @@ def delete_fournisseur(f_id):
         return jsonify({'error': f"Impossible : {nb_transactions} transaction(s) sont liées à ce fournisseur. Désactivez-le plutôt."}), 409
     db.execute("DELETE FROM fournisseurs WHERE id=? AND ecole_id=?", (f_id, g.user['ecole_id']))
     db.commit()
+    log_action(g.user, 'suppression', 'fournisseur', f_id, {})
     return jsonify({'success': True})
