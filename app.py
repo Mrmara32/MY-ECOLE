@@ -465,6 +465,9 @@ def create_app():
     sauvegarde.demarrer_sauvegardes_automatiques()
     import retention
     retention.demarrer_purge_automatique()
+    if not app.config.get('TESTING'):
+        import bilan_hebdo
+        bilan_hebdo.demarrer_bilan_hebdomadaire()
 
     # ── Page principale + SPA fallback ──
     @app.route('/')
