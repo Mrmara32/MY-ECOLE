@@ -52,7 +52,7 @@ async function pageDiscipline() {
       <button class="btn btn-primary btn-sm" onclick="modalDiscipline()">+ Signaler un fait</button>
     </div>
     <div class="filters">
-      <div class="fg"><label>Classe</label><select id="dis-f-classe"><option value="">Toutes</option>${classes.map(c => `<option>${esc(c)}</option>`).join('')}</select></div>
+      <div class="fg"><label>Classe</label><select id="dis-f-classe"><option value="">Toutes</option>${classes.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></div>
       <div class="fg"><label>Type</label><select id="dis-f-type"><option value="">Tous</option>${Object.entries(DISCIPLINE_TYPES).map(([k, v]) => `<option value="${k}">${v.lib}</option>`).join('')}</select></div>
       <div class="fg"><label>Du</label><input type="date" id="dis-f-du"></div>
       <div class="fg"><label>Au</label><input type="date" id="dis-f-au"></div>

@@ -65,7 +65,7 @@ function renderAbsEleves(absences, eleves) {
       <div class="fg grow"><label>Recherche</label><input id="q-abs" placeholder="Nom, prénom, matricule…"></div>
       <div class="fg"><label>Date début</label><input type="date" id="f-adeb" value="${new Date(Date.now()-7*86400000).toISOString().split('T')[0]}"></div>
       <div class="fg"><label>Date fin</label><input type="date" id="f-afin" value="${today()}"></div>
-      <div class="fg"><label>Classe</label><select id="f-acls"><option value="">Toutes</option>${classes.map(c=>`<option>${esc(c)}</option>`).join('')}</select></div>
+      <div class="fg"><label>Classe</label><select id="f-acls"><option value="">Toutes</option>${classes.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></div>
       <div class="fg"><label>Type</label><select id="f-atype"><option value="">Tous</option><option value="absence">Absence</option><option value="retard">Retard</option></select></div>
       <button class="btn btn-outline btn-sm" onclick="filterAbs()">🔍 Filtrer</button>
     </div>

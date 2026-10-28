@@ -67,7 +67,7 @@ async function renderAbons(abons, eleves, classes) {
     <div class="filters">
       <div class="fg grow"><label>Recherche</label><input id="q-abons" placeholder="Nom, prénom…"></div>
       <div class="fg"><label>Mois</label><input type="month" id="f-mois" value="${mois}"></div>
-      <div class="fg"><label>Classe</label><select id="f-ccls"><option value="">Toutes</option>${classes.map(c=>`<option>${esc(c)}</option>`).join('')}</select></div>
+      <div class="fg"><label>Classe</label><select id="f-ccls"><option value="">Toutes</option>${classes.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></div>
       <div class="fg"><label>Statut</label><select id="f-cpaye"><option value="">Tous</option><option value="1">Payé</option><option value="0">Impayé</option></select></div>
     </div>
     <div class="tbl-wrap"><table>

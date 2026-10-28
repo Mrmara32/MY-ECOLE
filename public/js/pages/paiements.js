@@ -58,7 +58,7 @@ async function pagePaiements() {
       </div>
       <div class="filters">
         <div class="fg grow"><label>Recherche</label><input id="q-pai" placeholder="Nom, prénom, matricule…"></div>
-        <div class="fg"><label>Classe</label><select id="f-pcls"><option value="">Toutes</option>${classes.map(c=>`<option>${esc(c)}</option>`).join('')}</select></div>
+        <div class="fg"><label>Classe</label><select id="f-pcls"><option value="">Toutes</option>${classes.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></div>
         <div class="fg"><label>Statut</label><select id="f-pstat">
           <option value="">Tous</option><option value="a_payer">À payer</option>
           <option value="partiel">Partiel</option><option value="paye">Payé</option>
@@ -363,7 +363,7 @@ async function modalRelances() {
       <textarea id="rel-modele" rows="3">${esc(modele)}</textarea></div>
     <div class="filters">
       <div class="fg grow"><label>Recherche</label><input id="rel-q" placeholder="Nom, prénom, matricule…"></div>
-      <div class="fg"><label>Classe</label><select id="rel-cls"><option value="">Toutes</option>${classes.map(c => `<option>${esc(c)}</option>`).join('')}</select></div>
+      <div class="fg"><label>Classe</label><select id="rel-cls"><option value="">Toutes</option>${classes.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></div>
       <div class="fg"><label>Afficher</label><select id="rel-retard">
         <option value="1">En retard seulement</option><option value="0">Tous les soldes</option></select></div>
     </div>

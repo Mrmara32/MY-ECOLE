@@ -134,7 +134,7 @@ async function modalInscrireExamen(id) {
   openModal(window._exaNom || 'Examen', `
     <div style="font-weight:600;margin-bottom:8px">Inscrire des candidats</div>
     <form id="f-insc" style="display:flex;flex-direction:column;gap:12px">
-      <div class="fg"><label>Toute une classe</label><select name="classe"><option value="">—</option>${classes.map(c => `<option>${esc(c)}</option>`).join('')}</select></div>
+      <div class="fg"><label>Toute une classe</label><select name="classe"><option value="">—</option>${classes.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></div>
       <div style="text-align:center;color:#888">— ou candidat externe —</div>
       <div class="form-2"><div class="fg"><label>Nom</label><input name="nom"></div><div class="fg"><label>Prénom</label><input name="prenom"></div></div>
       <div class="form-2"><div class="fg"><label>Date de naissance</label><input type="date" name="date_naissance"></div><div class="fg"><label>Téléphone</label><input name="telephone"></div></div>

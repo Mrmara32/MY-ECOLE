@@ -1808,11 +1808,45 @@ def _indexer_cles_etrangeres():
     base_sante.indexer_cles_etrangeres(db)
 
 
+def comptabiliser_commande_recue(c, cree_par=None):
+    """Écriture comptable AUTOMATIQUE d'une commande réceptionnée : une dépense (journal « achats »)
+    du montant de la commande, au nom du fournisseur. Idempotente : la référence « CMD-… » identifie la
+    commande, on ne l'enregistre jamais deux fois. Retourne True si une écriture a été créée."""
+    montant = float(c['montant_total'] or 0)
+    if montant <= 0:
+        return False
+    reference = f"CMD-{c['numero'] or c['id']}"
+    if db.execute("SELECT 1 FROM transactions WHERE ecole_id=? AND reference=?", (c['ecole_id'], reference)).fetchone():
+        return False
+    nom = ''
+    if c['fournisseur_id']:
+        f = db.execute("SELECT nom FROM fournisseurs WHERE id=?", (c['fournisseur_id'],)).fetchone()
+        nom = f['nom'] if f else ''
+    from datetime import datetime
+    date_op = (c['date_reception'] or c['date_commande'] or '')[:10] or datetime.now().strftime('%Y-%m-%d')
+    db.execute(
+        "INSERT INTO transactions (id,ecole_id,type,date_op,description,categorie,moyen_paiement,montant,reference,"
+        "fournisseur_id,journal,cree_par,statut_validation) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (gen_id('t'), c['ecole_id'], 'sortie', date_op,
+         f"Achat — réception commande {c['numero'] or c['id']}" + (f" ({nom})" if nom else ''),
+         'Fournitures scolaires', 'À régler (fournisseur)', montant, reference,
+         c['fournisseur_id'], 'achats', cree_par, 'auto'),
+    )
+    return True
+
+
+def _comptabiliser_commandes_deja_recues():
+    """Les commandes réceptionnées AVANT l'écriture automatique n'avaient aucune dépense en comptabilité."""
+    for c in db.execute("SELECT * FROM commandes WHERE statut='recue'").fetchall():
+        comptabiliser_commande_recue(c, c['cree_par'])
+
+
 MIGRATIONS_VERSIONNEES = [
     (1, "Rattacher chaque ligne à l'école de son élève", _rattacher_a_la_bonne_ecole),
     (2, "Index par école sur les grosses tables", _creer_index_par_ecole),
     (3, "Rattacher les notes existantes à l'année scolaire en cours de leur école", _rattacher_notes_a_l_annee),
     (4, "Index sur toutes les colonnes de jointure (école, élève, parent…)", _indexer_cles_etrangeres),
+    (5, "Comptabiliser les commandes déjà réceptionnées (dépense « achats »)", _comptabiliser_commandes_deja_recues),
 ]
 
 
