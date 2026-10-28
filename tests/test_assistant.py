@@ -23,9 +23,9 @@ def test_assistante_repond_et_ne_transmet_que_la_question(client, entetes, monke
     monkeypatch.setenv('ANTHROPIC_API_KEY', 'cle-de-test')
     vus = {}
 
-    def faux(systeme, messages):
+    def faux(systeme, messages, user):
         vus['systeme'], vus['messages'] = systeme, messages
-        return "Le théorème de Pythagore : a² + b² = c²."
+        return "Le théorème de Pythagore : a² + b² = c².", []
     monkeypatch.setattr(ar, '_appeler_modele', faux)
     r = client.post('/api/assistant/discuter', json=_msg('Explique Pythagore'), headers=entetes)
     assert r.status_code == 200 and 'Pythagore' in r.get_json()['reponse']
@@ -37,7 +37,7 @@ def test_assistante_repond_et_ne_transmet_que_la_question(client, entetes, monke
 def test_assistante_nettoie_la_conversation(client, entetes, monkeypatch):
     monkeypatch.setenv('ANTHROPIC_API_KEY', 'cle-de-test')
     recus = {}
-    monkeypatch.setattr(ar, '_appeler_modele', lambda s, m: recus.setdefault('m', m) and 'ok')
+    monkeypatch.setattr(ar, '_appeler_modele', lambda s, m, u: (recus.setdefault('m', m) and 'ok', []))
     corps = {'messages': [{'role': 'assistant', 'content': 'intro'}, {'role': 'user', 'content': 'x' * 9000}]}
     assert client.post('/api/assistant/discuter', json=corps, headers=entetes).status_code == 200
     assert recus['m'][0]['role'] == 'user' and len(recus['m'][0]['content']) == ar.LONGUEUR_MAX
@@ -48,7 +48,7 @@ def test_quota_quotidien_de_l_etablissement(client, entetes, monkeypatch):
     monkeypatch.setenv('ASSISTANT_MAX_JOUR', '1')
     from database import db
     db.execute("DELETE FROM assistant_usage"); db.commit()
-    monkeypatch.setattr(ar, '_appeler_modele', lambda s, m: 'ok')
+    monkeypatch.setattr(ar, '_appeler_modele', lambda s, m, u: ('ok', []))
     import securite
     securite._debit.clear()
     assert client.post('/api/assistant/discuter', json=_msg('un'), headers=entetes).status_code == 200
@@ -62,7 +62,86 @@ def test_panne_du_fournisseur_renvoie_502(client, entetes, monkeypatch):
     import securite
     securite._debit.clear()
 
-    def panne(s, m):
+    def panne(s, m, u):
         raise OSError('réseau')
     monkeypatch.setattr(ar, '_appeler_modele', panne)
     assert client.post('/api/assistant/discuter', json=_msg('Bonjour'), headers=entetes).status_code == 502
+
+
+# ───────── Données de l'école (statistiques agrégées par rôle) ─────────
+def _peupler():
+    from database import db
+    eid = 1
+    db.execute("DELETE FROM notes WHERE ecole_id=1"); db.execute("DELETE FROM paiements WHERE ecole_id=1")
+    db.execute("DELETE FROM eleves WHERE ecole_id=1 AND classe LIKE 'ZZ-%'")
+    for i in range(5):
+        db.execute("INSERT INTO eleves (ecole_id,id,nom,prenom,sexe,classe,statut) VALUES (?,?,?,?,?,?,'actif')",
+                   (eid, f'zz{i}', f'Secret{i}', 'Prenom', 'F' if i % 2 else 'M', 'ZZ-6e'))
+        if i < 3:   # 3 élèves à jour, 2 avec impayé
+            db.execute("INSERT INTO paiements (ecole_id,id,eleve_id,montant_du,montant_paye,statut) VALUES (?,?,?,?,?,'paye')",
+                       (eid, f'zp{i}', f'zz{i}', 100, 100))
+        else:
+            db.execute("INSERT INTO paiements (ecole_id,id,eleve_id,montant_du,montant_paye,statut) VALUES (?,?,?,?,?,'a_payer')",
+                       (eid, f'zp{i}', f'zz{i}', 100, 0))
+        db.execute("INSERT INTO notes (ecole_id,id,eleve_id,matiere,trimestre,note,note_max) VALUES (?,?,?,?,1,?,20)",
+                   (eid, f'zn{i}', f'zz{i}', 'Maths', 6 if i < 3 else 14))
+    db.commit()
+
+
+def test_outils_donnees_agreges_sans_noms(client, entetes):
+    import assistant_donnees as ad
+    _peupler()
+    admin = {'id': 1, 'ecole_id': 1, 'role': 'admin'}
+    eff = ad.executer('effectifs', admin, {})
+    zz = next(c for c in eff['par_classe'] if c['classe'] == 'ZZ-6e')
+    assert zz['total'] == 5 and zz['filles'] == 2 and zz['garcons'] == 3
+    pay = ad.executer('paiements', admin, {})
+    zz = next(c for c in pay['par_classe'] if c['classe'] == 'ZZ-6e')
+    assert zz['a_jour'] == 3 and zz['avec_impayes'] == 2 and zz['taux_recouvrement_pct'] == 60.0
+    res = ad.executer('resultats', admin, {'classe': 'ZZ-6e'})
+    assert res['matieres_les_plus_faibles'][0]['moyenne_sur_20'] == 9.2
+    import json
+    assert 'Secret' not in json.dumps([eff, pay, res], ensure_ascii=False)     # jamais de noms d'élèves
+
+
+def test_outils_reserves_selon_le_role(client):
+    import assistant_donnees as ad
+    assert ad.executer('finances', {'id': 5, 'ecole_id': 1, 'role': 'enseignant'}, {})['erreur']
+    assert ad.executer('paiements', {'id': 5, 'ecole_id': 1, 'role': 'enseignant'}, {})['erreur']
+    assert ad.executer('effectifs', {'id': 5, 'ecole_id': 1, 'role': 'parent'}, {})['erreur']
+    assert [o['name'] for o in ad.outils_pour('parent')] == []
+    assert 'resultats' in [o['name'] for o in ad.outils_pour('enseignant')]
+    assert set(o['name'] for o in ad.outils_pour('comptable')) == {'effectifs', 'paiements', 'finances'}
+
+
+def test_petits_groupes_masques(client):
+    import assistant_donnees as ad
+    from database import db
+    _peupler()
+    db.execute("DELETE FROM notes WHERE eleve_id IN ('zz3','zz4','zz2','zz1')"); db.commit()   # il ne reste qu'une note
+    res = ad.executer('resultats', {'id': 1, 'ecole_id': 1, 'role': 'admin'}, {'classe': 'ZZ-6e'})
+    assert res['matieres_les_plus_faibles'] == []
+
+
+def test_boucle_d_outils_du_modele(client, entetes, monkeypatch):
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'cle-de-test')
+    monkeypatch.setenv('ASSISTANT_MAX_JOUR', '500')
+    import securite
+    securite._debit.clear()
+    _peupler()
+    etapes = []
+
+    def api(charge):
+        etapes.append(charge)
+        if len(etapes) == 1:
+            assert any(o['name'] == 'paiements' for o in charge['tools'])
+            return {'stop_reason': 'tool_use', 'content': [{'type': 'tool_use', 'id': 't1', 'name': 'paiements', 'input': {}}]}
+        retour = charge['messages'][-1]['content'][0]
+        assert retour['type'] == 'tool_result' and 'a_jour' in retour['content']
+        return {'stop_reason': 'end_turn', 'content': [{'type': 'text', 'text': 'Taux de recouvrement à améliorer.'}]}
+    monkeypatch.setattr(ar, '_appeler_api', api)
+    r = client.post('/api/assistant/discuter', json=_msg('Combien sont à jour ?'), headers=entetes)
+    assert r.status_code == 200 and 'recouvrement' in r.get_json()['reponse'] and len(etapes) == 2
+    from database import db
+    ligne = db.execute("SELECT details FROM journal_audit WHERE action='question_assistante' ORDER BY rang DESC LIMIT 1").fetchone()
+    assert 'paiements' in ligne['details']
