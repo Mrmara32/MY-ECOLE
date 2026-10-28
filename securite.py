@@ -131,3 +131,17 @@ def debit_depasse(categorie, cle):
         if len(_debit) > 20000:
             _debit.clear()
     return 0
+
+
+def debit_assistant(user_id, limite):
+    """Messages à l'assistante : au plus `limite` par minute et par utilisateur. Renvoie les secondes à attendre ou 0."""
+    maintenant = _time.time()
+    cle = ('assistant', user_id)
+    with _verrou_debit:
+        passes = [t for t in _debit.get(cle, []) if maintenant - t < 60]
+        if len(passes) >= limite:
+            _debit[cle] = passes
+            return int(60 - (maintenant - passes[0])) + 1
+        passes.append(maintenant)
+        _debit[cle] = passes
+    return 0

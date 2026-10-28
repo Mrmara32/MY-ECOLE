@@ -211,6 +211,13 @@ CREATE TABLE IF NOT EXISTS ecoles (
   created_at          TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS assistant_usage (
+  ecole_id INTEGER NOT NULL,
+  jour     TEXT NOT NULL,
+  nb       INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (ecole_id, jour)
+);
+
 CREATE TABLE IF NOT EXISTS sessions_appareils (
   id             TEXT PRIMARY KEY,
   user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

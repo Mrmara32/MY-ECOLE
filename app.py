@@ -414,6 +414,7 @@ def create_app():
     from routes.resultats_routes import bp as resultats_bp
     from routes.discipline_routes import bp as discipline_bp
     from routes.bibliotheque_routes import bp as bibliotheque_bp
+    from routes.assistant_routes import bp as assistant_bp
     from routes.examens_routes import bp as examens_bp
     from routes.donnees_personnelles_routes import bp as donnees_perso_bp
     from routes.import_eleves_routes import bp as import_eleves_bp
@@ -428,6 +429,7 @@ def create_app():
     app.register_blueprint(eleves_bp)
     from routes.eleves_routes import bp_verif as badge_verif_bp
     app.register_blueprint(badge_verif_bp)
+    app.register_blueprint(assistant_bp)
     app.register_blueprint(scolarite_bp)
     app.register_blueprint(finances_bp)
     app.register_blueprint(communication_bp)
