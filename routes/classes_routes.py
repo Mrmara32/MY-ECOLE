@@ -29,7 +29,7 @@ def list_classes():
 @require_permission('classes', 'peut_creer')
 def create_classe():
     body = request.get_json(silent=True) or {}
-    nom, cycle = body.get('nom'), body.get('cycle')
+    nom, cycle = (body.get('nom') or '').strip(), body.get('cycle')
     if not nom or not cycle:
         return jsonify({'error': 'Nom et cycle requis'}), 400
     if cycle not in ('maternelle', 'primaire', 'college', 'lycee', 'superieur', 'formation'):

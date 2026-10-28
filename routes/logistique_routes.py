@@ -5,7 +5,7 @@ de la maintenance des locaux/équipements et du transport scolaire.
 from flask import Blueprint, request, jsonify, g
 from datetime import datetime
 
-from database import db, gen_id, rows_to_list, row_to_dict, log_action
+from database import db, gen_id, rows_to_list, row_to_dict, log_action, comptabiliser_commande_recue
 from auth import require_auth, require_role
 from permissions import require_permission
 from offline_sync import idempotent
@@ -230,6 +230,8 @@ def create_commande():
             "VALUES (?,?,?,?,?,?,?)",
             (gen_id('cl'), cid, produit_id, designation, quantite, prix_unitaire, montant_ligne),
         )
+    if (body.get('statut') or 'brouillon') == 'recue':
+        comptabiliser_commande_recue(db.execute("SELECT * FROM commandes WHERE id=?", (cid,)).fetchone(), g.user['id'])
     db.commit()
     log_action(g.user, 'creation', 'commande', cid, {'montant_total': montant_total})
     return jsonify(_commande_avec_lignes(cid, g.user['ecole_id'])), 201
@@ -251,6 +253,9 @@ def update_commande(c_id):
         "statut=COALESCE(?,statut), notes=COALESCE(?,notes) WHERE id=? AND ecole_id=?",
         (body.get('numero'), body.get('fournisseur_id'), body.get('statut'), body.get('notes'), c_id, g.user['ecole_id']),
     )
+    c_apres = db.execute("SELECT * FROM commandes WHERE id=?", (c_id,)).fetchone()
+    if c_apres['statut'] == 'recue':
+        comptabiliser_commande_recue(c_apres, g.user['id'])
     db.commit()
     return jsonify(_commande_avec_lignes(c_id, g.user['ecole_id']))
 
@@ -279,8 +284,11 @@ def receptionner_commande(c_id):
             )
             db.execute("UPDATE stock_produits SET quantite = quantite + ? WHERE id=?", (l['quantite'], l['produit_id']))
     db.execute("UPDATE commandes SET statut='recue', date_reception=COALESCE(date_reception, date('now')) WHERE id=?", (c_id,))
+    # Comptabilisation automatique : la dépense d'achat est écrite en même temps que la réception.
+    c_recue = db.execute("SELECT * FROM commandes WHERE id=?", (c_id,)).fetchone()
+    ecriture = comptabiliser_commande_recue(c_recue, g.user['id'])
     db.commit()
-    log_action(g.user, 'reception_commande', 'commande', c_id, {})
+    log_action(g.user, 'reception_commande', 'commande', c_id, {'comptabilisee': bool(ecriture)})
     return jsonify(_commande_avec_lignes(c_id, g.user['ecole_id']))
 
 

@@ -440,6 +440,60 @@ def create_app():
         _journaliser_erreur('EXCEPTION NON GÉRÉE', reference, request.method, request.path)
         return _reponse_erreur_interne(reference)
 
+    # ── Compression gzip (pages, scripts, styles, JSON) ──
+    # Les ~800 Ko de scripts partaient non compressés : c'était la cause principale de
+    # la lenteur d'ouverture (surtout sur une connexion mobile). Les fichiers statiques
+    # compressés sont gardés en mémoire (clé : chemin + taille + date) pour ne les
+    # compresser qu'une fois.
+    import gzip as _gzip
+    _cache_gzip = {}
+    _TYPES_COMPRESSIBLES = ('text/', 'application/javascript', 'application/json', 'image/svg+xml',
+                            'application/manifest+json', 'application/xml')
+
+    @app.after_request
+    def compresser_reponse(response):
+        from flask import request
+        try:
+            if (response.status_code < 200 or response.status_code >= 300 or response.status_code == 206
+                    or 'Content-Encoding' in response.headers
+                    or 'gzip' not in request.headers.get('Accept-Encoding', '')
+                    or not (response.mimetype or '').startswith(_TYPES_COMPRESSIBLES)
+                    or request.method == 'HEAD'):
+                return response
+            statique = response.direct_passthrough
+            cle = None
+            if statique:
+                # Fichier servi depuis le disque : on le relit en mémoire (quelques centaines de Ko au plus).
+                if (response.content_length or 0) > 3_000_000:
+                    return response
+                cle = (request.path, response.content_length, response.headers.get('Last-Modified'))
+                if cle in _cache_gzip:
+                    donnees = _cache_gzip[cle]
+                    response.direct_passthrough = False
+                else:
+                    response.direct_passthrough = False
+                    brut = response.get_data()
+                    donnees = _gzip.compress(brut, 6) if len(brut) > 800 else None
+                    if donnees is not None and len(_cache_gzip) < 200:
+                        _cache_gzip[cle] = donnees
+            else:
+                if response.is_streamed:
+                    return response
+                brut = response.get_data()
+                if len(brut) <= 800:
+                    return response
+                donnees = _gzip.compress(brut, 5)
+            if donnees is None or len(donnees) >= (response.content_length or len(donnees) + 1):
+                return response
+            response.set_data(donnees)
+            response.headers['Content-Encoding'] = 'gzip'
+            response.headers['Content-Length'] = str(len(donnees))
+            response.headers.add('Vary', 'Accept-Encoding')
+            response.headers.pop('ETag', None)
+        except Exception:
+            pass
+        return response
+
     # ── Logging simple des requêtes ──
     @app.after_request
     def log_request(response):

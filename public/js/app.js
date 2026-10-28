@@ -172,21 +172,23 @@ async function startApp() {
   $('#sb-name').textContent = currentUser.full_name || currentUser.username;
   $('#sb-role').textContent = t('role_' + currentUser.role) || ROLES[currentUser.role] || currentUser.role;
 
-  // Charger et appliquer paramètres
-  try {
-    const s = await apiGetSettings();
-    applyBranding(s);
-    $('#sb-annee').textContent = s.annee_scolaire || '';
-  } catch(_) {}
+  // Les 4 chargements de démarrage partent EN MÊME TEMPS (avant : l'un après l'autre,
+  // chaque aller-retour réseau s'ajoutait aux autres et l'ouverture était lente).
+  const pSettings = apiGetSettings().catch(() => null);
+  const pClasses = refreshClasses();
+  const pCreneaux = refreshCreneaux();
+  const pLicence = apiGetStatutLicence().catch(() => null);
 
-  // Charger la liste dynamique des classes (point 1 du cahier des charges)
-  await refreshClasses();
-  await refreshCreneaux();
+  const s = await pSettings;
+  if (s) { applyBranding(s); $('#sb-annee').textContent = s.annee_scolaire || ''; }
+  await pClasses;
+  await pCreneaux;
 
   // Bannière de période d'essai (installation autonome uniquement — sans effet
   // sur la plateforme web, qui renvoie toujours 'illimitee').
   try {
-    const statut = await apiGetStatutLicence();
+    const statut = await pLicence;
+    if (!statut) throw new Error('indisponible');
     const banniere = $('#essai-banniere');
     if (statut.mode === 'essai') {
       banniere.style.display = 'flex';
@@ -398,6 +400,8 @@ document.addEventListener('keydown', e => {
 async function init() {
   // Vérification de licence (n'a d'effet que sur une installation autonome / .exe ;
   // sans effet sur la plateforme web, qui renvoie toujours 'illimitee').
+  // Lancée en parallèle de la vérification du profil pour gagner un aller-retour réseau.
+  const pMe = _token ? apiMe().catch(() => null) : null;
   try {
     const statut = await apiGetStatutLicence();
     if (statut.bloque) {
@@ -409,17 +413,19 @@ async function init() {
   }
 
   if (_token) {
-    try {
-      currentUser = await apiMe();
-      localStorage.setItem('gs_user', JSON.stringify(currentUser));
-      await startApp();
-      return;
-    } catch (_) {
-      // Jeton invalide ou expiré : on nettoie et on retombe sur l'écran de connexion
-      localStorage.removeItem('gs_user');
-      localStorage.removeItem('gs_tok');
-      _token = null;
+    const moi = await pMe;
+    if (moi) {
+      try {
+        currentUser = moi;
+        localStorage.setItem('gs_user', JSON.stringify(currentUser));
+        await startApp();
+        return;
+      } catch (_) { /* retombe sur la connexion ci-dessous */ }
     }
+    // Jeton invalide ou expiré : on nettoie et on retombe sur l'écran de connexion
+    localStorage.removeItem('gs_user');
+    localStorage.removeItem('gs_tok');
+    _token = null;
   }
   initLogin();
 }

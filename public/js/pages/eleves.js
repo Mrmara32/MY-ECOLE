@@ -22,7 +22,7 @@ function renderElevesTable(list) {
     </div>
     <div class="filters">
       <div class="fg grow"><label>Recherche</label><input id="q-elv" placeholder="Nom, prénom, matricule…"></div>
-      <div class="fg"><label>Classe</label><select id="f-cls"><option value="">Toutes</option>${classes.map(c=>`<option>${esc(c)}</option>`).join('')}</select></div>
+      <div class="fg"><label>Classe</label><select id="f-cls"><option value="">Toutes</option>${classes.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></div>
       <div class="fg"><label>Statut</label><select id="f-stat">
         <option value="">Tous</option>
         <option value="actif">Actif</option>

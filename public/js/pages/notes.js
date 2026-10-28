@@ -67,7 +67,7 @@ async function pageNotes() {
     <div class="card-header"><span class="card-title">📊 Notes & Bulletins</span></div>
     <div class="filters">
       <div class="fg"><label>Classe*</label>
-        <select id="f-ncls"><option value="">— Choisir —</option>${classes.map(c => `<option>${esc(c)}</option>`).join('')}</select>
+        <select id="f-ncls"><option value="">— Choisir —</option>${classes.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select>
       </div>
       <div class="fg"><label>Année scolaire</label>
         <select id="f-nannee">${annees.annees.map(a => `<option ${a === filtAnnee ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>

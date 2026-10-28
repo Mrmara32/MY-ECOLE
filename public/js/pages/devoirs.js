@@ -35,7 +35,7 @@ async function pageDevoirs() {
       </div>
       <div class="filters">
         <div class="fg grow"><label>Recherche</label><input id="q-dv" placeholder="Titre, matière…"></div>
-        <div class="fg"><label>Classe</label><select id="f-dcls"><option value="">Toutes</option>${classes.map(c=>`<option>${esc(c)}</option>`).join('')}<option>—</option>${CLASSES.map(c=>`<option>${esc(c)}</option>`).join('')}</select></div>
+        <div class="fg"><label>Classe</label><select id="f-dcls"><option value="">Toutes</option>${classes.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}<option>—</option>${CLASSES.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></div>
         <div class="fg"><label>Statut</label><select id="f-dstat">
           <option value="">Tous</option>
           <option value="En cours">En cours</option>
