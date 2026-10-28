@@ -33,3 +33,16 @@ def test_commande_creee_directement_recue_est_comptabilisee(client, entetes):
     }, headers=entetes)
     assert r.status_code == 201, r.get_json()
     assert len(_transactions(client, entetes, 'CMD-BC-AUTO-2')) == 1
+
+
+def test_suppression_ponctuelle_des_doublons(client, entetes):
+    from database import db, gen_id, _supprimer_depenses_en_double, REFERENCES_DEPENSES_DOUBLONS
+    ecole = db.execute("SELECT id FROM ecoles LIMIT 1").fetchone()['id']
+    for ref in (REFERENCES_DEPENSES_DOUBLONS[0], 'CMD-autre-commande'):
+        db.execute("INSERT INTO transactions (id,ecole_id,type,date_op,montant,reference,journal) VALUES (?,?,?,?,?,?,?)",
+                   (gen_id('t'), ecole, 'sortie', '2026-10-27', 1000, ref, 'achats'))
+    db.commit()
+    _supprimer_depenses_en_double()
+    db.commit()
+    assert not db.execute("SELECT 1 FROM transactions WHERE reference=?", (REFERENCES_DEPENSES_DOUBLONS[0],)).fetchone()
+    assert db.execute("SELECT 1 FROM transactions WHERE reference='CMD-autre-commande'").fetchone()

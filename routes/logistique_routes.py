@@ -254,7 +254,9 @@ def update_commande(c_id):
         (body.get('numero'), body.get('fournisseur_id'), body.get('statut'), body.get('notes'), c_id, g.user['ecole_id']),
     )
     c_apres = db.execute("SELECT * FROM commandes WHERE id=?", (c_id,)).fetchone()
-    if c_apres['statut'] == 'recue':
+    # Seulement au PASSAGE à « reçue » : une dépense supprimée par l'administrateur ne doit pas renaître
+    # à la prochaine modification de la commande.
+    if c_apres['statut'] == 'recue' and c['statut'] != 'recue':
         comptabiliser_commande_recue(c_apres, g.user['id'])
     db.commit()
     return jsonify(_commande_avec_lignes(c_id, g.user['ecole_id']))
