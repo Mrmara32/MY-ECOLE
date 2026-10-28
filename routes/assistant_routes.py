@@ -13,9 +13,10 @@ import urllib.request
 import urllib.error
 
 import assistant_donnees
+import database
 from datetime import date
 
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, Response, stream_with_context
 
 from database import db, log_action
 from auth import require_auth
@@ -91,7 +92,26 @@ def _quota_jour():
         return QUOTA_JOUR_DEFAUT
 
 
+def _sous_verrou(fonction):
+    """Exécute une petite écriture en tenant le verrou « une écriture à la fois » seulement le temps nécessaire
+    (la requête elle-même, qui attend le modèle, n'en tient aucun)."""
+    if not database.verrou_ecritures.acquire(timeout=30):
+        raise RuntimeError('serveur très sollicité')
+    try:
+        database.prendre_verrou_ecritures_global()
+        try:
+            return fonction()
+        finally:
+            database.liberer_verrou_ecritures_global()
+    finally:
+        database.verrou_ecritures.release()
+
+
 def _compter_usage(ecole_id):
+    return _sous_verrou(lambda: _compter_usage_nu(ecole_id))
+
+
+def _compter_usage_nu(ecole_id):
     """Incrémente le compteur du jour ; renvoie False si le quota de l'établissement est atteint."""
     jour = date.today().isoformat()
     ligne = db.execute("SELECT nb FROM assistant_usage WHERE ecole_id=? AND jour=?", (ecole_id, jour)).fetchone()
@@ -172,23 +192,21 @@ def envoyer_bilan_maintenant():
     return jsonify({'success': True, 'destinataires': n})
 
 
-@bp.route('/discuter', methods=['POST'])
-@require_auth
-def discuter():
+def _preparer(body):
+    """Contrôles communs à /discuter et /discuter-flux. Renvoie (messages, None) ou (None, réponse_erreur)."""
     if not _assistant_actif(g.user['ecole_id']):
-        return jsonify({'error': "L'assistante est désactivée par l'administration de votre établissement.",
-                        'code': 'ASSISTANT_DESACTIVE'}), 403
+        return None, (jsonify({'error': "L'assistante est désactivée par l'administration de votre établissement.",
+                               'code': 'ASSISTANT_DESACTIVE'}), 403)
     if not _cle_api():
-        return jsonify({'error': "L'assistante n'est pas encore activée sur ce serveur (clé ANTHROPIC_API_KEY à renseigner par l'administrateur).",
-                        'code': 'ASSISTANT_NON_CONFIGURE'}), 503
+        return None, (jsonify({'error': "L'assistante n'est pas encore activée sur ce serveur (clé ANTHROPIC_API_KEY à renseigner par l'administrateur).",
+                               'code': 'ASSISTANT_NON_CONFIGURE'}), 503)
     import securite
     attente = securite.debit_assistant(g.user['id'], PAR_MINUTE)
     if attente:
-        return jsonify({'error': f"Un instant : trop de messages. Réessayez dans {attente} s."}), 429
-    body = request.get_json(silent=True) or {}
+        return None, (jsonify({'error': f"Un instant : trop de messages. Réessayez dans {attente} s."}), 429)
     brut = body.get('messages')
     if not isinstance(brut, list) or not brut:
-        return jsonify({'error': 'Message vide'}), 400
+        return None, (jsonify({'error': 'Message vide'}), 400)
     messages = []
     for m in brut[-MESSAGES_MAX:]:
         role = 'assistant' if m.get('role') == 'assistant' else 'user'
@@ -198,9 +216,130 @@ def discuter():
     while messages and messages[0]['role'] != 'user':
         messages.pop(0)
     if not messages or messages[-1]['role'] != 'user':
-        return jsonify({'error': 'Message vide'}), 400
+        return None, (jsonify({'error': 'Message vide'}), 400)
     if not _compter_usage(g.user['ecole_id']):
-        return jsonify({'error': "Le quota quotidien de l'assistante est atteint pour votre établissement. Réessayez demain."}), 429
+        return None, (jsonify({'error': "Le quota quotidien de l'assistante est atteint pour votre établissement. Réessayez demain."}), 429)
+    return messages, None
+
+
+def _appeler_api_flux(charge):
+    """Appel en flux (SSE) : produit les évènements décodés. Isolé pour les tests."""
+    charge = dict(charge, stream=True)
+    req = urllib.request.Request(URL_API, data=json.dumps(charge).encode(), headers={
+        'content-type': 'application/json', 'x-api-key': _cle_api(), 'anthropic-version': '2023-06-01'})
+    with urllib.request.urlopen(req, timeout=90) as r:
+        for ligne in r:
+            ligne = ligne.decode('utf-8', 'replace').strip()
+            if ligne.startswith('data:'):
+                try:
+                    yield json.loads(ligne[5:].strip())
+                except ValueError:
+                    continue
+
+
+def _flux_modele(systeme, messages, user):
+    """Générateur d'évènements pour le navigateur : ('texte', morceau), ('outil', nom), puis ('fin', consultes)."""
+    outils = assistant_donnees.outils_pour(user.get('role'))
+    messages = list(messages)
+    consultes = []
+    for _ in range(6):
+        charge = {'model': os.environ.get('ASSISTANT_MODEL', 'claude-sonnet-5-5'), 'max_tokens': 2200,
+                  'system': systeme, 'messages': messages}
+        if outils:
+            charge['tools'] = outils
+        blocs, courant, arret = [], None, None
+        for ev in _appeler_api_flux(charge):
+            t = ev.get('type')
+            if t == 'content_block_start':
+                cb = ev.get('content_block', {})
+                courant = {'type': cb.get('type'), 'text': '', 'json': '', 'id': cb.get('id'), 'name': cb.get('name')}
+                if cb.get('type') == 'tool_use':
+                    yield ('outil', cb.get('name'))
+            elif t == 'content_block_delta' and courant is not None:
+                d = ev.get('delta', {})
+                if d.get('type') == 'text_delta':
+                    courant['text'] += d.get('text', '')
+                    yield ('texte', d.get('text', ''))
+                elif d.get('type') == 'input_json_delta':
+                    courant['json'] += d.get('partial_json', '')
+            elif t == 'content_block_stop' and courant is not None:
+                if courant['type'] == 'tool_use':
+                    try:
+                        entree = json.loads(courant['json'] or '{}')
+                    except ValueError:
+                        entree = {}
+                    blocs.append({'type': 'tool_use', 'id': courant['id'], 'name': courant['name'], 'input': entree})
+                elif courant['type'] == 'text':
+                    blocs.append({'type': 'text', 'text': courant['text']})
+                courant = None
+            elif t == 'message_delta':
+                arret = ev.get('delta', {}).get('stop_reason', arret)
+            elif t == 'error':
+                raise RuntimeError('erreur du fournisseur')
+        appels = [b for b in blocs if b['type'] == 'tool_use']
+        if arret != 'tool_use' or not appels:
+            yield ('fin', consultes)
+            return
+        messages.append({'role': 'assistant', 'content': blocs})
+        retours = []
+        for a in appels:
+            consultes.append(a['name'])
+            donnees = assistant_donnees.executer(a['name'], user, a['input'])
+            retours.append({'type': 'tool_result', 'tool_use_id': a['id'], 'content': json.dumps(donnees, ensure_ascii=False)})
+        messages.append({'role': 'user', 'content': retours})
+    yield ('texte', "\n\n(Je n'ai pas réussi à conclure : pouvez-vous préciser votre question ?)")
+    yield ('fin', consultes)
+
+
+@bp.route('/discuter-flux', methods=['POST'])
+@require_auth
+def discuter_flux():
+    """Même chose que /discuter, mais la réponse s'écrit en direct (Server-Sent Events)."""
+    body = request.get_json(silent=True) or {}
+    messages, erreur = _preparer(body)
+    if erreur:
+        return erreur
+    user = dict(g.user)
+    systeme = _prompt_systeme(user.get('role'), str(body.get('page') or '')[:60])
+    longueur = len(messages[-1]['content'])
+
+    def sse(obj):
+        return 'data: ' + json.dumps(obj, ensure_ascii=False) + '\n\n'
+
+    @stream_with_context
+    def produire():
+        consultes = []
+        try:
+            for genre, valeur in _flux_modele(systeme, messages, user):
+                if genre == 'texte':
+                    yield sse({'t': 'texte', 'd': valeur})
+                elif genre == 'outil':
+                    yield sse({'t': 'outil', 'nom': valeur})
+                elif genre == 'fin':
+                    consultes = valeur
+            try:
+                _sous_verrou(lambda: log_action(user, 'question_assistante', 'assistant', None,
+                                                {'longueur': longueur, 'donnees_consultees': sorted(set(consultes)), 'flux': True}))
+            except Exception:
+                pass
+            yield sse({'t': 'fin'})
+        except Exception as e:
+            print(f"[assistant] flux: {type(e).__name__}")
+            yield sse({'t': 'erreur', 'd': "L'assistante est momentanément indisponible. Réessayez dans un instant."})
+
+    reponse = Response(produire(), mimetype='text/event-stream')
+    reponse.headers['Cache-Control'] = 'no-store'
+    reponse.headers['X-Accel-Buffering'] = 'no'
+    return reponse
+
+
+@bp.route('/discuter', methods=['POST'])
+@require_auth
+def discuter():
+    body = request.get_json(silent=True) or {}
+    messages, erreur = _preparer(body)
+    if erreur:
+        return erreur
     try:
         reponse, consultes = _appeler_modele(_prompt_systeme(g.user.get('role'), str(body.get('page') or '')[:60]), messages, g.user)
     except urllib.error.HTTPError as e:
@@ -209,5 +348,6 @@ def discuter():
     except Exception as e:
         print(f"[assistant] erreur: {type(e).__name__}")
         return jsonify({'error': "L'assistante est momentanément indisponible. Réessayez dans un instant."}), 502
-    log_action(g.user, 'question_assistante', 'assistant', None, {'longueur': len(messages[-1]['content']), 'donnees_consultees': sorted(set(consultes))})
+    _sous_verrou(lambda: log_action(g.user, 'question_assistante', 'assistant', None,
+                                    {'longueur': len(messages[-1]['content']), 'donnees_consultees': sorted(set(consultes))}))
     return jsonify({'reponse': reponse or "Je n'ai pas pu formuler de réponse. Pouvez-vous reformuler ?"})

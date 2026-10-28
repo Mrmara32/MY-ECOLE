@@ -177,3 +177,45 @@ def test_l_administrateur_peut_desactiver_l_assistante(client, entetes, monkeypa
     finally:
         client.put('/api/settings', json={'assistant_actif': '1'}, headers=entetes)
     assert client.post('/api/assistant/discuter', json=_msg('Bonjour'), headers=entetes).status_code == 200
+
+
+def test_reponse_en_direct(client, entetes, monkeypatch):
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'cle-de-test')
+    monkeypatch.setenv('ASSISTANT_MAX_JOUR', '500')
+    import securite
+    securite._debit.clear()
+    _peupler()
+    appels = []
+
+    def flux(charge):
+        appels.append(charge)
+        if len(appels) == 1:
+            yield {'type': 'content_block_start', 'content_block': {'type': 'tool_use', 'id': 't1', 'name': 'paiements'}}
+            yield {'type': 'content_block_delta', 'delta': {'type': 'input_json_delta', 'partial_json': '{}'}}
+            yield {'type': 'content_block_stop'}
+            yield {'type': 'message_delta', 'delta': {'stop_reason': 'tool_use'}}
+        else:
+            yield {'type': 'content_block_start', 'content_block': {'type': 'text'}}
+            yield {'type': 'content_block_delta', 'delta': {'type': 'text_delta', 'text': 'Taux '}}
+            yield {'type': 'content_block_delta', 'delta': {'type': 'text_delta', 'text': 'bon.'}}
+            yield {'type': 'content_block_stop'}
+            yield {'type': 'message_delta', 'delta': {'stop_reason': 'end_turn'}}
+    monkeypatch.setattr(ar, '_appeler_api_flux', flux)
+    r = client.post('/api/assistant/discuter-flux', json=_msg('Combien sont à jour ?'), headers=entetes)
+    corps = r.get_data(as_text=True)
+    assert r.status_code == 200 and r.mimetype == 'text/event-stream'
+    assert '"outil"' in corps and 'Taux ' in corps and 'bon.' in corps and '"fin"' in corps and len(appels) == 2
+
+
+def test_flux_panne_du_fournisseur(client, entetes, monkeypatch):
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'cle-de-test')
+    monkeypatch.setenv('ASSISTANT_MAX_JOUR', '500')
+    import securite
+    securite._debit.clear()
+
+    def panne(charge):
+        raise OSError('réseau')
+        yield
+    monkeypatch.setattr(ar, '_appeler_api_flux', panne)
+    r = client.post('/api/assistant/discuter-flux', json=_msg('Bonjour'), headers=entetes)
+    assert '"erreur"' in r.get_data(as_text=True)
