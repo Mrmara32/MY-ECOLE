@@ -227,3 +227,68 @@ def executer(nom, user, args):
     except Exception as e:
         print(f"[assistant] outil {nom}: {type(e).__name__}: {e}")
         return {'erreur': "Données indisponibles pour le moment."}
+
+
+def alertes(user):
+    """« Le point de l'assistante » : alertes calculées par règles (sans appel au modèle) à partir des mêmes statistiques agrégées,
+    limitées à ce que le rôle a le droit de consulter."""
+    role = user.get('role')
+    liste = []
+
+    def ajouter(niveau, titre, detail, question):
+        liste.append({'niveau': niveau, 'titre': titre, 'detail': detail, 'question': question})
+
+    if role in OUTILS['paiements']['roles']:
+        p = outil_paiements(user, {})
+        e = p['ensemble']
+        if e['eleves']:
+            if e['avec_impayes']:
+                ajouter('orange' if e['avec_impayes'] * 4 < e['eleves'] else 'rouge',
+                        f"{e['a_jour']} élèves sur {e['eleves']} sont à jour de leurs paiements",
+                        f"{e['avec_impayes']} élève(s) ont des impayés ; reste à recouvrer : {e['reste_a_payer']:,.0f}".replace(',', ' '),
+                        "Comment relancer les familles et améliorer le recouvrement des frais de scolarité ?")
+            faibles = [c for c in p['par_classe'] if c['taux_recouvrement_pct'] is not None and c['taux_recouvrement_pct'] < 50 and c['montant_du'] > 0]
+            if faibles:
+                ajouter('rouge', "Recouvrement inférieur à 50 % : " + ', '.join(c['classe'] for c in faibles[:4]),
+                        "Ces classes concentrent le retard de paiement.", "Que faire pour les classes dont le recouvrement est inférieur à 50 % ?")
+            if e['sans_frais_enregistres']:
+                ajouter('info', f"{e['sans_frais_enregistres']} élève(s) sans frais de scolarité enregistrés",
+                        "Leur situation de paiement ne peut pas être suivie.", "Comment enregistrer les frais de scolarité des élèves qui n'en ont pas ?")
+    if role in OUTILS['resultats']['roles']:
+        r = outil_resultats(user, {})
+        faibles = [c for c in r['classes_du_plus_faible_au_plus_fort'] if c['moyenne_generale_sur_20'] < 10]
+        if faibles:
+            ajouter('rouge', "Moyenne générale sous 10/20 : " + ', '.join(f"{c['classe']} ({c['moyenne_generale_sur_20']})" for c in faibles[:4]),
+                    "Ces classes ont besoin d'un plan de remédiation.", "Propose un plan pour améliorer les résultats des classes les plus faibles.")
+        mat = [m for m in r['matieres_les_plus_faibles'] if m['moyenne_sur_20'] < 8]
+        if mat:
+            ajouter('orange', "Matières en difficulté : " + ', '.join(f"{m['matiere']} en {m['classe']} ({m['moyenne_sur_20']})" for m in mat[:3]),
+                    "Moyennes inférieures à 8/20.", "Comment remédier aux difficultés dans les matières les plus faibles ?")
+    if role in OUTILS['assiduite']['roles']:
+        a = outil_assiduite(user, {'jours': 30})
+        if a['par_classe'] and a['par_classe'][0]['non_justifiees'] >= 10:
+            c = a['par_classe'][0]
+            ajouter('orange', f"Absences non justifiées en {c['classe']} : {c['non_justifiees']} en 30 jours",
+                    f"{a['total_absences']} absences et {a['total_retards']} retards dans l'école sur 30 jours.",
+                    "Comment réduire les absences non justifiées ?")
+    if role in DIRECTION:
+        v = outil_vie_ecole(user, {})
+        for cle, texte, q in (('reinscriptions_en_attente', "réinscription(s) en attente de décision", "Comment traiter rapidement les réinscriptions en attente ?"),
+                              ('depenses_a_valider', "dépense(s) à valider", None), ('seances_a_valider', "séance(s) de cours à valider", None)):
+            if v[cle]:
+                ajouter('info', f"{v[cle]} {texte}", "Action de la direction attendue.", q or f"Que dois-je vérifier avant de valider les {texte.split('(')[0]}s ?")
+    if role in OUTILS['finances']['roles']:
+        f = outil_finances(user, {})
+        mois = f['par_mois']
+        if len(mois) >= 2 and mois[-2]['recettes']:
+            dernier_complet, precedent = mois[-1], mois[-2]
+            if dernier_complet['depenses'] > dernier_complet['recettes'] > 0:
+                ajouter('rouge', f"Dépenses supérieures aux recettes en {dernier_complet['mois']}",
+                        f"Recettes {dernier_complet['recettes']:,.0f} — dépenses {dernier_complet['depenses']:,.0f}".replace(',', ' '),
+                        "Comment réduire les dépenses et augmenter les recettes de l'école ?")
+        if f['dettes_fournisseurs_restantes'] > 0:
+            ajouter('info', "Dettes fournisseurs à régler : " + f"{f['dettes_fournisseurs_restantes']:,.0f}".replace(',', ' '),
+                    "Voir « Dettes fournisseurs » dans Comptabilité.", "Comment prioriser le règlement de nos dettes fournisseurs ?")
+    ordre = {'rouge': 0, 'orange': 1, 'info': 2}
+    liste.sort(key=lambda a: ordre[a['niveau']])
+    return liste[:8]

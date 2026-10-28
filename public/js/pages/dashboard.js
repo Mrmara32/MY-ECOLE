@@ -25,6 +25,7 @@ async function pageDashboard() {
     </div>` : ''}
 
     ${typeof modulesCartesHtml === 'function' ? modulesCartesHtml() : ''}
+    <div id="as-point"></div>
     <div class="stats-grid">
       <div class="stat">
         <div class="stat-icon">🎓</div><div class="stat-label">Élèves inscrits</div>
@@ -204,5 +205,6 @@ async function pageDashboard() {
         if (el && el.parentElement) el.parentElement.innerHTML = '<div class="text-muted" style="text-align:center;padding:40px;font-size:12px">📊 Graphique indisponible (bibliothèque non chargée)</div>';
       });
     }
+  if (typeof assistantPointAccueil === 'function') assistantPointAccueil();
   } catch(e) { $('#content').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`; }
 }

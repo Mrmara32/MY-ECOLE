@@ -138,6 +138,17 @@ def statut():
                     'donnees': [o['name'] for o in assistant_donnees.outils_pour(g.user.get('role'))]})
 
 
+@bp.route('/alertes', methods=['GET'])
+@require_auth
+def alertes():
+    """Le point de l'assistante sur le tableau de bord : calculé par règles, sans clé d'API ni appel externe."""
+    try:
+        return jsonify({'alertes': assistant_donnees.alertes(g.user)})
+    except Exception as e:
+        print(f"[assistant] alertes: {type(e).__name__}: {e}")
+        return jsonify({'alertes': []})
+
+
 @bp.route('/discuter', methods=['POST'])
 @require_auth
 def discuter():

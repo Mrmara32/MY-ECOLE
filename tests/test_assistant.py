@@ -145,3 +145,19 @@ def test_boucle_d_outils_du_modele(client, entetes, monkeypatch):
     from database import db
     ligne = db.execute("SELECT details FROM journal_audit WHERE action='question_assistante' ORDER BY rang DESC LIMIT 1").fetchone()
     assert 'paiements' in ligne['details']
+
+
+def test_point_de_l_assistante_sans_cle_ni_appel_externe(client, entetes, monkeypatch):
+    monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
+    _peupler()
+    r = client.get('/api/assistant/alertes', headers=entetes)
+    assert r.status_code == 200
+    textes = ' '.join(a['titre'] for a in r.get_json()['alertes'])
+    assert 'à jour' in textes and 'ZZ-6e' in textes          # 60 % de recouvrement, moyenne 9,2/20
+    assert 'Secret' not in textes
+    assert client.get('/api/assistant/alertes').status_code == 401
+
+
+def test_point_de_l_assistante_vide_pour_un_parent(client):
+    import assistant_donnees as ad
+    assert ad.alertes({'id': 9, 'ecole_id': 1, 'role': 'parent'}) == []
