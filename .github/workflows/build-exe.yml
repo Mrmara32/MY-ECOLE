@@ -1,13 +1,22 @@
-name: Build Windows exe
+name: Build applications (Windows, Mac, Linux, Android)
 on:
   workflow_dispatch:
   push:
-    tags: ['exe-*']
+    tags: ['exe-*', 'v*']
+
 jobs:
-  build:
-    runs-on: windows-latest
-    permissions:
-      contents: write
+  bureau:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            nom: windows
+          - os: macos-latest
+            nom: mac
+          - os: ubuntu-latest
+            nom: linux
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -15,25 +24,71 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements.txt pyinstaller
       - run: pyinstaller MY-ECOLE.spec --noconfirm
-      - name: Zip
+      - name: Zip (Windows)
+        if: matrix.nom == 'windows'
         shell: pwsh
         run: Compress-Archive -Path dist/MY-ECOLE -DestinationPath MY-ECOLE-windows.zip
+      - name: Zip + image disque (Mac)
+        if: matrix.nom == 'mac'
+        run: |
+          (cd dist && zip -qr ../MY-ECOLE-mac.zip MY-ECOLE)
+          mkdir dmg && cp -R dist/MY-ECOLE dmg/MY-ECOLE && ln -s /Applications dmg/Applications
+          hdiutil create -volname "MY-ECOLE" -srcfolder dmg -ov -format UDZO MY-ECOLE-mac.dmg
+      - name: Zip (Linux)
+        if: matrix.nom == 'linux'
+        run: (cd dist && zip -qr ../MY-ECOLE-linux.zip MY-ECOLE)
       - uses: actions/upload-artifact@v4
         with:
-          name: MY-ECOLE-windows
-          path: MY-ECOLE-windows.zip
-      - name: Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+          name: MY-ECOLE-${{ matrix.nom }}
+          path: |
+            MY-ECOLE-${{ matrix.nom }}.zip
+            MY-ECOLE-mac.dmg
+          if-no-files-found: ignore
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          files: MY-ECOLE-windows.zip
-      - name: Publier le zip sur la branche exe-build
-        shell: bash
+          node-version: '20'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Projet Android (coque Capacitor qui ouvre my-ecole.onrender.com)
         run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git checkout --orphan exe-build
-          git rm -rf . -q || true
-          git add MY-ECOLE-windows.zip
-          git commit -qm "Build exe"
-          git push -f origin exe-build
+          mkdir android-app && cd android-app
+          npm init -y >/dev/null
+          npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
+          mkdir www && echo '<!doctype html><title>MY-ECOLE</title><meta http-equiv="refresh" content="0;url=https://my-ecole.onrender.com/">' > www/index.html
+          cat > capacitor.config.json <<'JSON'
+          {"appId":"com.actifsystem.myecole","appName":"MY-ECOLE","webDir":"www",
+           "server":{"url":"https://my-ecole.onrender.com","cleartext":false},
+           "android":{"allowMixedContent":false}}
+          JSON
+          npx cap add android
+          npx cap sync android
+      - name: Compiler l'APK
+        working-directory: android-app/android
+        run: ./gradlew assembleDebug --no-daemon
+      - run: cp android-app/android/app/build/outputs/apk/debug/app-debug.apk MY-ECOLE-android.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MY-ECOLE-android
+          path: MY-ECOLE-android.apk
+
+  publier:
+    needs: [bureau, android]
+    if: always() && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: livrables
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: livrables/*
