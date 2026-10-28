@@ -1,5 +1,6 @@
 import os
 import json
+import re
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, g
 
@@ -332,6 +333,8 @@ def create_transaction():
         (tid, g.user['ecole_id'], type_, date_op, body.get('description'), body.get('categorie'), body.get('moyen_paiement'),
          montant, body.get('reference') or next_numero_recu(g.user['ecole_id']), body.get('eleve_id'), fournisseur_id, journal, g.user['id'], statut),
     )
+    if type_ == 'sortie' and body.get('moyen_paiement') == 'À régler (fournisseur)':
+        db.execute("UPDATE transactions SET a_regler=1 WHERE id=?", (tid,))
     db.commit()
     log_action(g.user, 'creation', 'transaction', tid, {'type': type_, 'montant': montant, 'statut_validation': statut})
     row = db.execute("SELECT * FROM transactions WHERE id=?", (tid,)).fetchone()
@@ -341,6 +344,100 @@ def create_transaction():
                             + ("l'administrateur" if statut == 'attente_admin' else "le directeur")
                             + " avant d'être comptabilisée dans les totaux.")
     return jsonify(result), 201
+
+
+# ─────────────────────────────────────────────────────────────
+# DETTES FOURNISSEURS — règlement d'un achat « À régler »
+# ─────────────────────────────────────────────────────────────
+MOYENS_REGLEMENT = ('Espèces', 'Virement bancaire', 'Chèque', 'Mobile Money (Orange)', 'Mobile Money (MTN)', 'Mobile Money (Moov)')
+
+
+@bp.route('/dettes-fournisseurs', methods=['GET'])
+@require_auth
+@require_role('admin', 'directeur', 'comptable', 'secretaire')
+def dettes_fournisseurs():
+    """Achats à régler (par défaut : ceux qui ont encore un solde). ?toutes=1 inclut les achats soldés."""
+    toutes = request.args.get('toutes') == '1'
+    sql = ("SELECT t.id, t.date_op, t.description, t.reference, t.montant, t.montant_regle, t.fournisseur_id, "
+           "f.nom AS fournisseur_nom FROM transactions t LEFT JOIN fournisseurs f ON f.id=t.fournisseur_id "
+           "WHERE t.ecole_id=? AND t.a_regler=1 AND t.type='sortie' AND t.statut_validation IN ('auto','valide')")
+    if not toutes:
+        sql += " AND t.montant - t.montant_regle > 0.5"
+    sql += " ORDER BY t.date_op, t.created_at"
+    lignes = rows_to_list(db.execute(sql, [g.user['ecole_id']]).fetchall())
+    for t in lignes:
+        t['solde'] = round(t['montant'] - t['montant_regle'], 2)
+    par_fournisseur = {}
+    for t in lignes:
+        cle = t['fournisseur_nom'] or 'Sans fournisseur'
+        f = par_fournisseur.setdefault(cle, {'fournisseur': cle, 'fournisseur_id': t['fournisseur_id'], 'nb': 0, 'total': 0.0, 'regle': 0.0, 'solde': 0.0})
+        f['nb'] += 1; f['total'] += t['montant']; f['regle'] += t['montant_regle']; f['solde'] += t['solde']
+    return jsonify({
+        'dettes': lignes, 'par_fournisseur': sorted(par_fournisseur.values(), key=lambda f: -f['solde']),
+        'total_solde': sum(t['solde'] for t in lignes), 'moyens': MOYENS_REGLEMENT,
+    })
+
+
+@bp.route('/transactions/<t_id>/reglements', methods=['GET'])
+@require_auth
+@require_role('admin', 'directeur', 'comptable', 'secretaire')
+def reglements_transaction(t_id):
+    if not db.execute("SELECT 1 FROM transactions WHERE id=? AND ecole_id=?", (t_id, g.user['ecole_id'])).fetchone():
+        return jsonify({'error': 'Introuvable'}), 404
+    rows = db.execute("SELECT r.*, u.full_name AS cree_par_nom FROM reglements_fournisseurs r LEFT JOIN users u ON u.id=r.cree_par "
+                      "WHERE r.transaction_id=? AND r.ecole_id=? ORDER BY r.date_reglement, r.created_at",
+                      (t_id, g.user['ecole_id'])).fetchall()
+    return jsonify(rows_to_list(rows))
+
+
+@bp.route('/transactions/<t_id>/regler', methods=['POST'])
+@require_auth
+@require_role('admin', 'directeur', 'comptable')
+@require_permission('comptabilite', 'peut_modifier')
+def regler_fournisseur(t_id):
+    """Règle (en totalité ou en partie) un achat « À régler » : un clic du comptable."""
+    body = request.get_json(silent=True) or {}
+    t = db.execute("SELECT * FROM transactions WHERE id=? AND ecole_id=?", (t_id, g.user['ecole_id'])).fetchone()
+    if not t:
+        return jsonify({'error': 'Introuvable'}), 404
+    if not t['a_regler'] or t['type'] != 'sortie':
+        return jsonify({'error': "Cette dépense n'est pas un achat à régler"}), 400
+    if t['statut_validation'] not in ('auto', 'valide'):
+        return jsonify({'error': "Cette dépense n'est pas encore validée"}), 400
+    solde = round(t['montant'] - t['montant_regle'], 2)
+    if solde <= 0.5:
+        return jsonify({'error': 'Déjà entièrement réglée'}), 409
+    try:
+        montant = float(body.get('montant') if body.get('montant') not in (None, '') else solde)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Montant invalide'}), 400
+    if montant <= 0:
+        return jsonify({'error': 'Le montant doit être positif'}), 400
+    if montant > solde + 0.5:
+        return jsonify({'error': f"Le montant dépasse ce qui reste à payer ({int(solde)})"}), 400
+    moyen = body.get('moyen_paiement') or 'Espèces'
+    if moyen not in MOYENS_REGLEMENT:
+        return jsonify({'error': 'Moyen de paiement invalide'}), 400
+    date_reglement = body.get('date_reglement') or datetime.now().strftime('%Y-%m-%d')
+    if not re.match(r'^\d{4}-\d{2}-\d{2}$', str(date_reglement)):
+        return jsonify({'error': 'Date invalide'}), 400
+    rid = gen_id('rgl')
+    db.execute(
+        "INSERT INTO reglements_fournisseurs (id,ecole_id,transaction_id,fournisseur_id,date_reglement,montant,moyen_paiement,reference,note,cree_par) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (rid, g.user['ecole_id'], t_id, t['fournisseur_id'], date_reglement, montant, moyen,
+         (body.get('reference') or '').strip() or None, (body.get('note') or '').strip() or None, g.user['id']),
+    )
+    nouveau_regle = round(t['montant_regle'] + montant, 2)
+    soldee = (t['montant'] - nouveau_regle) <= 0.5
+    # Soldé : le moyen de paiement affiché devient le moyen réellement utilisé (plus « À régler »).
+    db.execute("UPDATE transactions SET montant_regle=?, moyen_paiement=? WHERE id=?",
+               (nouveau_regle, moyen if soldee else t['moyen_paiement'], t_id))
+    db.commit()
+    log_action(g.user, 'reglement_fournisseur', 'transaction', t_id,
+               {'montant': montant, 'moyen_paiement': moyen, 'reste': round(t['montant'] - nouveau_regle, 2)})
+    return jsonify({'success': True, 'reglement_id': rid, 'montant_regle': nouveau_regle,
+                    'solde': max(0, round(t['montant'] - nouveau_regle, 2)), 'soldee': soldee})
 
 
 @bp.route('/transactions/<t_id>/approuver', methods=['PUT'])
@@ -417,6 +514,7 @@ def delete_transaction(t_id):
     existing = db.execute("SELECT * FROM transactions WHERE id=? AND ecole_id=?", (t_id, g.user['ecole_id'])).fetchone()
     if not existing:
         return jsonify({'error': 'Introuvable'}), 404
+    db.execute("DELETE FROM reglements_fournisseurs WHERE transaction_id=? AND ecole_id=?", (t_id, g.user['ecole_id']))
     db.execute("DELETE FROM transactions WHERE id=? AND ecole_id=?", (t_id, g.user['ecole_id']))
     db.commit()
     log_action(g.user, 'suppression', 'transaction', t_id, dict(existing))

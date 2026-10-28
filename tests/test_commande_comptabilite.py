@@ -46,3 +46,39 @@ def test_suppression_ponctuelle_des_doublons(client, entetes):
     db.commit()
     assert not db.execute("SELECT 1 FROM transactions WHERE reference=?", (REFERENCES_DEPENSES_DOUBLONS[0],)).fetchone()
     assert db.execute("SELECT 1 FROM transactions WHERE reference='CMD-autre-commande'").fetchone()
+
+
+def _achat_a_regler(client, entetes, numero, prix=1000, quantite=10):
+    r = client.post('/api/commandes', json={'numero': numero, 'statut': 'recue',
+        'lignes': [{'designation': 'Craie', 'quantite': quantite, 'prix_unitaire': prix}]}, headers=entetes)
+    assert r.status_code == 201, r.get_json()
+    return _transactions(client, entetes, f'CMD-{numero}')[0]
+
+
+def test_reglement_fournisseur_partiel_puis_total(client, entetes):
+    t = _achat_a_regler(client, entetes, 'BC-REG-1')            # 10 000
+    assert t['a_regler'] == 1
+    dettes = client.get('/api/dettes-fournisseurs', headers=entetes).get_json()
+    assert any(d['id'] == t['id'] and d['solde'] == 10000 for d in dettes['dettes'])
+    r = client.post(f"/api/transactions/{t['id']}/regler", json={'montant': 4000, 'moyen_paiement': 'Espèces'}, headers=entetes)
+    assert r.status_code == 200 and r.get_json()['solde'] == 6000 and not r.get_json()['soldee']
+    # dépassement refusé
+    assert client.post(f"/api/transactions/{t['id']}/regler", json={'montant': 7000}, headers=entetes).status_code == 400
+    r = client.post(f"/api/transactions/{t['id']}/regler", json={'moyen_paiement': 'Virement bancaire'}, headers=entetes)
+    assert r.status_code == 200 and r.get_json()['soldee']
+    assert client.post(f"/api/transactions/{t['id']}/regler", json={'montant': 1}, headers=entetes).status_code == 409
+    maj = _transactions(client, entetes, 'CMD-BC-REG-1')[0]
+    assert maj['moyen_paiement'] == 'Virement bancaire' and maj['montant_regle'] == 10000
+    assert len(client.get(f"/api/transactions/{t['id']}/reglements", headers=entetes).get_json()) == 2
+    # une seule dépense : le règlement ne double pas la comptabilité
+    assert len(_transactions(client, entetes, 'CMD-BC-REG-1')) == 1
+    dettes = client.get('/api/dettes-fournisseurs', headers=entetes).get_json()
+    assert all(d['id'] != t['id'] for d in dettes['dettes'])
+
+
+def test_regler_depense_ordinaire_refuse(client, entetes):
+    r = client.post('/api/transactions', json={'type': 'sortie', 'montant': 500, 'categorie': 'Divers',
+        'moyen_paiement': 'Espèces', 'date_op': '2026-10-01', 'journal': 'diverses'}, headers=entetes)
+    assert r.status_code in (200, 201), r.get_json()
+    tid = r.get_json().get('id')
+    assert client.post(f'/api/transactions/{tid}/regler', json={'montant': 100}, headers=entetes).status_code == 400

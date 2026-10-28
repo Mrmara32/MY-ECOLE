@@ -29,11 +29,13 @@ def list_fournisseurs():
     for f in rows:
         d = dict(f)
         totaux = db.execute(
-            "SELECT COALESCE(SUM(montant),0) as total, COUNT(*) as nb FROM transactions "
+            "SELECT COALESCE(SUM(CASE WHEN a_regler=1 THEN montant_regle ELSE montant END),0) as total, "
+            "COALESCE(SUM(CASE WHEN a_regler=1 THEN montant - montant_regle ELSE 0 END),0) as du, COUNT(*) as nb FROM transactions "
             "WHERE fournisseur_id=? AND ecole_id=? AND statut_validation IN ('auto','valide')",
             (f['id'], g.user['ecole_id']),
         ).fetchone()
         d['total_paye'] = totaux['total']
+        d['total_du'] = totaux['du']
         d['nb_transactions'] = totaux['nb']
         result.append(d)
     return jsonify(result)
@@ -52,7 +54,7 @@ def get_fournisseur(f_id):
         (f_id, g.user['ecole_id']),
     ).fetchall()
     d['historique'] = rows_to_list(historique)
-    d['total_paye'] = sum(t['montant'] for t in historique if t['statut_validation'] in ('auto', 'valide'))
+    d['total_paye'] = sum((t.get('montant_regle') or 0) if t.get('a_regler') else t['montant'] for t in historique if t['statut_validation'] in ('auto', 'valide'))
     return jsonify(d)
 
 

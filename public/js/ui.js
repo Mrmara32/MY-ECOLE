@@ -1091,9 +1091,11 @@ function paginationHtml(id, page, totalPages, total, pageSize) {
   return `<div class="pagination">
     <span class="pagination-info">${from}–${to} sur ${total}</span>
     <div class="pagination-btns">
+      <button type="button" class="btn btn-outline btn-xs" ${page<=1?'disabled':''} onclick="pagGo('${id}',1)" title="Première page">« Première</button>
       <button type="button" class="btn btn-outline btn-xs" ${page<=1?'disabled':''} onclick="pagGo('${id}',${page-1})">‹ Précédent</button>
-      <span class="pagination-page">Page ${page} / ${totalPages}</span>
+      <span class="pagination-page">Page <input type="number" class="pagination-input" min="1" max="${totalPages}" value="${page}" title="Aller à la page…" aria-label="Numéro de page" style="width:56px;text-align:center" onchange="pagGoSaisie('${id}',this,${totalPages})"> / ${totalPages}</span>
       <button type="button" class="btn btn-outline btn-xs" ${page>=totalPages?'disabled':''} onclick="pagGo('${id}',${page+1})">Suivant ›</button>
+      <button type="button" class="btn btn-outline btn-xs" ${page>=totalPages?'disabled':''} onclick="pagGo('${id}',${totalPages})" title="Dernière page">Dernière »</button>
     </div>
   </div>`;
 }
@@ -1103,3 +1105,8 @@ function pagGo(id, page) {
   if (typeof p.onChange === 'function') p.onChange();
 }
 window.pagGo = pagGo;
+function pagGoSaisie(id, champ, totalPages) {
+  const n = Math.min(totalPages, Math.max(1, parseInt(champ.value, 10) || 1));
+  pagGo(id, n);
+}
+window.pagGoSaisie = pagGoSaisie;

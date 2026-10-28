@@ -43,7 +43,7 @@ async function pageComptabilite() {
         <td>${JOURNAL_LABELS[t.journal]||''}</td>
         <td>${esc(t.description||t.categorie||'—')}</td>
         <td><span class="badge bdg-gray">${esc(t.categorie||'—')}</span></td>
-        <td>${esc(t.moyen_paiement||'—')}</td>
+        <td>${esc(t.moyen_paiement||'—')}${t.a_regler?(t.montant-t.montant_regle>0.5?`<br><span class="badge bdg-warn">⏳ Reste ${fmtMoney(t.montant-t.montant_regle)}</span>`:`<br><span class="badge bdg-ok">✅ Réglée</span>`):''}</td>
         <td class="mono text-right fw-600 ${t.type==='entree'?'text-ok':'text-err'}">${t.type==='entree'?'+':'−'}${fmtMoney(t.montant)}</td>
         <td>${STATUT_VAL_BADGE[t.statut_validation]||''}</td>
         <td class="text-muted" style="font-size:11px">${esc(t.cree_par_nom||'—')}</td>
@@ -51,6 +51,8 @@ async function pageComptabilite() {
           ${t.eleve_nom?`<span class="text-muted" style="font-size:11px">${esc(t.eleve_prenom||'')} ${esc(t.eleve_nom||'')}</span><br>`:''}
           <div class="td-actions">
             ${(t.statut_validation==='auto'||t.statut_validation==='valide')?`<button class="btn btn-outline btn-xs" onclick="reimprimerTransaction('${escJs(t.id)}')" title="Réimprimer le reçu">🖨</button>`:''}
+            ${(t.a_regler&&t.montant-t.montant_regle>0.5&&['admin','directeur','comptable'].includes(currentUser.role)&&(t.statut_validation==='auto'||t.statut_validation==='valide'))?`<button class="btn btn-primary btn-xs" onclick="modalRegler('${escJs(t.id)}')" title="Régler le fournisseur">💸 Régler</button>`:''}
+            ${t.a_regler?`<button class="btn btn-outline btn-xs" onclick="voirReglements('${escJs(t.id)}')" title="Historique des règlements">📜</button>`:''}
             ${currentUser.role==='admin'?`<button class="btn btn-danger btn-xs" onclick="delTransaction('${escJs(t.id)}')">🗑</button>`:''}
           </div>
         </td>
@@ -69,6 +71,7 @@ async function pageComptabilite() {
       <div class="card-header">
         <span class="card-title">💳 Journal comptable</span>
         <div class="card-actions">
+          <button class="btn btn-primary btn-sm" onclick="pageDettesFournisseurs()">💸 Dettes fournisseurs</button>
           <button class="btn btn-outline btn-sm" onclick="modalLivreJournal()">📖 Livre Journal</button>
           <button class="btn btn-outline btn-sm" onclick="exporterJournalExcel()">📊 Export Excel</button>
           <button class="btn btn-outline btn-sm" onclick="pageBudget()">🎯 Budget prévisionnel</button>
@@ -517,6 +520,80 @@ async function reimprimerTransaction(id) {
   });
 }
 window.reimprimerTransaction = reimprimerTransaction;
+
+/* ===== Règlement des fournisseurs ===== */
+async function modalRegler(id, apres) {
+  let t = (window._comptaTransactionsCache || []).find(x => x.id === id);
+  let d;
+  try { d = await apiGetDettesFournisseurs(true); } catch(e) { toast(e.message,'error'); return; }
+  const dette = d.dettes.find(x => x.id === id);
+  if (!dette) { toast('Achat introuvable ou déjà réglé','error'); return; }
+  const moyens = d.moyens || [];
+  openModal('💸 Régler le fournisseur', `
+    <form id="f-regler" style="display:flex;flex-direction:column;gap:14px">
+      <div class="alert alert-info">
+        <strong>${esc(dette.fournisseur_nom||'Sans fournisseur')}</strong> — ${esc(dette.description||dette.reference||'')}<br>
+        Total ${fmtMoney(dette.montant)} · déjà réglé ${fmtMoney(dette.montant_regle)} · <strong>reste ${fmtMoney(dette.solde)}</strong>
+      </div>
+      <div class="form-2">
+        <div class="fg"><label>Montant à régler*</label><input type="number" name="montant" min="1" max="${dette.solde}" step="any" value="${dette.solde}" required></div>
+        <div class="fg"><label>Date du règlement*</label><input type="date" name="date_reglement" value="${new Date().toISOString().slice(0,10)}" required></div>
+      </div>
+      <div class="form-2">
+        <div class="fg"><label>Moyen de paiement*</label><select name="moyen_paiement">${moyens.map(m=>`<option>${esc(m)}</option>`).join('')}</select></div>
+        <div class="fg"><label>Référence (chèque, virement…)</label><input name="reference"></div>
+      </div>
+      <div class="fg"><label>Note</label><input name="note" placeholder="Facultatif"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal()">Annuler</button>
+        <button type="submit" class="btn btn-primary">Confirmer le règlement</button>
+      </div>
+    </form>`);
+  $('#f-regler').onsubmit = async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target));
+    fd.montant = parseFloat(fd.montant);
+    try {
+      const r = await apiReglerFournisseur(id, fd);
+      toast(r.soldee ? 'Fournisseur réglé en totalité ✅' : `Règlement enregistré — reste ${fmtMoney(r.solde)}`, 'success');
+      closeModal();
+      (typeof apres === 'function' ? apres : pageComptabilite)();
+    } catch(err) { toast(err.message,'error'); }
+  };
+}
+window.modalRegler = modalRegler;
+
+async function voirReglements(id) {
+  try {
+    const rows = await apiGetReglements(id);
+    openModal('📜 Règlements effectués', rows.length ? `<div class="tbl-wrap"><table>
+      <thead><tr><th>Date</th><th class="text-right">Montant</th><th>Moyen</th><th>Référence</th><th>Par</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr><td>${fmtDate(r.date_reglement)}</td><td class="text-right mono">${fmtMoney(r.montant)}</td><td>${esc(r.moyen_paiement||'')}</td><td>${esc(r.reference||'—')}</td><td>${esc(r.cree_par_nom||'—')}</td></tr>`).join('')}</tbody>
+    </table></div>` : '<p class="text-muted">Aucun règlement enregistré pour le moment.</p>');
+  } catch(e) { toast(e.message,'error'); }
+}
+window.voirReglements = voirReglements;
+
+async function pageDettesFournisseurs() {
+  $('#content').innerHTML = loadingHtml;
+  const d = await apiGetDettesFournisseurs(false);
+  $('#content').innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">💸 Dettes fournisseurs — à régler : ${fmtMoney(d.total_solde)}</span>
+        <div class="card-actions"><button class="btn btn-outline btn-sm" onclick="pageComptabilite()">← Retour</button></div>
+      </div>
+      ${d.par_fournisseur.length ? `<div class="tbl-wrap mb-4"><table>
+        <thead><tr><th>Fournisseur</th><th class="text-right">Achats</th><th class="text-right">Total</th><th class="text-right">Réglé</th><th class="text-right">Reste dû</th></tr></thead>
+        <tbody>${d.par_fournisseur.map(f=>`<tr><td><strong>${esc(f.fournisseur)}</strong></td><td class="text-right">${f.nb}</td><td class="text-right mono">${fmtMoney(f.total)}</td><td class="text-right mono">${fmtMoney(f.regle)}</td><td class="text-right mono fw-600 text-err">${fmtMoney(f.solde)}</td></tr>`).join('')}</tbody>
+      </table></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Date</th><th>Fournisseur</th><th>Référence</th><th>Description</th><th class="text-right">Montant</th><th class="text-right">Reste</th><th>Action</th></tr></thead>
+        <tbody>${d.dettes.map(t=>`<tr><td>${fmtDate(t.date_op)}</td><td>${esc(t.fournisseur_nom||'—')}</td><td>${esc(t.reference||'')}</td><td>${esc(t.description||'')}</td><td class="text-right mono">${fmtMoney(t.montant)}</td><td class="text-right mono fw-600 text-err">${fmtMoney(t.solde)}</td><td>${['admin','directeur','comptable'].includes(currentUser.role)?`<button class="btn btn-primary btn-xs" onclick="modalRegler('${escJs(t.id)}', pageDettesFournisseurs)">💸 Régler</button>`:''}</td></tr>`).join('')}</tbody>
+      </table></div>` : emptyHtml('✅','Aucune dette fournisseur','Tous les achats sont réglés.')}
+    </div>`;
+}
+window.pageDettesFournisseurs = pageDettesFournisseurs;
 
 async function delTransaction(id) {
   if (!confirmDel('Supprimer cette transaction ?')) return;
