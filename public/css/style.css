@@ -495,3 +495,15 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
   .filters input,.filters select,.fg input,.fg select,.fg textarea{max-width:100%;min-width:0;box-sizing:border-box}
   input[type=date],input[type=time],input[type=datetime-local]{min-width:0;width:100%;max-width:100%;box-sizing:border-box}
 }
+
+/* ── Hub « Paramètres & Sécurité » : tuiles à icônes groupées ── */
+.hub-nav{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.hub-titre{display:flex;align-items:center;gap:10px;margin:6px 0 2px}
+.hub-titre h2{margin:0;font-size:22px;color:#6d28d9}
+.hub-sous{color:var(--g6);margin-bottom:14px}
+.hub-section{font-size:15px;font-weight:800;color:var(--g9,#111);margin:22px 0 10px;padding-bottom:6px;border-bottom:2px solid #ddd6fe}
+.hub-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.hub-tuile{background:#fff;border:1px solid var(--g2);border-radius:14px;padding:16px 10px;text-align:center;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:10px;font-weight:700;font-size:13px;color:var(--g9,#1f2937);transition:box-shadow .15s,transform .15s}
+.hub-tuile:hover{box-shadow:0 6px 16px rgba(109,40,217,.16);transform:translateY(-2px)}
+.hub-ico{width:56px;height:56px;border-radius:14px;background:#ede9fe;display:flex;align-items:center;justify-content:center;font-size:28px}

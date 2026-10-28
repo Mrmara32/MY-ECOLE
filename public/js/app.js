@@ -32,6 +32,7 @@ const PAGES = {
   candidatures:    { icon:'📋', labelKey:'nav_candidatures',         fn: pageCandidatures,    roles:['admin','directeur'] },
   users:           { icon:'👥', labelKey:'nav_users',         fn: pageUsers,           roles:['admin'] },
   journal:         { icon:'🗂️', labelKey:'nav_journal',     fn: pageJournal,         roles:['admin'] },
+  parametres:      { icon:'🔐', labelKey:'nav_parametres',        fn: pageParametres,      roles:['admin','directeur'] },
   settings:        { icon:'⚙️', labelKey:'nav_settings',          fn: pageSettings,        roles:['admin','directeur'] },
   aide:            { icon:'❓', labelKey:'nav_aide',                 fn: pageAide,            roles:['admin','directeur','comptable','enseignant','secretaire','charge_communication','directeur_etudes','parent'] },
   ecoles:          { icon:'🏢', labelKey:'nav_ecoles',             fn: pageEcoles,          superAdminOnly:true },
@@ -43,7 +44,7 @@ const NAV_GROUPS = [
   { labelKey: 'nav_section_scolarite', pages: ['eleves','eleveDuMois','notes','devoirs','emploi','seances','absences','pointage','discipline','examens','bibliotheque','classes','salles','reinscriptions'] },
   { labelKey: 'nav_section_finances', pages: ['paiements','cantine','comptabilite','fournisseurs','logistique','revision','paie'] },
   { labelKey: 'nav_section_vie_ecole', pages: ['communication','actualites','personnel'] },
-  { labelKey: 'nav_section_administration', pages: ['users','journal','settings'] },
+  { labelKey: 'nav_section_administration', pages: ['parametres','users','journal','settings'] },
   { labelKey: 'nav_section_super_admin', pages: ['ecoles'] },
   { labelKey: null, pages: ['aide'] },
 ];
@@ -245,6 +246,7 @@ function navigate(page) {
   const autorise = pg.superAdminOnly ? !!currentUser?.est_super_admin : pg.roles.includes(currentUser?.role);
   if (!autorise) { toast('Accès refusé','error'); return; }
 
+  if (page !== currentPage) window._pagePrecedente = currentPage;
   currentPage = page;
   // Mettre à jour nav
   $$('.nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.page === page));
@@ -266,6 +268,8 @@ function navigate(page) {
   catch(e) { console.error(e); $('#content').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`; }
 }
 window.navigate = navigate;
+function retourPage() { navigate(window._pagePrecedente && PAGES[window._pagePrecedente] ? window._pagePrecedente : 'dashboard'); }
+window.retourPage = retourPage;
 
 /* ── Sidebar mobile (tiroir) ── */
 function toggleSidebar(force) {
