@@ -484,6 +484,19 @@ const apiComparaisonBudget = (mois) => apiFetch('/budgets/comparaison?mois='+moi
 const apiAnalyseComptable = (mois) => apiFetch('/analyse-comptable?mois='+mois);
 const apiGetBalance = (dateDebut, dateFin) => apiFetch(`/balance?date_debut=${dateDebut}&date_fin=${dateFin}`);
 const apiGetReleve = (params) => apiFetch(`/releve?${new URLSearchParams(params).toString()}`);
+const apiGetReleveDepenses = (params) => apiFetch(`/releve/depenses?${new URLSearchParams(params).toString()}`);
+function apiExportReleveDepensesExcel(params) {
+  fetch(API_BASE + '/releve/depenses/export?' + new URLSearchParams(params).toString(), { headers: { 'Authorization': 'Bearer ' + _token } })
+    .then(r => { if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Erreur'); }); return r.blob(); })
+    .then(blob => {
+      const a = document.createElement('a');
+      const objUrl = URL.createObjectURL(blob);
+      a.href = objUrl; a.download = 'Releve-Depenses.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(objUrl);
+    })
+    .catch(err => toast(err.message, 'error'));
+}
 const apiEnvoyerReleveEmail = (b) => apiFetch('/releve/envoyer-email', { method: 'POST', body: b });
 
 function apiAnalyserRapprochement(fichier) {

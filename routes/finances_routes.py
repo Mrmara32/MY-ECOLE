@@ -1464,6 +1464,95 @@ def releve():
     })
 
 
+def _depenses_periode(ecole_id, date_debut, date_fin):
+    """Dépenses validées de la période, avec totaux par mois et par catégorie."""
+    sql = ("SELECT t.*, f.nom AS fournisseur_nom FROM transactions t LEFT JOIN fournisseurs f ON f.id=t.fournisseur_id "
+           "WHERE t.ecole_id=? AND t.type='sortie' AND t.statut_validation IN ('auto','valide')")
+    params = [ecole_id]
+    if date_debut: sql += " AND t.date_op>=?"; params.append(date_debut)
+    if date_fin: sql += " AND t.date_op<=?"; params.append(date_fin)
+    sql += " ORDER BY t.date_op, t.created_at"
+    lignes = rows_to_list(db.execute(sql, params).fetchall())
+    par_mois, par_categorie = {}, {}
+    for t in lignes:
+        mois = (t['date_op'] or '')[:7]
+        cat = t.get('categorie') or 'Non classée'
+        m = par_mois.setdefault(mois, {'mois': mois, 'nb': 0, 'total': 0.0, 'categories': {}})
+        m['nb'] += 1
+        m['total'] += t['montant']
+        m['categories'][cat] = m['categories'].get(cat, 0.0) + t['montant']
+        c = par_categorie.setdefault(cat, {'categorie': cat, 'nb': 0, 'total': 0.0})
+        c['nb'] += 1
+        c['total'] += t['montant']
+    total = sum(t['montant'] for t in lignes)
+    return {
+        'date_debut': date_debut, 'date_fin': date_fin, 'depenses': lignes,
+        'par_mois': [par_mois[k] for k in sorted(par_mois)],
+        'par_categorie': sorted(par_categorie.values(), key=lambda c: -c['total']),
+        'total': total, 'nb': len(lignes),
+    }
+
+
+@bp.route('/releve/depenses', methods=['GET'])
+@require_auth
+@require_role('admin', 'directeur', 'comptable', 'secretaire')
+def releve_depenses():
+    """Relevé des dépenses d'une période, regroupé par mois et par catégorie."""
+    return jsonify(_depenses_periode(g.user['ecole_id'], request.args.get('date_debut'), request.args.get('date_fin')))
+
+
+@bp.route('/releve/depenses/export', methods=['GET'])
+@require_auth
+@require_role('admin', 'directeur', 'comptable', 'secretaire')
+def releve_depenses_export():
+    """Même relevé au format Excel (feuilles « Par mois », « Par catégorie », « Détail »)."""
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from flask import send_file
+    d = _depenses_periode(g.user['ecole_id'], request.args.get('date_debut'), request.args.get('date_fin'))
+    s = get_settings(g.user['ecole_id'])
+    wb = Workbook()
+    entete_font = Font(name="Arial", bold=True, color="FFFFFF")
+    entete_fill = PatternFill(start_color="0E2A5E", end_color="0E2A5E", fill_type="solid")
+
+    def feuille(ws, titre, colonnes, lignes, largeurs):
+        ws['A1'] = s.get('ecole_nom') or 'MY-ECOLE'
+        ws['A1'].font = Font(name="Arial", bold=True, size=14, color="0E2A5E")
+        periode = f"Du {d['date_debut'] or '…'} au {d['date_fin'] or '…'}" if (d['date_debut'] or d['date_fin']) else "Toutes périodes"
+        ws['A2'] = f"{titre} — {periode}"
+        for i, c in enumerate(colonnes, 1):
+            cell = ws.cell(row=4, column=i, value=c)
+            cell.font, cell.fill = entete_font, entete_fill
+            cell.alignment = Alignment(horizontal='center')
+        for r, ligne in enumerate(lignes, 5):
+            for i, v in enumerate(ligne, 1):
+                cell = ws.cell(row=r, column=i, value=v)
+                if isinstance(v, (int, float)):
+                    cell.number_format = '#,##0'
+        for i, w in enumerate(largeurs):
+            ws.column_dimensions[chr(65 + i)].width = w
+
+    ws = wb.active
+    ws.title = "Par mois"
+    cats = [c['categorie'] for c in d['par_categorie']]
+    lignes = [[m['mois'], m['nb'], *[m['categories'].get(c, 0) for c in cats], m['total']] for m in d['par_mois']]
+    lignes.append(['TOTAL', d['nb'], *[next((c['total'] for c in d['par_categorie'] if c['categorie'] == k), 0) for k in cats], d['total']])
+    feuille(ws, "Dépenses par mois", ['Mois', 'Opérations', *cats, 'Total'], lignes, [12, 12] + [18] * (len(cats) + 1))
+    ws2 = wb.create_sheet("Par catégorie")
+    feuille(ws2, "Dépenses par catégorie", ['Catégorie', 'Opérations', 'Total'],
+            [[c['categorie'], c['nb'], c['total']] for c in d['par_categorie']] + [['TOTAL', d['nb'], d['total']]], [34, 12, 18])
+    ws3 = wb.create_sheet("Détail")
+    feuille(ws3, "Détail des dépenses", ['Date', 'Description', 'Catégorie', 'Fournisseur', 'Référence', 'Montant'],
+            [[t['date_op'], t.get('description'), t.get('categorie'), t.get('fournisseur_nom'), t.get('reference'), t['montant']] for t in d['depenses']],
+            [12, 50, 26, 26, 18, 16])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name="releve_depenses.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
 @bp.route('/releve/envoyer-email', methods=['POST'])
 @require_auth
 @require_role('admin', 'directeur', 'comptable', 'secretaire')

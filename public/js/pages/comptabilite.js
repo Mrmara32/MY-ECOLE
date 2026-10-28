@@ -75,6 +75,7 @@ async function pageComptabilite() {
           <button class="btn btn-outline btn-sm" onclick="pageAnalyseComptable()">📈 Tableau de bord</button>
           <button class="btn btn-outline btn-sm" onclick="pageBalance()">⚖️ Balance générale</button>
           <button class="btn btn-outline btn-sm" onclick="pageReleves()">📑 Relevés</button>
+          <button class="btn btn-outline btn-sm" onclick="pageReleveDepenses()">📉 Relevé des dépenses</button>
           <button class="btn btn-outline btn-sm" onclick="pageRapprochement()">🏦 Rapprochement bancaire</button>
           <button class="btn btn-outline btn-sm" onclick="modalTransactionsRecurrentes()">🔁 Récurrentes</button>
           ${['admin','comptable'].includes(currentUser.role)?`
@@ -1011,6 +1012,7 @@ async function pageReleves() {
         <option value="eleves">Relevé d'un ou plusieurs élèves</option>
         <option value="transaction">Détail d'une transaction précise</option>
         <option value="general">Relevé général (toutes les transactions)</option>
+        <option value="depenses">Relevé des dépenses (par mois et par catégorie)</option>
       </select>
     </div>
 
@@ -1035,7 +1037,9 @@ async function pageReleves() {
       <div class="fg"><label>Période</label>
         <select id="rel-periode" onchange="majPeriodeReleve()">
           <option value="mois" selected>Un mois précis</option>
-          <option value="annee">Une année précise</option>
+          <option value="trimestre">Un trimestre</option>
+          <option value="annee_civile">Une année civile (janvier à décembre)</option>
+          <option value="annee">Une année scolaire</option>
           <option value="libre">Dates personnalisées</option>
           <option value="tout">Toute la période (depuis toujours)</option>
         </select>
@@ -1043,6 +1047,13 @@ async function pageReleves() {
       <div id="rel-periode-mois" class="form-2">
         <div class="fg"><label>Mois</label><select id="rel-mois">${['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'].map((m,i)=>`<option value="${i+1}" ${i+1===new Date().getMonth()+1?'selected':''}>${m}</option>`).join('')}</select></div>
         <div class="fg"><label>Année</label><input type="number" id="rel-annee-mois" value="${anneeCourante}"></div>
+      </div>
+      <div id="rel-periode-trimestre" class="form-2" style="display:none">
+        <div class="fg"><label>Trimestre</label><select id="rel-trim"><option value="1">1er trimestre (janv. – mars)</option><option value="2">2e trimestre (avril – juin)</option><option value="3">3e trimestre (juil. – sept.)</option><option value="4">4e trimestre (oct. – déc.)</option></select></div>
+        <div class="fg"><label>Année</label><input type="number" id="rel-annee-trim" value="${anneeCourante}"></div>
+      </div>
+      <div id="rel-periode-annee-civile" class="fg" style="display:none">
+        <label>Année</label><input type="number" id="rel-annee-civile" value="${anneeCourante}">
       </div>
       <div id="rel-periode-annee" class="fg" style="display:none">
         <label>Année scolaire</label>
@@ -1055,25 +1066,37 @@ async function pageReleves() {
       </div>
     </div>
 
-    <div class="modal-footer" style="justify-content:flex-start">
+    <div class="modal-footer" style="justify-content:flex-start;gap:8px">
       <button class="btn btn-primary" onclick="genererReleve()">📑 Générer le relevé</button>
+      <button class="btn btn-outline" id="rel-btn-excel" style="display:none" onclick="exporterReleveDepensesExcel()">📊 Télécharger en Excel</button>
     </div>
   </div>`;
   majFormReleve();
 }
 window.pageReleves = pageReleves;
 
+// Raccourci : ouvre directement les relevés sur « Relevé des dépenses ».
+async function pageReleveDepenses() {
+  await pageReleves();
+  $('#rel-type').value = 'depenses';
+  majFormReleve();
+}
+window.pageReleveDepenses = pageReleveDepenses;
+
 function majFormReleve() {
   const type = $('#rel-type').value;
   $('#rel-bloc-eleves').style.display = type === 'eleves' ? '' : 'none';
   $('#rel-bloc-transaction').style.display = type === 'transaction' ? '' : 'none';
   $('#rel-bloc-periode').style.display = type === 'transaction' ? 'none' : '';
+  $('#rel-btn-excel').style.display = type === 'depenses' ? '' : 'none';
 }
 window.majFormReleve = majFormReleve;
 
 function majPeriodeReleve() {
   const p = $('#rel-periode').value;
   $('#rel-periode-mois').style.display = p === 'mois' ? 'flex' : 'none';
+  $('#rel-periode-trimestre').style.display = p === 'trimestre' ? 'flex' : 'none';
+  $('#rel-periode-annee-civile').style.display = p === 'annee_civile' ? '' : 'none';
   $('#rel-periode-annee').style.display = p === 'annee' ? '' : 'none';
   $('#rel-periode-libre').style.display = p === 'libre' ? 'flex' : 'none';
 }
@@ -1131,6 +1154,16 @@ function _periodeReleveActuelle() {
     const dernierJour = new Date(annee, mois, 0).getDate();
     return { date_debut: `${annee}-${String(mois).padStart(2,'0')}-01`, date_fin: `${annee}-${String(mois).padStart(2,'0')}-${dernierJour}`, annee_scolaire: '' };
   }
+  if (p === 'trimestre') {
+    const t = parseInt($('#rel-trim').value), annee = parseInt($('#rel-annee-trim').value);
+    const m1 = (t - 1) * 3 + 1, m3 = m1 + 2;
+    const dernierJour = new Date(annee, m3, 0).getDate();
+    return { date_debut: `${annee}-${String(m1).padStart(2,'0')}-01`, date_fin: `${annee}-${String(m3).padStart(2,'0')}-${dernierJour}`, annee_scolaire: '' };
+  }
+  if (p === 'annee_civile') {
+    const annee = parseInt($('#rel-annee-civile').value);
+    return { date_debut: `${annee}-01-01`, date_fin: `${annee}-12-31`, annee_scolaire: '' };
+  }
   if (p === 'annee') {
     const anneeScolaire = $('#rel-annee').value; // ex: "2026-2027"
     const debut = parseInt(anneeScolaire.split('-')[0]);
@@ -1172,10 +1205,71 @@ async function genererReleve() {
   const params = {};
   if (date_debut) params.date_debut = date_debut;
   if (date_fin) params.date_fin = date_fin;
+  if (type === 'depenses') {
+    const dep = await apiGetReleveDepenses(params);
+    imprimerReleveDepenses(dep, settings);
+    return;
+  }
   const data = await apiGetReleve(params);
   imprimerReleveGeneral(data, settings);
 }
 window.genererReleve = genererReleve;
+
+function exporterReleveDepensesExcel() {
+  const { date_debut, date_fin } = _periodeReleveActuelle();
+  const params = {};
+  if (date_debut) params.date_debut = date_debut;
+  if (date_fin) params.date_fin = date_fin;
+  apiExportReleveDepensesExcel(params);
+  toast('Génération du fichier Excel…', 'success');
+}
+window.exporterReleveDepensesExcel = exporterReleveDepensesExcel;
+
+const _MOIS_NOMS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+function _libelleMois(ym) {
+  const [a, m] = (ym || '').split('-');
+  return m ? `${_MOIS_NOMS[parseInt(m) - 1]} ${a}` : 'Sans date';
+}
+const _fmtMontant = (n) => Number(n || 0).toLocaleString('fr-FR');
+
+function imprimerReleveDepenses(data, settings) {
+  const cats = data.par_categorie.map(c => c.categorie);
+  const lignesMois = data.par_mois.map(m => `<tr>
+    <td>${esc(_libelleMois(m.mois))}</td><td class="text-right">${m.nb}</td>
+    ${cats.map(c => `<td class="text-right mono">${m.categories[c] ? _fmtMontant(m.categories[c]) : ''}</td>`).join('')}
+    <td class="text-right mono"><strong>${_fmtMontant(m.total)}</strong></td></tr>`).join('');
+  const totauxCat = data.par_categorie.map(c => `<td class="text-right mono">${_fmtMontant(c.total)}</td>`).join('');
+  const detail = data.depenses.map(t => `<tr>
+    <td>${fmtDate(t.date_op)}</td><td>${esc(t.description || '—')}${t.fournisseur_nom ? ` — ${esc(t.fournisseur_nom)}` : ''}</td>
+    <td>${esc(t.categorie || '—')}</td><td>${esc(t.reference || '')}</td>
+    <td class="text-right mono">${_fmtMontant(t.montant)}</td></tr>`).join('');
+
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Relevé des dépenses</title>
+  <style>${RELEVE_DOC_STYLE} .petit th,.petit td{font-size:9px;padding:5px 5px}</style></head><body><div class="doc">
+    ${_enteteReleveHtml(settings, 'RELEVÉ DES DÉPENSES', _libellePeriode(data.date_debut, data.date_fin))}
+    <h3 style="font-size:12.5px;margin:0 0 8px">Dépenses par mois et par catégorie (GNF)</h3>
+    <table class="petit">
+      <thead><tr><th>Mois</th><th class="text-right">Opér.</th>${cats.map(c => `<th class="text-right">${esc(c)}</th>`).join('')}<th class="text-right">Total</th></tr></thead>
+      <tbody>${lignesMois || `<tr><td colspan="${cats.length + 3}" style="text-align:center;color:#9CA3AF;padding:20px">Aucune dépense sur cette période</td></tr>`}
+      <tr class="totaux"><td>TOTAL</td><td class="text-right">${data.nb}</td>${totauxCat}<td class="text-right mono">${_fmtMontant(data.total)}</td></tr></tbody>
+    </table>
+    <h3 style="font-size:12.5px;margin:0 0 8px">Détail des dépenses</h3>
+    <table>
+      <thead><tr><th>Date</th><th>Description</th><th>Catégorie</th><th>Référence</th><th class="text-right">Montant</th></tr></thead>
+      <tbody>${detail || `<tr><td colspan="5" style="text-align:center;color:#9CA3AF;padding:20px">Aucune dépense</td></tr>`}
+      <tr class="totaux"><td colspan="4">TOTAL DES DÉPENSES</td><td class="text-right mono">${_fmtMontant(data.total)}</td></tr></tbody>
+    </table>
+    ${_piedSignaturesHtml(settings)}
+  </body></html>`;
+
+  const win = ouvrirDocumentImprimable(html);
+  finaliserDocumentPartageable(win, '.doc', {
+    filenameBase: `releve_depenses_${data.date_debut || 'debut'}_${data.date_fin || 'fin'}`,
+    sujetEmail: 'Relevé des dépenses',
+    messageEmail: 'Veuillez trouver ci-joint le relevé des dépenses.',
+  });
+}
+window.imprimerReleveDepenses = imprimerReleveDepenses;
 
 function _enteteReleveHtml(settings, titre, sousTitre) {
   return `
