@@ -161,3 +161,19 @@ def test_point_de_l_assistante_sans_cle_ni_appel_externe(client, entetes, monkey
 def test_point_de_l_assistante_vide_pour_un_parent(client):
     import assistant_donnees as ad
     assert ad.alertes({'id': 9, 'ecole_id': 1, 'role': 'parent'}) == []
+
+
+def test_l_administrateur_peut_desactiver_l_assistante(client, entetes, monkeypatch):
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'cle-de-test')
+    monkeypatch.setattr(ar, '_appeler_modele', lambda s, m, u: ('ok', []))
+    import securite
+    securite._debit.clear()
+    assert client.put('/api/settings', json={'assistant_actif': '0'}, headers=entetes).status_code == 200
+    try:
+        r = client.post('/api/assistant/discuter', json=_msg('Bonjour'), headers=entetes)
+        assert r.status_code == 403 and r.get_json()['code'] == 'ASSISTANT_DESACTIVE'
+        assert client.get('/api/assistant/alertes', headers=entetes).get_json()['alertes'] == []
+        assert client.get('/api/assistant/statut', headers=entetes).get_json()['desactivee_par_ecole'] is True
+    finally:
+        client.put('/api/settings', json={'assistant_actif': '1'}, headers=entetes)
+    assert client.post('/api/assistant/discuter', json=_msg('Bonjour'), headers=entetes).status_code == 200

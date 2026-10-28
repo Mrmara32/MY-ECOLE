@@ -10,7 +10,7 @@ from flask import jsonify
 
 from database import log_action
 
-VERSION_CONDITIONS = '2026-10-21'
+VERSION_CONDITIONS = '2026-10-28'
 _VRAI = (True, 'true', 'on', '1', 1, 'oui')
 
 

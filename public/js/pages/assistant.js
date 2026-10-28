@@ -63,7 +63,8 @@ function ouvrirAssistante() {
     p.id = 'assistant-panneau';
     p.className = 'assistant-panneau';
     p.innerHTML = `<div class="as-entete"><b>🤖 Assistante MY-ECOLE</b>
-        <span><button class="icon-btn" onclick="assistantNouvelle()" title="Nouvelle conversation">🗑️</button>
+        <span>${currentUser && ['admin','directeur'].includes(currentUser.role) ? '<button class="icon-btn" onclick="assistantReglage()" title="Activer / désactiver l\'assistante pour l\'établissement">⚙️</button>' : ''}
+        <button class="icon-btn" onclick="assistantNouvelle()" title="Nouvelle conversation">🗑️</button>
         <button class="icon-btn" onclick="fermerAssistante()" title="Fermer">✕</button></span></div>
       <div id="as-messages" class="as-messages"></div>
       <form id="as-form" class="as-form"><textarea id="as-saisie" rows="2" maxlength="4000" placeholder="Posez votre question…"></textarea>
@@ -123,3 +124,16 @@ function assistantAlerte(i) {
   const s = $('#as-saisie'); if (s) { s.value = a.question; assistantEnvoyer(); }
 }
 window.assistantPointAccueil = assistantPointAccueil; window.assistantAlerte = assistantAlerte;
+
+async function assistantReglage() {
+  let st;
+  try { st = await apiFetch('/assistant/statut'); } catch (err) { toast(err.message, 'error'); return; }
+  const desactiver = !st.desactivee_par_ecole;
+  if (!confirm(desactiver ? "Désactiver l'assistante pour tout l'établissement ?" : "Réactiver l'assistante pour l'établissement ?")) return;
+  try {
+    await apiFetch('/settings', { method: 'PUT', body: { assistant_actif: desactiver ? '0' : '1' } });
+    toast(desactiver ? 'Assistante désactivée' : 'Assistante réactivée', 'success');
+    if (desactiver) fermerAssistante();
+  } catch (err) { toast(err.message, 'error'); }
+}
+window.assistantReglage = assistantReglage;
