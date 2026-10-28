@@ -74,8 +74,7 @@ function renderElevesRows(list) {
     <td><span class="badge ${STATUT_COLORS[e.statut]||'bdg-gray'}">${esc(STATUT_LABELS_ELV[e.statut]||e.statut||'actif')}</span></td>
     <td><div class="td-actions">
       ${e.statut==='preinscrit' && ['admin','directeur','comptable'].includes(currentUser.role) ? `<button class="btn btn-ok btn-xs" onclick="modalValiderPreinscription('${escJs(e.id)}','${escJs(e.prenom)} ${escJs(e.nom)}')" title="Valider la préinscription">✔ Valider</button>` : ''}
-      <button class="btn btn-outline btn-xs" onclick="imprimerCarteScolaire('${escJs(e.id)}')" title="Carte scolaire">🪪</button>
-      <button class="btn btn-outline btn-xs" onclick="imprimerBadgeEleve('${escJs(e.id)}')" title="Badge sécurisé (QR + hologramme)">🛡</button>
+      <button class="btn btn-outline btn-xs" onclick="imprimerCarteScolaire('${escJs(e.id)}')" title="Carte scolaire sécurisée (QR + hologramme)">🪪</button>
       ${cycleDeClasse(e.classe)==='maternelle' ? `<button class="btn btn-outline btn-xs" onclick="imprimerCarteRetrait('${escJs(e.id)}')" title="Carte de retrait">🧸</button>` : ''}
       <button class="btn btn-outline btn-xs" onclick="ficheEleve('${escJs(e.id)}')" title="Fiche complète">📋</button>
       <button class="btn btn-outline btn-xs" onclick="modalEleve('${escJs(e.id)}')" title="Modifier">✏️</button>
@@ -438,6 +437,9 @@ window.imprimerBulletin = imprimerBulletin;
 
 /* ===================== CARTE SCOLAIRE ===================== */
 async function imprimerCarteScolaire(eleveId) {
+  return imprimerBadgeEleve(eleveId);
+}
+async function _ancienneCarteScolaire(eleveId) {
   const e = await apiGetEleve(eleveId);
   const settings = await apiGetSettings();
   const contact = e.contact_urgence_nom || e.contact_urgence_telephone
@@ -570,10 +572,13 @@ function _ligneMachine(s, n = 34) {
 async function imprimerBadgeEleve(eleveId) {
   const [e, settings, sec] = await Promise.all([apiGetEleve(eleveId), apiGetSettings(), apiBadgeSecurise(eleveId)]);
   const ecole = settings.ecole_nom || 'MY-ECOLE';
-  const lieu = settings.ecole_adresse || '';
+  const lieu = (settings.ecole_adresse || '').replace(/[,;\s-]*république de guinée/i, '').trim();
   const initiales = ecole.split(/\s+/).filter(m => m.length > 2).map(m => m[0]).join('').slice(0, 3).toUpperCase() || 'ME';
-  const photo = e.photo_url ? esc(e.photo_url) : '';
-  const logo = settings.ecole_logo ? esc(settings.ecole_logo) : '';
+  // La fenêtre d'impression est une page « blob: » : les adresses relatives (/uploads/…) n'y
+  // fonctionnent pas, d'où le logo ou la photo manquants. On les rend absolues.
+  const absolue = u => !u ? '' : esc(/^(data:|https?:|blob:)/i.test(u) ? u : window.location.origin + (u.startsWith('/') ? '' : '/') + u);
+  const photo = absolue(e.photo_url);
+  const logo = absolue(settings.ecole_logo);
   const nomMaj = (e.nom || '').toUpperCase();
   const expireFr = fmtDate(sec.expire);
   const mrz1 = _ligneMachine(`BDG<${nomMaj}<<${e.prenom || ''}`);
