@@ -940,6 +940,20 @@ CREATE TABLE IF NOT EXISTS paiements (
   created_at     TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS reglements_fournisseurs (
+  ecole_id        INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
+  id              TEXT PRIMARY KEY,
+  transaction_id  TEXT NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+  fournisseur_id  TEXT REFERENCES fournisseurs(id) ON DELETE SET NULL,
+  date_reglement  TEXT NOT NULL,
+  montant         REAL NOT NULL,
+  moyen_paiement  TEXT,
+  reference       TEXT,
+  note            TEXT,
+  cree_par        INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at      TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS versements (
   ecole_id          INTEGER NOT NULL DEFAULT 1 REFERENCES ecoles(id) ON DELETE CASCADE,
   id             TEXT PRIMARY KEY,
@@ -1228,6 +1242,9 @@ MIGRATIONS = {
         'motif_rejet': "TEXT",
         'fournisseur_id': "TEXT REFERENCES fournisseurs(id) ON DELETE SET NULL",
         'journal': "TEXT NOT NULL DEFAULT 'diverses'",
+        # Dette fournisseur : a_regler=1 pour un achat non encore payé ; montant_regle = déjà versé au fournisseur.
+        'a_regler': "INTEGER NOT NULL DEFAULT 0",
+        'montant_regle': "REAL NOT NULL DEFAULT 0",
     },
     'cours_revision_enseignants': {
         'jour': "TEXT",
@@ -1808,6 +1825,9 @@ def _indexer_cles_etrangeres():
     base_sante.indexer_cles_etrangeres(db)
 
 
+MOYEN_A_REGLER = 'À régler (fournisseur)'
+
+
 def comptabiliser_commande_recue(c, cree_par=None):
     """Écriture comptable AUTOMATIQUE d'une commande réceptionnée : une dépense (journal « achats »)
     du montant de la commande, au nom du fournisseur. Idempotente : la référence « CMD-… » identifie la
@@ -1829,9 +1849,10 @@ def comptabiliser_commande_recue(c, cree_par=None):
         "fournisseur_id,journal,cree_par,statut_validation) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (gen_id('t'), c['ecole_id'], 'sortie', date_op,
          f"Achat — réception commande {c['numero'] or c['id']}" + (f" ({nom})" if nom else ''),
-         'Fournitures scolaires', 'À régler (fournisseur)', montant, reference,
+         'Fournitures scolaires', MOYEN_A_REGLER, montant, reference,
          c['fournisseur_id'], 'achats', cree_par, 'auto'),
     )
+    db.execute("UPDATE transactions SET a_regler=1 WHERE ecole_id=? AND reference=?", (c['ecole_id'], reference))
     return True
 
 
@@ -1863,6 +1884,11 @@ def _supprimer_depenses_en_double():
         )
 
 
+def _marquer_achats_a_regler():
+    """Les achats déjà comptabilisés « À régler (fournisseur) » deviennent des dettes fournisseurs à solder."""
+    db.execute("UPDATE transactions SET a_regler=1 WHERE type='sortie' AND moyen_paiement=?", (MOYEN_A_REGLER,))
+
+
 MIGRATIONS_VERSIONNEES = [
     (1, "Rattacher chaque ligne à l'école de son élève", _rattacher_a_la_bonne_ecole),
     (2, "Index par école sur les grosses tables", _creer_index_par_ecole),
@@ -1870,6 +1896,7 @@ MIGRATIONS_VERSIONNEES = [
     (4, "Index sur toutes les colonnes de jointure (école, élève, parent…)", _indexer_cles_etrangeres),
     (5, "Comptabiliser les commandes déjà réceptionnées (dépense « achats »)", _comptabiliser_commandes_deja_recues),
     (6, "Supprimer 3 dépenses en double signalées par l'administrateur", _supprimer_depenses_en_double),
+    (7, "Achats « À régler » : suivi des dettes fournisseurs", _marquer_achats_a_regler),
 ]
 
 

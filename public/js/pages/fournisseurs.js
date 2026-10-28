@@ -15,7 +15,7 @@ async function pageFournisseurs() {
         <div class="fg grow"><label>Recherche</label><input id="q-four" placeholder="Nom du fournisseur…" oninput="filtrerFournisseurs()"></div>
       </div>
       <div class="tbl-wrap"><table>
-        <thead><tr><th>Nom</th><th>Catégorie</th><th>Contact</th><th class="text-right">Total payé</th><th class="text-right">Opérations</th><th>Statut</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Nom</th><th>Catégorie</th><th>Contact</th><th class="text-right">Total payé</th><th class="text-right">Reste dû</th><th class="text-right">Opérations</th><th>Statut</th><th>Actions</th></tr></thead>
         <tbody id="tb-four">${renderLignesFournisseurs(fournisseurs)}</tbody>
       </table></div>
       <div id="pag-four"></div>
@@ -29,12 +29,13 @@ function renderLignesFournisseurs(liste) {
   window._fournisseursCurr = liste;
   const { items, page, totalPages, total } = paginate('four', liste);
   $('#pag-four') && ($('#pag-four').innerHTML = paginationHtml('four', page, totalPages, total));
-  if (!items.length) return `<tr><td colspan="7">${emptyHtml('🏭', 'Aucun fournisseur enregistré', 'Ajoutez vos fournisseurs pour suivre facilement ce que vous leur payez.')}</td></tr>`;
+  if (!items.length) return `<tr><td colspan="8">${emptyHtml('🏭', 'Aucun fournisseur enregistré', 'Ajoutez vos fournisseurs pour suivre facilement ce que vous leur payez.')}</td></tr>`;
   return items.map(f => `<tr>
     <td><strong>${esc(f.nom)}</strong></td>
     <td>${f.categorie ? `<span class="badge bdg-gray">${esc(f.categorie)}</span>` : '—'}</td>
     <td class="text-muted" style="font-size:12px">${esc(f.telephone||f.email||'—')}</td>
     <td class="text-right mono fw-600">${fmtMoney(f.total_paye)}</td>
+    <td class="text-right mono ${f.total_du>0.5?'fw-600 text-err':'text-muted'}">${f.total_du>0.5?fmtMoney(f.total_du):'—'}</td>
     <td class="text-right">${f.nb_transactions}</td>
     <td>${f.actif ? '<span class="badge bdg-ok">Actif</span>' : '<span class="badge bdg-gray">Inactif</span>'}</td>
     <td class="td-actions">
