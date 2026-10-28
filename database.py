@@ -211,6 +211,21 @@ CREATE TABLE IF NOT EXISTS ecoles (
   created_at          TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS sessions_appareils (
+  id             TEXT PRIMARY KEY,
+  user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ecole_id       INTEGER NOT NULL DEFAULT 1,
+  renouvellement_hash TEXT NOT NULL,
+  ip             TEXT,
+  appareil       TEXT,
+  cree_le        INTEGER NOT NULL,
+  derniere_activite INTEGER NOT NULL,
+  expire_le      INTEGER NOT NULL,
+  revoquee       INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_appareils_hash ON sessions_appareils (renouvellement_hash);
+CREATE INDEX IF NOT EXISTS idx_sessions_appareils_user ON sessions_appareils (user_id);
+
 CREATE TABLE IF NOT EXISTS jetons_revoques (
   jti       TEXT PRIMARY KEY,
   expire_le INTEGER NOT NULL
@@ -1894,6 +1909,13 @@ def _marquer_achats_a_regler():
     db.execute("UPDATE transactions SET a_regler=1 WHERE type='sortie' AND moyen_paiement=?", (MOYEN_A_REGLER,))
 
 
+def _chiffrer_secrets_2fa():
+    import coffre
+    for u in db.execute("SELECT id, totp_secret FROM users WHERE totp_secret IS NOT NULL AND totp_secret<>''").fetchall():
+        if not str(u['totp_secret']).startswith(coffre.PREFIXE):
+            db.execute("UPDATE users SET totp_secret=? WHERE id=?", (coffre.chiffrer(u['totp_secret']), u['id']))
+
+
 MIGRATIONS_VERSIONNEES = [
     (1, "Rattacher chaque ligne à l'école de son élève", _rattacher_a_la_bonne_ecole),
     (2, "Index par école sur les grosses tables", _creer_index_par_ecole),
@@ -1902,6 +1924,7 @@ MIGRATIONS_VERSIONNEES = [
     (5, "Comptabiliser les commandes déjà réceptionnées (dépense « achats »)", _comptabiliser_commandes_deja_recues),
     (6, "Supprimer 3 dépenses en double signalées par l'administrateur", _supprimer_depenses_en_double),
     (7, "Achats « À régler » : suivi des dettes fournisseurs", _marquer_achats_a_regler),
+    (8, "Chiffrement (Fernet/AES) des secrets de double authentification", _chiffrer_secrets_2fa),
 ]
 
 
@@ -2176,6 +2199,14 @@ def log_action(user, action, entite, entite_id=None, details=None):
         uid = user.get('id') if user else None
         uname = user.get('name') if user else 'Système'
         ecole_id = user.get('ecole_id', 1) if user else 1
+        try:  # motif de la suppression/modification saisi par l'utilisateur (en-tête X-Motif)
+            from flask import request as _rq, has_request_context as _hrc
+            if _hrc() and _rq.headers.get('X-Motif'):
+                from urllib.parse import unquote as _uq
+                details = dict(details or {})
+                details['motif'] = _uq(_rq.headers['X-Motif'])[:300]
+        except Exception:
+            pass
         det = _json.dumps(details, ensure_ascii=False, default=str) if details is not None else None
         ip = _adresse_ip()
         derniere = db.execute("SELECT rang, empreinte FROM journal_audit WHERE ecole_id=? AND rang IS NOT NULL ORDER BY rang DESC LIMIT 1",

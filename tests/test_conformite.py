@@ -10,7 +10,7 @@ PNG = b'\x89PNG\r\n\x1a\n' + b'\x00' * 40
 def _connecte(client, entetes, nom, role):
     client.post('/api/users', json={'username': nom, 'password': 'Provisoire-1', 'full_name': nom, 'role': role}, headers=entetes)
     t = client.post('/api/auth/login', json={'username': nom, 'password': 'Provisoire-1'}).get_json()['token']
-    tok = client.post('/api/auth/change-password', json={'oldPassword': 'Provisoire-1', 'newPassword': 'Solide-2026'},
+    tok = client.post('/api/auth/change-password', json={'oldPassword': 'Provisoire-1', 'newPassword': 'Solide-2026-Zq'},
                       headers={'Authorization': f'Bearer {t}'}).get_json()['token']
     return {'Authorization': f'Bearer {tok}'}
 

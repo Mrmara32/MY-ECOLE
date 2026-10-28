@@ -4,7 +4,7 @@ import conditions
 
 def test_inscription_ecole_exige_l_acceptation(client):
     corps = {'nom_ecole': 'Ecole Test Cgu', 'admin_full_name': 'A B', 'admin_username': 'abcgu',
-             'admin_password': 'Motdepasse123', 'email_contact': 'a@b.com'}
+             'admin_password': 'Zebre#Lune-2026', 'email_contact': 'a@b.com'}
     r = client.post('/api/ecoles/inscription', json=corps)
     assert r.status_code == 400 and 'accepter' in r.get_json()['error']
     r = client.post('/api/ecoles/inscription', json={**corps, 'accepte_conditions': True})

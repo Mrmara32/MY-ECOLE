@@ -16,7 +16,7 @@ def _connexion(client, username, mot_de_passe):
 
 def _creer_utilisateur(client, token, username, role='secretaire'):
     r = client.post('/api/users', headers=_entete(token), json={
-        'username': username, 'password': 'Motdepasse#2026', 'full_name': 'Test ' + username, 'role': role})
+        'username': username, 'password': 'Zebre#Lune-2026', 'full_name': 'Test ' + username, 'role': role})
     assert r.status_code in (200, 201), r.get_json()
     return r.get_json()['id']
 
@@ -31,35 +31,35 @@ def test_deconnexion_revoque_le_jeton(client, jeton_admin):
 
 def test_changement_de_role_coupe_les_sessions(client, jeton_admin):
     uid = _creer_utilisateur(client, jeton_admin, 'sess_role')
-    tok = _connexion(client, 'sess_role', 'Motdepasse#2026')
+    tok = _connexion(client, 'sess_role', 'Zebre#Lune-2026')
     assert client.get('/api/auth/me', headers=_entete(tok)).status_code == 200
     client.put(f'/api/users/{uid}', headers=_entete(jeton_admin), json={'role': 'enseignant'})
     assert client.get('/api/auth/me', headers=_entete(tok)).status_code == 401
     # la nouvelle connexion fonctionne
-    assert client.get('/api/auth/me', headers=_entete(_connexion(client, 'sess_role', 'Motdepasse#2026'))).status_code == 200
+    assert client.get('/api/auth/me', headers=_entete(_connexion(client, 'sess_role', 'Zebre#Lune-2026'))).status_code == 200
 
 
 def test_desactivation_et_reset_mdp_coupent_les_sessions(client, jeton_admin):
     uid = _creer_utilisateur(client, jeton_admin, 'sess_off')
-    tok = _connexion(client, 'sess_off', 'Motdepasse#2026')
+    tok = _connexion(client, 'sess_off', 'Zebre#Lune-2026')
     client.put(f'/api/users/{uid}', headers=_entete(jeton_admin), json={'active': False})
     assert client.get('/api/auth/me', headers=_entete(tok)).status_code == 401
 
     uid2 = _creer_utilisateur(client, jeton_admin, 'sess_pwd')
-    tok2 = _connexion(client, 'sess_pwd', 'Motdepasse#2026')
-    r = client.post(f'/api/users/{uid2}/reset-password', headers=_entete(jeton_admin), json={'newPassword': 'Autre#Motdepasse9'})
+    tok2 = _connexion(client, 'sess_pwd', 'Zebre#Lune-2026')
+    r = client.post(f'/api/users/{uid2}/reset-password', headers=_entete(jeton_admin), json={'newPassword': 'Autre#Zebre-99x'})
     assert r.status_code == 200
     assert client.get('/api/auth/me', headers=_entete(tok2)).status_code == 401
 
 
 def test_revocation_admin_et_deconnexion_partout(client, jeton_admin):
     uid = _creer_utilisateur(client, jeton_admin, 'sess_rev')
-    tok = _connexion(client, 'sess_rev', 'Motdepasse#2026')
-    tok_bis = _connexion(client, 'sess_rev', 'Motdepasse#2026')
+    tok = _connexion(client, 'sess_rev', 'Zebre#Lune-2026')
+    tok_bis = _connexion(client, 'sess_rev', 'Zebre#Lune-2026')
     assert client.post(f'/api/users/{uid}/revoquer-sessions', headers=_entete(jeton_admin)).status_code == 200
     assert client.get('/api/auth/me', headers=_entete(tok)).status_code == 401
     assert client.get('/api/auth/me', headers=_entete(tok_bis)).status_code == 401
-    tok3 = _connexion(client, 'sess_rev', 'Motdepasse#2026')
+    tok3 = _connexion(client, 'sess_rev', 'Zebre#Lune-2026')
     assert client.post('/api/auth/logout-all', headers=_entete(tok3)).status_code == 200
     assert client.get('/api/auth/me', headers=_entete(tok3)).status_code == 401
 
@@ -95,9 +95,9 @@ def test_logo_reste_public(client, jeton_admin):
 
 def test_fichier_d_une_autre_ecole_refuse(client, jeton_admin):
     _creer_utilisateur(client, jeton_admin, 'sec_ecole')
-    jeton = _connexion(client, 'sec_ecole', 'Motdepasse#2026')
+    jeton = _connexion(client, 'sec_ecole', 'Zebre#Lune-2026')
     r = client.post('/api/auth/change-password', headers=_entete(jeton),
-                    json={'oldPassword': 'Motdepasse#2026', 'newPassword': 'Nouveau#Motdepasse7'})
+                    json={'oldPassword': 'Zebre#Lune-2026', 'newPassword': 'Nouveau#Zebre-77'})
     jeton = r.get_json()['token']
     client.delete_cookie('gs_media', path='/uploads')
     assert client.get('/uploads/e999_abc.png', headers=_entete(jeton)).status_code == 403

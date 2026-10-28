@@ -21,8 +21,23 @@ CSP = "; ".join([
 ])
 
 
+def https_actif():
+    return os.environ.get('FORCE_HTTPS') == '1' or (bool(os.environ.get('RENDER')) and os.environ.get('FORCE_HTTPS') != '0')
+
+
+def requete_securisee(req):
+    return req.is_secure or req.headers.get('X-Forwarded-Proto', '').split(',')[0].strip() == 'https'
+
+
 def installer_en_tetes(app):
-    from flask import request
+    from flask import request, redirect
+
+    @app.before_request
+    def forcer_https():
+        """HTTPS obligatoire : une requête arrivée en clair est redirigée vers la version sécurisée."""
+        if https_actif() and request.headers.get('X-Forwarded-Proto', '').split(',')[0].strip() == 'http':
+            return redirect(request.url.replace('http://', 'https://', 1), code=301)
+        return None
 
     @app.after_request
     def en_tetes_de_securite(response):
@@ -34,7 +49,7 @@ def installer_en_tetes(app):
         h.setdefault('Cross-Origin-Opener-Policy', 'same-origin-allow-popups')
         if 'text/html' in (response.mimetype or '') or request.path in ('/', '/sw.js'):
             h.setdefault('Content-Security-Policy', CSP)
-        if request.is_secure or request.headers.get('X-Forwarded-Proto', '') == 'https':
+        if requete_securisee(request):
             h.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
         if request.path.startswith('/api/'):
             # Données personnelles : ni cache navigateur ni cache intermédiaire

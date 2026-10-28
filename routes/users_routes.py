@@ -35,8 +35,8 @@ def create_user():
         return jsonify({'error': 'Champs requis'}), 400
     if role not in ROLES:
         return jsonify({'error': 'Rôle invalide'}), 400
-    if erreur_mot_de_passe(password):
-        return jsonify({'error': erreur_mot_de_passe(password)}), 400
+    if erreur_mot_de_passe(password, username, role):
+        return jsonify({'error': erreur_mot_de_passe(password, username, role)}), 400
     if db.execute("SELECT id FROM users WHERE ecole_id=? AND username=?", (g.user['ecole_id'], username)).fetchone():
         return jsonify({'error': 'Identifiant déjà pris'}), 409
 
@@ -95,8 +95,10 @@ def update_user(user_id):
 def reset_password(user_id):
     body = request.get_json(silent=True) or {}
     new_password = body.get('newPassword')
-    if not new_password or erreur_mot_de_passe(new_password):
-        return jsonify({'error': erreur_mot_de_passe(new_password)}), 400
+    _cible = db.execute("SELECT username, role FROM users WHERE id=? AND ecole_id=?", (user_id, g.user['ecole_id'])).fetchone()
+    _err = erreur_mot_de_passe(new_password, _cible['username'] if _cible else None, _cible['role'] if _cible else None) if new_password else 'Mot de passe requis'
+    if _err:
+        return jsonify({'error': _err}), 400
     u = db.execute("SELECT id, username FROM users WHERE id=? AND ecole_id=?", (user_id, g.user['ecole_id'])).fetchone()
     if not u:
         return jsonify({'error': 'Introuvable'}), 404

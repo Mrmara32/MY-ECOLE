@@ -60,7 +60,7 @@ def test_concours_capacite_et_droits(client, entetes):
     assert client.post(f'/api/examens/{xid}/candidats', json={'nom': 'Trop', 'prenom': 'Tard'}, headers=entetes).status_code == 409
     client.post('/api/users', json={'username': 'ens_exam', 'password': 'Provisoire-1', 'full_name': 'E', 'role': 'enseignant'}, headers=entetes)
     t = client.post('/api/auth/login', json={'username': 'ens_exam', 'password': 'Provisoire-1'}).get_json()['token']
-    tok = client.post('/api/auth/change-password', json={'oldPassword': 'Provisoire-1', 'newPassword': 'Solide-2026'}, headers={'Authorization': f'Bearer {t}'}).get_json()['token']
+    tok = client.post('/api/auth/change-password', json={'oldPassword': 'Provisoire-1', 'newPassword': 'Solide-2026-Zq'}, headers={'Authorization': f'Bearer {t}'}).get_json()['token']
     h = {'Authorization': f'Bearer {tok}'}
     assert client.get('/api/examens', headers=h).status_code == 200
     assert client.post('/api/examens', json={'nom': 'Z', 'type': 'composition', 'date_debut': '2026-01-01'}, headers=h).status_code == 403

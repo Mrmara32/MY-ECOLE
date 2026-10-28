@@ -65,7 +65,7 @@ def test_eleve_inconnu_et_droits(client, entetes, livre):
     assert client.post('/api/bibliotheque/prets', json={'livre_id': livre['id'], 'emprunteur_id': 'inconnu'}, headers=entetes).status_code == 404
     client.post('/api/users', json={'username': 'ens_biblio', 'password': 'Provisoire-1', 'full_name': 'Ens', 'role': 'enseignant'}, headers=entetes)
     t = client.post('/api/auth/login', json={'username': 'ens_biblio', 'password': 'Provisoire-1'}).get_json()['token']
-    c = client.post('/api/auth/change-password', json={'oldPassword': 'Provisoire-1', 'newPassword': 'Solide-2026'}, headers={'Authorization': f'Bearer {t}'}).get_json()['token']
+    c = client.post('/api/auth/change-password', json={'oldPassword': 'Provisoire-1', 'newPassword': 'Solide-2026-Zq'}, headers={'Authorization': f'Bearer {t}'}).get_json()['token']
     h = {'Authorization': f'Bearer {c}'}
     assert client.get('/api/bibliotheque/livres', headers=h).status_code == 200                       # un enseignant consulte
     assert client.post('/api/bibliotheque/livres', json={'titre': 'Interdit'}, headers=h).status_code == 403   # mais ne gère pas

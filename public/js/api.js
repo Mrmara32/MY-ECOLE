@@ -4,10 +4,29 @@
 const API_BASE = '/api';
 let _token = localStorage.getItem('gs_tok') || null;
 
-async function apiFetch(path, opts = {}) {
+let _refresh = localStorage.getItem('gs_ref') || null;
+let _renouvellementEnCours = null;
+
+/* Renouvelle l'accès (1 h) avec le jeton de renouvellement (7 jours, à usage unique). Un seul renouvellement à la fois. */
+function apiRenouvelerSession() {
+  if (!_refresh) return Promise.resolve(false);
+  if (_renouvellementEnCours) return _renouvellementEnCours;
+  _renouvellementEnCours = fetch(API_BASE + '/auth/refresh', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: _refresh }),
+  }).then(async r => {
+    if (!r.ok) return false;
+    const d = await r.json();
+    apiSetToken(d.token, d.refresh_token);
+    return true;
+  }).catch(() => false).finally(() => { _renouvellementEnCours = null; });
+  return _renouvellementEnCours;
+}
+
+async function apiFetch(path, opts = {}, _dejaRenouvele = false) {
   const init = {
     method: opts.method || 'GET',
-    headers: { 'Content-Type': 'application/json', ...(_token ? { Authorization: 'Bearer ' + _token } : {}) },
+    headers: { 'Content-Type': 'application/json', ...(_token ? { Authorization: 'Bearer ' + _token } : {}),
+               ...(opts.motif ? { 'X-Motif': encodeURIComponent(opts.motif) } : {}) },
   };
   if (opts.body !== undefined) init.body = typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body);
   const estLecture = init.method === 'GET';
@@ -49,8 +68,18 @@ async function apiFetch(path, opts = {}) {
     return { id: idTemp, ...(opts.donneesOptimistes || {}), _hors_ligne: true };
   }
 
-  if (res.status === 401) { authLogout(); throw new Error('Session expirée'); }
+  if (res.status === 401) {
+    // Accès expiré (1 h) : on tente un renouvellement silencieux avant de déconnecter.
+    if (!_dejaRenouvele && await apiRenouvelerSession()) return apiFetch(path, opts, true);
+    authLogout(); throw new Error('Session expirée');
+  }
   const data = await res.json().catch(() => ({}));
+  if (!res.ok && data.code === 'MOTIF_REQUIS' && !opts.motif) {
+    const motif = await demanderMotif();
+    if (motif) return apiFetch(path, { ...opts, motif }, _dejaRenouvele);
+    throw new Error('Suppression annulée : motif non renseigné.');
+  }
+  if (!res.ok && data.code === 'DOUBLE_AUTH_REQUISE' && typeof show2faModal === 'function') show2faModal(false, true);
   if (!res.ok && data.code === 'MOT_DE_PASSE_A_CHANGER' && typeof showPwdModal === 'function') showPwdModal(true);
   if (!res.ok) throw new Error((data.error || `Erreur ${res.status}`) + (data.detail ? '\n\n' + data.detail : ''));
   if (estLecture && typeof offlineSauverCache === 'function') offlineSauverCache(path, data);
@@ -106,12 +135,18 @@ const apiMe = () => apiFetch('/auth/me');
 function authLogout() {
   // Révoque le jeton côté serveur (sans attendre la réponse : la page se recharge de toute façon).
   if (_token) { try { fetch(API_BASE + '/auth/logout', { method: 'POST', keepalive: true, headers: { Authorization: 'Bearer ' + _token } }); } catch (e) {} }
-  _token = null;
+  _token = null; _refresh = null;
   localStorage.removeItem('gs_tok');
+  localStorage.removeItem('gs_ref');
   localStorage.removeItem('gs_user');
   location.reload();
 }
-function apiSetToken(tok) { _token = tok; localStorage.setItem('gs_tok', tok); }
+function apiSetToken(tok, refresh) {
+  _token = tok; localStorage.setItem('gs_tok', tok);
+  if (refresh) { _refresh = refresh; localStorage.setItem('gs_ref', refresh); }
+}
+const apiGetAppareils = () => apiFetch('/auth/sessions');
+const apiDeconnecterAppareil = (id) => apiFetch('/auth/sessions/' + id, { method: 'DELETE' });
 
 /* ── Settings ── */
 const apiGetSettings  = (q='')  => apiFetch('/settings' + (q?'?'+q:''));

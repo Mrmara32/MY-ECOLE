@@ -58,7 +58,9 @@ def secondes_restantes(cles):
 
 
 def enregistrer_echec(cles):
+    """Compte l'échec. Renvoie True si cet échec vient de BLOQUER l'identifiant (pour alerter le titulaire)."""
     maintenant = _maintenant()
+    vient_de_bloquer = False
     for cle in cles:
         limite = LIMITE_ADRESSE if cle.startswith('ip:') else LIMITE_IDENTIFIANT
         r = db.execute("SELECT nombre, debut FROM echecs_connexion WHERE cle=?", (cle,)).fetchone()
@@ -68,10 +70,13 @@ def enregistrer_echec(cles):
         else:
             nombre = r['nombre'] + 1
         bloque = _fmt(maintenant + FENETRE) if nombre >= limite else None
+        if bloque and cle.startswith('u:') and nombre == limite:
+            vient_de_bloquer = True
         db.execute("INSERT INTO echecs_connexion (cle, nombre, debut, bloque_jusqu) VALUES (?,?,?,?) "
                    "ON CONFLICT(cle) DO UPDATE SET nombre=excluded.nombre, debut=excluded.debut, "
                    "bloque_jusqu=excluded.bloque_jusqu", (cle, nombre, _fmt(debut), bloque))
     db.commit()
+    return vient_de_bloquer
 
 
 def effacer_echecs(cle_identifiant):
@@ -79,13 +84,50 @@ def effacer_echecs(cle_identifiant):
     db.commit()
 
 
-def erreur_mot_de_passe(mdp):
-    """Message d'erreur si le mot de passe est trop faible, sinon None."""
+ROLES_SENSIBLES = ('admin', 'directeur', 'comptable')     # mot de passe de 12 caractères, double authentification obligatoire
+
+
+def erreur_mot_de_passe(mdp, username=None, role=None):
+    """Message d'erreur si le mot de passe est trop faible, sinon None.
+    8 caractères minimum (12 pour administrateurs, directeurs et comptables), avec majuscule, minuscule,
+    chiffre et symbole ; refus des mots de passe courants, uniquement numériques ou proches de l'identifiant."""
     mdp = mdp or ''
-    if len(mdp) < 8:
-        return 'Le mot de passe doit contenir au moins 8 caractères'
-    if not any(c.isalpha() for c in mdp) or not any(c.isdigit() for c in mdp):
-        return 'Le mot de passe doit contenir au moins une lettre et un chiffre'
-    if mdp.lower() in MOTS_DE_PASSE_COURANTS:
+    minimum = 12 if role in ROLES_SENSIBLES else 8
+    if len(mdp) < minimum:
+        return f'Le mot de passe doit contenir au moins {minimum} caractères'
+    if mdp.isdigit():
+        return 'Le mot de passe ne peut pas être uniquement numérique'
+    if not (any(c.islower() for c in mdp) and any(c.isupper() for c in mdp)
+            and any(c.isdigit() for c in mdp) and any(not c.isalnum() for c in mdp)):
+        return 'Le mot de passe doit contenir une majuscule, une minuscule, un chiffre et un symbole (ex : ! @ # ?)'
+    bas = mdp.lower()
+    if bas in MOTS_DE_PASSE_COURANTS or any(c in bas for c in ('motdepasse', 'password', 'azerty', 'qwerty', '123456')):
         return 'Ce mot de passe est trop courant : choisissez-en un autre'
+    u = (username or '').strip().lower()
+    if len(u) >= 3 and (u in bas or bas in u):
+        return "Le mot de passe est trop proche de l'identifiant"
     return None
+
+
+# ── Limitation de débit : 10/min sur la connexion, 60/min visiteur anonyme, 300/min utilisateur connecté ──
+import threading
+import time as _time
+
+LIMITES_DEBIT = {'connexion': 10, 'anonyme': 60, 'connecte': 300}
+_debit = {}
+_verrou_debit = threading.Lock()
+
+
+def debit_depasse(categorie, cle):
+    """Fenêtre glissante d'une minute. Renvoie les secondes à attendre si la limite est dépassée, sinon 0."""
+    maintenant = _time.time()
+    with _verrou_debit:
+        passes = [t for t in _debit.get((categorie, cle), []) if maintenant - t < 60]
+        if len(passes) >= LIMITES_DEBIT[categorie]:
+            _debit[(categorie, cle)] = passes
+            return int(60 - (maintenant - passes[0])) + 1
+        passes.append(maintenant)
+        _debit[(categorie, cle)] = passes
+        if len(_debit) > 20000:
+            _debit.clear()
+    return 0
