@@ -97,3 +97,29 @@ async function assistantEnvoyer() {
 }
 window.ouvrirAssistante = ouvrirAssistante; window.fermerAssistante = fermerAssistante;
 window.assistantNouvelle = assistantNouvelle; window.assistantSuggestion = assistantSuggestion;
+
+/* « Le point de l'assistante » sur le tableau de bord : alertes calculées par le serveur selon le rôle. */
+async function assistantPointAccueil() {
+  const zone = $('#as-point');
+  if (!zone) return;
+  let liste = [];
+  try { liste = (await apiFetch('/assistant/alertes')).alertes || []; } catch (_) { return; }
+  if (!liste.length || !$('#as-point')) return;
+  window._assistantAlertes = liste;
+  const couleur = { rouge: '#dc2626', orange: '#d97706', info: '#2563eb' };
+  $('#as-point').innerHTML = `<div class="card mb-4" style="border-left:4px solid var(--c-primary)">
+    <div class="card-header"><b>🤖 Le point de l'assistante</b></div>
+    <div style="padding:6px 14px 12px">${liste.map((a, i) => `
+      <div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--g2,#eee)">
+        <span style="width:10px;height:10px;border-radius:50%;background:${couleur[a.niveau] || '#6b7280'};flex:0 0 10px"></span>
+        <div style="flex:1"><b>${esc(a.titre)}</b><div class="text-muted" style="font-size:12.5px">${esc(a.detail)}</div></div>
+        <button class="btn btn-outline btn-xs" onclick="assistantAlerte(${i})">Que faire ?</button>
+      </div>`).join('')}</div></div>`;
+}
+function assistantAlerte(i) {
+  const a = (window._assistantAlertes || [])[i];
+  if (!a) return;
+  ouvrirAssistante();
+  const s = $('#as-saisie'); if (s) { s.value = a.question; assistantEnvoyer(); }
+}
+window.assistantPointAccueil = assistantPointAccueil; window.assistantAlerte = assistantAlerte;
