@@ -3,14 +3,29 @@
 let _assistantMessages = [];
 let _assistantOccupee = false;
 
-const ASSISTANT_SUGGESTIONS = [
+const ASSISTANT_SUGGESTIONS_COMMUNES = [
   'Comment enregistrer un paiement de scolarité ?',
-  'Comment saisir les notes et éditer un bulletin ?',
   'Prépare une fiche de cours sur la photosynthèse (6e)',
-  'Explique le théorème de Pythagore avec un exemple',
   "Résume l'histoire de l'indépendance de la Guinée",
   'Génère 5 exercices corrigés sur les fractions',
 ];
+const ASSISTANT_SUGGESTIONS_DIRECTION = [
+  "Fais le point sur l'école : effectifs, paiements, résultats",
+  'Combien d\'élèves par niveau et combien sont à jour de leurs paiements ?',
+  'Quelles classes et matières ont les résultats les plus faibles ? Que faire ?',
+  'Comment améliorer le recouvrement et les recettes ?',
+];
+const ASSISTANT_SUGGESTIONS_ENSEIGNANT = [
+  'Où en sont les résultats de mes classes ? Que me conseilles-tu ?',
+  "Comment réduire les absences dans mes classes ?",
+];
+function _assistantSuggestions() {
+  const r = currentUser && currentUser.role;
+  if (['admin', 'directeur', 'directeur_etudes', 'comptable'].includes(r)) return ASSISTANT_SUGGESTIONS_DIRECTION.concat(ASSISTANT_SUGGESTIONS_COMMUNES.slice(0, 2));
+  if (r === 'enseignant') return ASSISTANT_SUGGESTIONS_ENSEIGNANT.concat(ASSISTANT_SUGGESTIONS_COMMUNES.slice(1));
+  return ASSISTANT_SUGGESTIONS_COMMUNES;
+}
+let ASSISTANT_SUGGESTIONS = [];
 
 function _assistantFormater(texte) {
   // Échappe d'abord tout le HTML, puis applique un Markdown léger (gras, listes, titres, code).
@@ -28,10 +43,11 @@ function _assistantRendu() {
   const zone = $('#as-messages');
   if (!zone) return;
   if (!_assistantMessages.length) {
+    ASSISTANT_SUGGESTIONS = _assistantSuggestions();
     zone.innerHTML = `<div class="as-accueil"><div class="as-robot">🤖</div>
-      <p><b>Bonjour ! Je suis l'Assistante MY-ECOLE.</b><br>Je vous aide à utiliser l'application et je réponds à vos questions de sciences, mathématiques, langues, histoire, géographie… sur la Guinée, l'Afrique et le monde.</p>
+      <p><b>Bonjour ! Je suis l'Assistante MY-ECOLE.</b><br>Je vous aide à utiliser l'application, je suis la vie de l'école (effectifs, paiements, résultats, assiduité) pour vous proposer des actions, et je réponds à vos questions de sciences, langues, histoire, géographie… sur la Guinée, l'Afrique et le monde.</p>
       <div class="as-suggestions">${ASSISTANT_SUGGESTIONS.map((q, i) => `<button class="as-chip" onclick="assistantSuggestion(${i})">${esc(q)}</button>`).join('')}</div>
-      <p class="as-note">Ne saisissez pas de données personnelles d'élèves (noms, notes, numéros). Vérifiez toujours les informations importantes.</p></div>`;
+      <p class="as-note">Je ne consulte que des statistiques de l'école selon votre rôle, sans noms d'élèves. Ne saisissez pas de données personnelles dans vos questions. Vérifiez toujours les informations importantes.</p></div>`;
     return;
   }
   zone.innerHTML = _assistantMessages.map(m =>

@@ -2,14 +2,17 @@
 Assistante IA de MY-ECOLE : aide à l'utilisation de l'application et réponses pédagogiques
 (sciences, mathématiques, langues, histoire-géographie… Guinée, Afrique, monde).
 
-Respect des données : la conversation passe par le serveur (la clé d'API n'est jamais exposée au navigateur) ;
-AUCUNE donnée de la base (élèves, notes, paiements) n'est envoyée au modèle — seulement ce que l'utilisateur écrit.
-Le contenu des échanges n'est pas conservé ; seul le nombre de messages est compté (quota et traçabilité).
+Respect des données : la conversation passe par le serveur (la clé d'API n'est jamais exposée au navigateur).
+L'assistante peut consulter des STATISTIQUES AGRÉGÉES de l'établissement (assistant_donnees.py) selon le rôle de l'utilisateur ;
+jamais de noms d'élèves, de notes individuelles ni de coordonnées. Le contenu des échanges n'est pas conservé ;
+seuls le nombre de messages et les outils consultés sont tracés (quota et audit).
 """
 import json
 import os
 import urllib.request
 import urllib.error
+
+import assistant_donnees
 from datetime import date
 
 from flask import Blueprint, request, jsonify, g
@@ -59,6 +62,13 @@ def _prompt_systeme(role, page):
         "pas les actualités récentes ni les informations sur des élèves précis. Ne demande pas et ne retiens pas de données personnelles (noms d'élèves, "
         "notes individuelles, numéros) : conseille de les anonymiser. Refuse poliment tout contenu dangereux, haineux ou sexuel, et reste respectueuse. "
         "Pour les questions médicales, juridiques ou financières, donne une information générale et recommande un professionnel.\n"
+        "3) PILOTAGE DE L'ÉCOLE : tu es impliquée dans la vie de l'établissement. Pour toute question sur les effectifs, les élèves à jour de leurs paiements, "
+        "les résultats, l'assiduité, les recettes/dépenses ou la vie scolaire, CONSULTE d'abord les outils de données (chiffres réels, agrégés, sans noms) au lieu de "
+        "répondre de mémoire, puis analyse : points forts, points d'alerte, causes probables, puis RECOMMANDATIONS CONCRÈTES et priorisées (qui fait quoi, délai, "
+        "indicateur de suivi) — pour la direction : organisation, recouvrement, soutien scolaire, gestion des absences, budget ; pour les enseignants : remédiation, "
+        "évaluations, différenciation, travail avec les parents. Ne devine jamais un chiffre : s'il n'est pas dans les outils, dis-le. Les chiffres viennent de la base "
+        "de l'école : cite-les tels quels, signale les données manquantes (ex. paiements non enregistrés) et ne t'en sers que pour l'utilisateur connecté. "
+        "Si un outil n'est pas disponible pour ce rôle, explique que l'information est réservée à la direction.\n"
         f"Rôle de l'utilisateur dans l'application : {role}. Page actuellement ouverte : {page or 'inconnue'}.\n"
         f"GUIDE DE L'APPLICATION :{GUIDE_APPLICATION}"
     )
@@ -87,25 +97,45 @@ def _compter_usage(ecole_id):
     return True
 
 
-def _appeler_modele(systeme, messages):
-    """Appel à l'API Messages d'Anthropic. Isolé pour pouvoir être simulé dans les tests."""
-    corps = json.dumps({
-        'model': os.environ.get('ASSISTANT_MODEL', 'claude-sonnet-5-5'),
-        'max_tokens': 1800,
-        'system': systeme,
-        'messages': messages,
-    }).encode()
-    req = urllib.request.Request(URL_API, data=corps, headers={
+def _appeler_api(charge):
+    """Un appel à l'API Messages d'Anthropic. Isolé pour pouvoir être simulé dans les tests."""
+    req = urllib.request.Request(URL_API, data=json.dumps(charge).encode(), headers={
         'content-type': 'application/json', 'x-api-key': _cle_api(), 'anthropic-version': '2023-06-01'})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        data = json.loads(r.read().decode())
-    return ''.join(b.get('text', '') for b in data.get('content', []) if b.get('type') == 'text').strip()
+    with urllib.request.urlopen(req, timeout=90) as r:
+        return json.loads(r.read().decode())
+
+
+def _appeler_modele(systeme, messages, user):
+    """Boucle d'outils : le modèle peut consulter les statistiques autorisées pour le rôle (5 tours au plus)."""
+    outils = assistant_donnees.outils_pour(user.get('role'))
+    messages = list(messages)
+    consultes = []
+    for _ in range(6):
+        charge = {'model': os.environ.get('ASSISTANT_MODEL', 'claude-sonnet-5-5'), 'max_tokens': 2200,
+                  'system': systeme, 'messages': messages}
+        if outils:
+            charge['tools'] = outils
+        rep = _appeler_api(charge)
+        blocs = rep.get('content', [])
+        appels = [b for b in blocs if b.get('type') == 'tool_use']
+        if rep.get('stop_reason') != 'tool_use' or not appels:
+            texte = ''.join(b.get('text', '') for b in blocs if b.get('type') == 'text').strip()
+            return texte, consultes
+        messages.append({'role': 'assistant', 'content': blocs})
+        resultats = []
+        for a in appels:
+            consultes.append(a['name'])
+            donnees = assistant_donnees.executer(a['name'], user, a.get('input') or {})
+            resultats.append({'type': 'tool_result', 'tool_use_id': a['id'], 'content': json.dumps(donnees, ensure_ascii=False)})
+        messages.append({'role': 'user', 'content': resultats})
+    return "J'ai consulté beaucoup de données sans réussir à conclure ; pouvez-vous préciser votre question ?", consultes
 
 
 @bp.route('/statut', methods=['GET'])
 @require_auth
 def statut():
-    return jsonify({'actif': bool(_cle_api()), 'quota_jour': _quota_jour()})
+    return jsonify({'actif': bool(_cle_api()), 'quota_jour': _quota_jour(),
+                    'donnees': [o['name'] for o in assistant_donnees.outils_pour(g.user.get('role'))]})
 
 
 @bp.route('/discuter', methods=['POST'])
@@ -135,12 +165,12 @@ def discuter():
     if not _compter_usage(g.user['ecole_id']):
         return jsonify({'error': "Le quota quotidien de l'assistante est atteint pour votre établissement. Réessayez demain."}), 429
     try:
-        reponse = _appeler_modele(_prompt_systeme(g.user.get('role'), str(body.get('page') or '')[:60]), messages)
+        reponse, consultes = _appeler_modele(_prompt_systeme(g.user.get('role'), str(body.get('page') or '')[:60]), messages, g.user)
     except urllib.error.HTTPError as e:
         print(f"[assistant] erreur API {e.code}")
         return jsonify({'error': "L'assistante est momentanément indisponible. Réessayez dans un instant."}), 502
     except Exception as e:
         print(f"[assistant] erreur: {type(e).__name__}")
         return jsonify({'error': "L'assistante est momentanément indisponible. Réessayez dans un instant."}), 502
-    log_action(g.user, 'question_assistante', 'assistant', None, {'longueur': len(messages[-1]['content'])})
+    log_action(g.user, 'question_assistante', 'assistant', None, {'longueur': len(messages[-1]['content']), 'donnees_consultees': sorted(set(consultes))})
     return jsonify({'reponse': reponse or "Je n'ai pas pu formuler de réponse. Pouvez-vous reformuler ?"})
