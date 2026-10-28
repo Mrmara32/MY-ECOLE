@@ -214,6 +214,7 @@ async function startApp() {
 
   await exigerAcceptationConditions();
   buildNav();
+  try { history.replaceState({ page: 'dashboard' }, ''); } catch (_) {}
   navigate('dashboard');
 }
 
@@ -247,13 +248,17 @@ function buildNav() {
   });
 }
 
-function navigate(page) {
+function navigate(page, _depuisHistorique) {
   if (!PAGES[page]) return;
   const pg = PAGES[page];
   const autorise = pg.superAdminOnly ? !!currentUser?.est_super_admin : pg.roles.includes(currentUser?.role);
   if (!autorise) { toast('Accès refusé','error'); return; }
 
   if (page !== currentPage) window._pagePrecedente = currentPage;
+  // Historique du navigateur : le bouton Retour du téléphone ramène à l'écran précédent de l'application.
+  if (!_depuisHistorique && page !== currentPage) { try { history.pushState({ page }, '', location.pathname + location.search); } catch (_) {} }
+  const barre = $('#nav-flottante');
+  if (barre) barre.style.display = page === 'dashboard' ? 'none' : 'flex';
   currentPage = page;
   // Mettre à jour nav
   $$('.nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.page === page));
@@ -276,6 +281,11 @@ function navigate(page) {
   catch(e) { console.error(e); $('#content').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`; }
 }
 window.navigate = navigate;
+window.addEventListener('popstate', e => {
+  const p = e.state && e.state.page;
+  if (currentUser && p && PAGES[p]) navigate(p, true);
+  else if (currentUser) navigate('dashboard', true);
+});
 function retourPage() { navigate(window._pagePrecedente && PAGES[window._pagePrecedente] ? window._pagePrecedente : 'dashboard'); }
 window.retourPage = retourPage;
 
