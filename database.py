@@ -1841,12 +1841,35 @@ def _comptabiliser_commandes_deja_recues():
         comptabiliser_commande_recue(c, c['cree_par'])
 
 
+# Doublons signalés par l'administrateur (dépenses créées par la comptabilisation automatique des
+# commandes déjà reçues, alors que ces achats étaient déjà saisis). Suppression ponctuelle, tracée au journal.
+REFERENCES_DEPENSES_DOUBLONS = (
+    'CMD-cmd_1a17f0d1e7az0hkns',
+    'CMD-cmd_1a17f1d6121sh91ny',
+    'CMD-cmd_1a17f223eacbex5wu',
+)
+
+
+def _supprimer_depenses_en_double():
+    for ref in REFERENCES_DEPENSES_DOUBLONS:
+        t = db.execute("SELECT id, ecole_id, montant, description FROM transactions WHERE reference=? AND type='sortie'", (ref,)).fetchone()
+        if not t:
+            continue
+        db.execute("DELETE FROM transactions WHERE id=?", (t['id'],))
+        db.execute(
+            "INSERT INTO journal_audit (id,ecole_id,user_nom,action,entite,entite_id,details) VALUES (?,?,?,?,?,?,?)",
+            (gen_id('log'), t['ecole_id'], 'Système (demande de l\'administrateur)', 'suppression', 'transaction', t['id'],
+             f"Dépense en double supprimée : {ref} — {t['montant']} — {t['description']}"),
+        )
+
+
 MIGRATIONS_VERSIONNEES = [
     (1, "Rattacher chaque ligne à l'école de son élève", _rattacher_a_la_bonne_ecole),
     (2, "Index par école sur les grosses tables", _creer_index_par_ecole),
     (3, "Rattacher les notes existantes à l'année scolaire en cours de leur école", _rattacher_notes_a_l_annee),
     (4, "Index sur toutes les colonnes de jointure (école, élève, parent…)", _indexer_cles_etrangeres),
     (5, "Comptabiliser les commandes déjà réceptionnées (dépense « achats »)", _comptabiliser_commandes_deja_recues),
+    (6, "Supprimer 3 dépenses en double signalées par l'administrateur", _supprimer_depenses_en_double),
 ]
 
 
