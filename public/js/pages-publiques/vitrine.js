@@ -333,6 +333,8 @@ Promise.allSettled([chargerInfosEcole(), chargerActualites()]).then(() => {
   let flux = null;
   function arreter() { if (flux) flux.getTracks().forEach(t => t.stop()); flux = null; $('vb-video').style.display = 'none'; }
   function depuisQr(texte) {
+    const c = String(texte).match(/\/v\/(\d+)\/([0-9a-f]{12})/i);
+    if (c) { appeler(`/api/v/${c[1]}/${c[2]}`); return; }
     const m = String(texte).match(/\/verifier-badge\/(\d+)\/([^/]+)\/([^/]*)\/([0-9a-f]+)/i);
     if (!m) { afficher({ valide: false, motif: "Ce QR code n'est pas un badge de l'école." }); return; }
     appeler(`/api/verifier-badge/${m[1]}/${m[2]}/${m[3] || '-'}/${m[4]}`);
