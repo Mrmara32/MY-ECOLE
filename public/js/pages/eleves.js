@@ -622,7 +622,7 @@ async function imprimerBadgeEleve(eleveId) {
     .valid{position:absolute;left:3.7cm;bottom:1.05cm;font-size:6px;color:#4a5d70;font-weight:700}
     .verso .qr{position:absolute;left:.35cm;top:.55cm;width:2.5cm;height:2.5cm;background:#fff;padding:.1cm;border:.6px solid #12365a;border-radius:3px}
     .verso .qr svg{width:100%;height:100%}
-    .verso .txt{position:absolute;left:3.1cm;right:.35cm;top:.5cm;font-size:6.6px;color:#1f2f40;line-height:1.45}
+    .verso .txt{position:absolute;left:3.1cm;right:.35cm;top:.4cm;font-size:6.1px;color:#1f2f40;line-height:1.45}
     .verso .txt b{color:#12365a}
     .verso .urgence{position:absolute;left:.35cm;right:2.9cm;top:3.2cm;font-size:7px;color:#1f2f40;line-height:1.4}
     .verso .sig{position:absolute;right:.35cm;top:3.3cm;width:2.4cm;text-align:center;font-size:5.5px;color:#4a5d70}
@@ -664,8 +664,9 @@ async function imprimerBadgeEleve(eleveId) {
     ${logo ? `<img src="${logo}" alt="" style="mix-blend-mode:multiply;position:absolute;right:.35cm;bottom:.55cm;width:1.1cm;height:1.1cm;object-fit:contain">` : ''}
     <div class="qr">${sec.qr_svg}</div>
     <div class="txt"><b>Vérifier l'authenticité :</b> scannez le QR code avec un téléphone. Une page officielle de ${esc(ecole)} confirme l'identité et la validité du badge. Un badge dont le QR ne confirme pas l'identité affichée est un faux.<br><br>
+      <b>Contrôle manuel</b> sur le site de l'école, rubrique « Vérifier un badge » : matricule <b>${esc(e.matricule||'')}</b> · code <b>${esc(sec.code_controle||'')}</b><br><br>
       <b>Valable</b> pour l'année scolaire ${esc(sec.annee||'en cours')} — jusqu'au ${esc(expireFr)}.</div>
-    <div class="urgence"><b>En cas d'urgence :</b> ${esc(e.contact_urgence_nom||e.pere_telephone||e.mere_telephone||e.tuteur_telephone||'—')}${e.contact_urgence_telephone?' — '+esc(e.contact_urgence_telephone):''}<br>
+    <div class="urgence"><b>En cas d'urgence :</b> ${esc([e.contact_urgence_nom, e.contact_urgence_telephone].filter(Boolean).join(' — ') || e.pere_telephone || e.mere_telephone || e.tuteur_telephone || '—')}<br>
       <b>Si trouvé, merci de le rapporter à :</b> ${esc(ecole)}${settings.ecole_telephone?' — Tél '+esc(settings.ecole_telephone):''}</div>
     <div class="sig">${settings.signature_directeur?`<img src="${settings.signature_directeur}">`:''}<div class="ln"></div>Le Directeur</div>
     <div class="micro" style="bottom:.48cm">${_microtexte(ecole.toUpperCase() + ' • DOCUMENT PERSONNEL ET NON CESSIBLE', 400)}</div>
