@@ -257,8 +257,6 @@ function navigate(page, _depuisHistorique) {
   if (page !== currentPage) window._pagePrecedente = currentPage;
   // Historique du navigateur : le bouton Retour du téléphone ramène à l'écran précédent de l'application.
   if (!_depuisHistorique && page !== currentPage) { try { history.pushState({ page }, '', location.pathname + location.search); } catch (_) {} }
-  const barre = $('#nav-flottante');
-  if (barre) barre.style.display = page === 'dashboard' ? 'none' : 'flex';
   currentPage = page;
   // Mettre à jour nav
   $$('.nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.page === page));
