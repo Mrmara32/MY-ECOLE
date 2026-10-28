@@ -342,13 +342,13 @@ def badge_securise(eleve_id):
         return jsonify({'error': 'Élève introuvable'}), 404
     annee = e['annee_scolaire'] or get_settings(ecole_id).get('annee_scolaire') or ''
     sig = _signature_badge_eleve(ecole_id, e['id'], annee)
-    url = f"{request.host_url.rstrip('/')}/verifier-badge/{ecole_id}/{e['id']}/{annee or '-'}/{sig}"
-    qr = segno.make(url, error='q')
+    url = f"{request.host_url.rstrip('/')}/v/{ecole_id}/{sig[:12]}"      # court : QR peu dense, lisible même petit
+    qr = segno.make(url, error='m', micro=False)
     return jsonify({
         'annee': annee, 'signature': sig, 'url': url, 'expire': _fin_annee_scolaire(annee),
         'code_controle': '-'.join(sig[i:i + 4] for i in (0, 4, 8)).upper(),
         'numero': f"{ecole_id:02d}-{(annee or '0000')[:4]}-{(e['matricule'] or e['id'])[-6:]}".upper(),
-        'qr_svg': qr.svg_inline(scale=4, border=0, dark='#111', light=None),
+        'qr_svg': qr.svg_inline(scale=6, border=0, dark='#000', light=None, omitsize=False),
     })
 
 
@@ -400,22 +400,50 @@ def verifier_badge_par_code():
     if _trop_de_tentatives():
         return jsonify({'valide': False, 'motif': 'Trop de vérifications. Réessayez dans une minute.'}), 429
     ecole_id = ecole_id_depuis_code(request.args.get('ecole'))
-    matricule = (request.args.get('matricule') or '').strip()
     code = ''.join(c for c in (request.args.get('code') or '').lower() if c in '0123456789abcdef')
-    if not matricule or len(code) != 12:
-        return jsonify({'valide': False, 'motif': 'Saisissez le matricule et le code de contrôle imprimés sur le badge.'}), 400
-    e = db.execute("SELECT id, annee_scolaire FROM eleves WHERE ecole_id=? AND UPPER(matricule)=UPPER(?)", (ecole_id, matricule)).fetchone()
-    annee = (e['annee_scolaire'] or get_settings(ecole_id).get('annee_scolaire') or '') if e else ''
-    if not e or code != _signature_badge_eleve(ecole_id, e['id'], annee)[:12]:
-        return jsonify({'valide': False, 'motif': "Ces informations ne correspondent à aucun badge de l'établissement."})
-    return verifier_badge_api(ecole_id, e['id'], annee or '-', _signature_badge_eleve(ecole_id, e['id'], annee))
+    if len(code) != 12:
+        return jsonify({'valide': False, 'motif': 'Saisissez le code de contrôle complet imprimé au verso du badge (12 caractères, ex : A1B2-C3D4-E5F6).'}), 400
+    return _verifier_par_code(ecole_id, code, (request.args.get('matricule') or '').strip())
+
+
+def _verifier_par_code(ecole_id, code, matricule=''):
+    from database import get_settings
+    annee_defaut = get_settings(ecole_id).get('annee_scolaire') or ''
+    sql, params = "SELECT id, annee_scolaire FROM eleves WHERE ecole_id=?", [ecole_id]
+    if matricule:
+        sql += " AND UPPER(matricule)=UPPER(?)"
+        params.append(matricule)
+    for e in db.execute(sql, params).fetchall():
+        annee = e['annee_scolaire'] or annee_defaut
+        sig = _signature_badge_eleve(ecole_id, e['id'], annee)
+        if sig[:12] == code:
+            return verifier_badge_api(ecole_id, e['id'], annee or '-', sig)
+    return jsonify({'valide': False, 'motif': "Ce code ne correspond à aucun badge de l'établissement : le badge est faux ou a été modifié."})
+
+
+@bp_verif.route('/api/v/<int:ecole_id>/<code>', methods=['GET'])
+def verifier_court_api(ecole_id, code):
+    if _trop_de_tentatives():
+        return jsonify({'valide': False, 'motif': 'Trop de vérifications. Réessayez dans une minute.'}), 429
+    return _verifier_par_code(ecole_id, ''.join(c for c in code.lower() if c in '0123456789abcdef')[:12])
+
+
+@bp_verif.route('/v/<int:ecole_id>/<code>', methods=['GET'])
+def verifier_court_page(ecole_id, code):
+    """Cible du QR code du badge : page publique de vérification."""
+    r = verifier_court_api(ecole_id, code).get_json()
+    return _page_verification(ecole_id, r)
 
 
 @bp_verif.route('/verifier-badge/<int:ecole_id>/<eleve_id>/<annee>/<sig>', methods=['GET'])
 def verifier_badge_page(ecole_id, eleve_id, annee, sig):
     """Page publique ouverte quand on scanne le QR du badge avec un téléphone."""
     from html import escape
-    r = verifier_badge_api(ecole_id, eleve_id, annee, sig).get_json()
+    return _page_verification(ecole_id, verifier_badge_api(ecole_id, eleve_id, annee, sig).get_json())
+
+
+def _page_verification(ecole_id, r):
+    from html import escape
     from database import get_settings
     st_ = get_settings(ecole_id)
     logo = f"<img src='{escape(st_['ecole_logo'])}' alt='' style='height:70px;margin-bottom:10px'>" if st_.get('ecole_logo') else ''

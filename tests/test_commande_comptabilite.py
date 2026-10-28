@@ -97,6 +97,9 @@ def test_badge_eleve_securise_et_verification_publique(client, entetes):
     assert faux['valide'] is False
     page = client.get('/' + chemin)
     assert page.status_code == 200 and 'Badge authentique' in page.get_data(as_text=True)
+    # ancien format d'adresse (badges déjà imprimés) toujours accepté
+    ancien = f"api/verifier-badge/1/{eid}/2099-2100/{b['signature']}"
+    assert client.get('/' + ancien).get_json()['valide'] is True
 
 
 def test_verification_badge_par_matricule_et_code(client, entetes):
@@ -108,4 +111,9 @@ def test_verification_badge_par_matricule_et_code(client, entetes):
     assert ok['valide'] is True and ok['nom'] == 'Diallo'
     faux = client.get(f"/api/verifier-badge-code?matricule={mat}&code=0000-0000-0000").get_json()
     assert faux['valide'] is False
+    # le matricule est facultatif ; le QR (adresse courte) fonctionne aussi
+    assert client.get(f"/api/verifier-badge-code?code={b['code_controle']}").get_json()['valide'] is True
+    court = b['url'].split('://', 1)[1].split('/', 1)[1]            # v/<ecole>/<code>
+    assert client.get('/api/' + court).get_json()['valide'] is True
+    assert 'Badge authentique' in client.get('/' + court).get_data(as_text=True)
     assert client.get('/api/verifier-badge-code?matricule=&code=').status_code == 400
