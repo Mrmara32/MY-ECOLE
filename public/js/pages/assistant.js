@@ -90,12 +90,50 @@ async function assistantEnvoyer() {
   _assistantMessages.push({ role: 'user', content: texte });
   _assistantOccupee = true; _assistantRendu();
   try {
-    const r = await apiFetch('/assistant/discuter', { method: 'POST', body: { messages: _assistantMessages, page: currentPage } });
-    _assistantMessages.push({ role: 'assistant', content: r.reponse });
+    const rep = await _assistantFlux();
+    _assistantMessages.push({ role: 'assistant', content: rep });
   } catch (err) {
     _assistantMessages.push({ role: 'assistant', content: '⚠️ ' + err.message });
   }
   _assistantOccupee = false; _assistantRendu();
+}
+/* Réponse écrite en direct (flux SSE). Si le flux est impossible, on retombe sur la réponse d'un bloc. */
+async function _assistantFlux() {
+  const corps = JSON.stringify({ messages: _assistantMessages, page: currentPage });
+  const entetes = { 'Content-Type': 'application/json', ...(_token ? { Authorization: 'Bearer ' + _token } : {}) };
+  let res;
+  try { res = await fetch(API_BASE + '/assistant/discuter-flux', { method: 'POST', headers: entetes, body: corps }); }
+  catch (_) { res = null; }
+  if (!res || !res.body || res.status === 404 || res.status === 401) {
+    const r = await apiFetch('/assistant/discuter', { method: 'POST', body: { messages: _assistantMessages, page: currentPage } });
+    return r.reponse;
+  }
+  if (!res.ok) { let m = 'Assistante indisponible'; try { m = (await res.json()).error || m; } catch (_) {} throw new Error(m); }
+  const lecteur = res.body.getReader(), dec = new TextDecoder();
+  let tampon = '', texte = '';
+  const zone = () => document.querySelector('#as-messages');
+  const afficher = (etat) => {
+    const z = zone(); if (!z) return;
+    let b = z.querySelector('.as-direct');
+    if (!b) { b = document.createElement('div'); b.className = 'as-msg as-assistant as-direct'; z.appendChild(b); }
+    b.innerHTML = (texte ? _assistantFormater(texte) : '') + (etat ? `<div class="text-muted" style="font-size:12px">${esc(etat)}</div>` : '');
+    z.scrollTop = z.scrollHeight;
+  };
+  for (;;) {
+    const { done, value } = await lecteur.read();
+    if (done) break;
+    tampon += dec.decode(value, { stream: true });
+    let i;
+    while ((i = tampon.indexOf('\n\n')) >= 0) {
+      const bloc = tampon.slice(0, i); tampon = tampon.slice(i + 2);
+      if (!bloc.startsWith('data:')) continue;
+      let ev; try { ev = JSON.parse(bloc.slice(5)); } catch (_) { continue; }
+      if (ev.t === 'texte') { texte += ev.d; afficher(); }
+      else if (ev.t === 'outil') afficher('Consultation des données de l\'école…');
+      else if (ev.t === 'erreur') throw new Error(ev.d);
+    }
+  }
+  return texte || "Je n'ai pas pu formuler de réponse. Pouvez-vous reformuler ?";
 }
 window.ouvrirAssistante = ouvrirAssistante; window.fermerAssistante = fermerAssistante;
 window.assistantNouvelle = assistantNouvelle; window.assistantSuggestion = assistantSuggestion;

@@ -144,7 +144,10 @@ def create_app():
     # pas faire attendre les autres pendant l'échange avec le serveur d'e-mail.
     SANS_VERROU_ECRITURE = {'finances_routes.envoyer_releve_email', 'orange_money_routes.creer_lien',
                             'orange_money_routes.notification', 'orange_money_routes.retour',
-                            'orange_money_routes.verifier', 'orange_money_routes.payer_public'}
+                            'orange_money_routes.verifier', 'orange_money_routes.payer_public',
+                            # l'assistante attend le modèle jusqu'à 90 s : elle ne doit pas bloquer les écritures des autres
+                            # (ses petites écritures prennent le verrou elles-mêmes, voir assistant_routes)
+                            'assistant_routes.discuter', 'assistant_routes.discuter_flux'}
     ATTENTE_MAX_VERROU_S = 90
 
     @app.before_request
