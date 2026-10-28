@@ -158,6 +158,20 @@ def alertes():
         return jsonify({'alertes': []})
 
 
+@bp.route('/bilan', methods=['POST'])
+@require_auth
+def envoyer_bilan_maintenant():
+    """Envoie tout de suite le bilan de l'école par e-mail à la direction (admin et directeur)."""
+    if g.user.get('role') not in ('admin', 'directeur'):
+        return jsonify({'error': 'Réservé à la direction'}), 403
+    import bilan_hebdo
+    n = bilan_hebdo.envoyer_bilan(g.user['ecole_id'], force=True)
+    if not n:
+        return jsonify({'error': "Aucun e-mail envoyé : vérifiez que l'administrateur et le directeur ont une adresse e-mail et que l'envoi d'e-mails est configuré."}), 400
+    log_action(g.user, 'bilan_envoye', 'assistant', None, {'destinataires': n})
+    return jsonify({'success': True, 'destinataires': n})
+
+
 @bp.route('/discuter', methods=['POST'])
 @require_auth
 def discuter():

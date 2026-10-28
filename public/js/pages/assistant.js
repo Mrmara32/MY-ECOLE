@@ -64,6 +64,7 @@ function ouvrirAssistante() {
     p.className = 'assistant-panneau';
     p.innerHTML = `<div class="as-entete"><b>🤖 Assistante MY-ECOLE</b>
         <span>${currentUser && ['admin','directeur'].includes(currentUser.role) ? '<button class="icon-btn" onclick="assistantReglage()" title="Activer / désactiver l\'assistante pour l\'établissement">⚙️</button>' : ''}
+        ${currentUser && ['admin','directeur'].includes(currentUser.role) ? '<button class="icon-btn" onclick="assistantBilan()" title="Envoyer le bilan de l\'école par e-mail à la direction">✉️</button>' : ''}
         <button class="icon-btn" onclick="assistantNouvelle()" title="Nouvelle conversation">🗑️</button>
         <button class="icon-btn" onclick="fermerAssistante()" title="Fermer">✕</button></span></div>
       <div id="as-messages" class="as-messages"></div>
@@ -137,3 +138,10 @@ async function assistantReglage() {
   } catch (err) { toast(err.message, 'error'); }
 }
 window.assistantReglage = assistantReglage;
+
+async function assistantBilan() {
+  if (!confirm("Envoyer maintenant le bilan de l'école par e-mail à l'administrateur et au directeur ?")) return;
+  try { const r = await apiFetch('/assistant/bilan', { method: 'POST', body: {} }); toast(`Bilan envoyé à ${r.destinataires} personne(s)`, 'success'); }
+  catch (err) { toast(err.message, 'error'); }
+}
+window.assistantBilan = assistantBilan;
