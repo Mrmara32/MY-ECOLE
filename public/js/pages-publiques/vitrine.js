@@ -306,3 +306,52 @@ Promise.allSettled([chargerInfosEcole(), chargerActualites()]).then(() => {
   }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
   document.querySelectorAll('.reveal').forEach(el => _observateurApparition.observe(el));
 });
+
+
+/* ── Vérification d'un badge élève (saisie manuelle ou scan du QR code) ── */
+(function () {
+  const $ = id => document.getElementById(id);
+  if (!$('vb-go')) return;
+  const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  function afficher(r) {
+    const ok = r && r.valide;
+    $('vb-resultat').innerHTML = ok
+      ? `<div style="background:#16a34a;color:#fff;padding:10px;border-radius:8px;font-weight:700">✔ Badge authentique</div>
+         <h4 style="margin:14px 0 4px">${esc(r.prenom)} ${esc((r.nom || '').toUpperCase())}</h4>
+         <p>Classe : <b>${esc(r.classe || '—')}</b> · Matricule : <b>${esc(r.matricule || '—')}</b></p>
+         <p>${esc(r.ecole || '')} — année ${esc(r.annee || '')}, valable jusqu'au ${esc(r.expire || '')}</p>`
+      : `<div style="background:#dc2626;color:#fff;padding:10px;border-radius:8px;font-weight:700">✖ Badge non valide</div><p style="margin-top:8px">${esc((r && r.motif) || 'Vérification impossible.')}</p>`;
+  }
+  async function appeler(url) {
+    $('vb-resultat').textContent = 'Vérification…';
+    try { afficher(await (await fetch(url)).json()); } catch (_) { afficher({ valide: false, motif: 'Connexion impossible. Réessayez.' }); }
+  }
+  $('vb-go').onclick = () => {
+    const m = $('vb-matricule').value.trim(), c = $('vb-code').value.trim();
+    appeler(avecCodeEcole(`/api/verifier-badge-code?matricule=${encodeURIComponent(m)}&code=${encodeURIComponent(c)}`));
+  };
+  let flux = null;
+  function arreter() { if (flux) flux.getTracks().forEach(t => t.stop()); flux = null; $('vb-video').style.display = 'none'; }
+  function depuisQr(texte) {
+    const m = String(texte).match(/\/verifier-badge\/(\d+)\/([^/]+)\/([^/]*)\/([0-9a-f]+)/i);
+    if (!m) { afficher({ valide: false, motif: "Ce QR code n'est pas un badge de l'école." }); return; }
+    appeler(`/api/verifier-badge/${m[1]}/${m[2]}/${m[3] || '-'}/${m[4]}`);
+  }
+  $('vb-scan').onclick = async () => {
+    if (!('BarcodeDetector' in window) || !navigator.mediaDevices) {
+      afficher({ valide: false, motif: "Ce navigateur ne sait pas scanner. Scannez le QR avec l'appareil photo du téléphone (la page de vérification s'ouvre), ou saisissez le matricule et le code." });
+      return;
+    }
+    try {
+      flux = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      const v = $('vb-video'); v.srcObject = flux; v.style.display = 'block'; await v.play();
+      const det = new BarcodeDetector({ formats: ['qr_code'] });
+      const boucle = async () => {
+        if (!flux) return;
+        try { const r = await det.detect(v); if (r.length) { arreter(); depuisQr(r[0].rawValue); return; } } catch (_) {}
+        setTimeout(boucle, 300);
+      };
+      boucle();
+    } catch (_) { arreter(); afficher({ valide: false, motif: "Accès à la caméra refusé." }); }
+  };
+})();

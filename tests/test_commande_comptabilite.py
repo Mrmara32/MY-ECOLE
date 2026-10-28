@@ -97,3 +97,15 @@ def test_badge_eleve_securise_et_verification_publique(client, entetes):
     assert faux['valide'] is False
     page = client.get('/' + chemin)
     assert page.status_code == 200 and 'Badge authentique' in page.get_data(as_text=True)
+
+
+def test_verification_badge_par_matricule_et_code(client, entetes):
+    r = client.post('/api/eleves', json={'nom': 'Diallo', 'prenom': 'Aicha', 'classe': '7ème', 'annee_scolaire': '2099-2100'}, headers=entetes)
+    eid = r.get_json()['id']
+    mat = client.get(f'/api/eleves/{eid}', headers=entetes).get_json()['matricule']
+    b = client.get(f'/api/eleves/{eid}/badge-securise', headers=entetes).get_json()
+    ok = client.get(f"/api/verifier-badge-code?matricule={mat}&code={b['code_controle']}").get_json()
+    assert ok['valide'] is True and ok['nom'] == 'Diallo'
+    faux = client.get(f"/api/verifier-badge-code?matricule={mat}&code=0000-0000-0000").get_json()
+    assert faux['valide'] is False
+    assert client.get('/api/verifier-badge-code?matricule=&code=').status_code == 400

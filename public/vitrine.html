@@ -303,6 +303,7 @@
       <a href="#etablissement">Établissement</a>
       <a href="#services">Vie scolaire</a>
       <a href="#actualites">Actualités</a>
+      <a href="#verifier-badge">Vérifier un badge</a>
       <a href="#contact">Contact</a>
     </nav>
     <div class="nav-ctas">
@@ -466,6 +467,24 @@ Notre équipe pédagogique conjugue exigence académique et attention portée à
   </div>
 </section>
 
+<section class="section" id="verifier-badge">
+  <div class="wrap" style="max-width:760px">
+    <div class="aud-card" style="text-align:center">
+      <div class="ic">🛡</div>
+      <h3>Vérifier l'authenticité d'un badge élève</h3>
+      <p>Scannez le QR code du badge, ou saisissez le matricule et le code de contrôle imprimés au verso.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:14px 0">
+        <input id="vb-matricule" placeholder="Matricule (ex : M000212)" autocomplete="off" style="padding:11px 14px;border:1px solid #c9d6d2;border-radius:8px;min-width:200px">
+        <input id="vb-code" placeholder="Code de contrôle (ex : A1B2-C3D4-E5F6)" autocomplete="off" style="padding:11px 14px;border:1px solid #c9d6d2;border-radius:8px;min-width:250px">
+        <button class="btn btn-accent" id="vb-go" type="button">Vérifier</button>
+      </div>
+      <button class="btn btn-primary-ghost" id="vb-scan" type="button">📷 Scanner le QR code</button>
+      <video id="vb-video" playsinline muted style="display:none;width:100%;max-width:340px;margin:14px auto 0;border-radius:10px"></video>
+      <div id="vb-resultat" style="margin-top:16px"></div>
+    </div>
+  </div>
+</section>
+
 <section class="section" id="contact">
   <div class="section-blob"></div>
   <div class="wrap">
@@ -503,6 +522,7 @@ Notre équipe pédagogique conjugue exigence académique et attention portée à
       <div>
         <h5>Rejoindre l'école</h5>
         <a href="#preinscription">Pré-inscription élève</a>
+        <a href="#verifier-badge">Vérifier un badge</a>
         <a href="/postuler.html">Candidature enseignant</a>
       </div>
       <div>

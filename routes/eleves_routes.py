@@ -346,6 +346,7 @@ def badge_securise(eleve_id):
     qr = segno.make(url, error='q')
     return jsonify({
         'annee': annee, 'signature': sig, 'url': url, 'expire': _fin_annee_scolaire(annee),
+        'code_controle': '-'.join(sig[i:i + 4] for i in (0, 4, 8)).upper(),
         'numero': f"{ecole_id:02d}-{(annee or '0000')[:4]}-{(e['matricule'] or e['id'])[-6:]}".upper(),
         'qr_svg': qr.svg_inline(scale=4, border=0, dark='#111', light=None),
     })
@@ -357,6 +358,8 @@ def verifier_badge_api(ecole_id, eleve_id, annee, sig):
     from datetime import date
     from database import get_settings
     annee = '' if annee == '-' else annee
+    if request.endpoint == 'badge_verification.verifier_badge_api' and _trop_de_tentatives():
+        return jsonify({'valide': False, 'motif': 'Trop de vérifications. Réessayez dans une minute.'}), 429
     if not hmac.compare_digest(sig, _signature_badge_eleve(ecole_id, eleve_id, annee)):
         return jsonify({'valide': False, 'motif': 'Signature invalide : ce badge est un faux ou a été falsifié.'}), 200
     e = db.execute("SELECT nom, prenom, classe, matricule, statut FROM eleves WHERE id=? AND ecole_id=?", (eleve_id, ecole_id)).fetchone()
@@ -374,11 +377,48 @@ def verifier_badge_api(ecole_id, eleve_id, annee, sig):
     })
 
 
+_tentatives_verif = {}
+
+
+def _trop_de_tentatives():
+    """Limite simple : 30 vérifications par minute et par adresse (anti devinette)."""
+    import time
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr or '').split(',')[0].strip()
+    maintenant = time.time()
+    recents = [t for t in _tentatives_verif.get(ip, []) if maintenant - t < 60]
+    recents.append(maintenant)
+    _tentatives_verif[ip] = recents
+    if len(_tentatives_verif) > 5000:
+        _tentatives_verif.clear()
+    return len(recents) > 30
+
+
+@bp_verif.route('/api/verifier-badge-code', methods=['GET'])
+def verifier_badge_par_code():
+    """Vérification à la main depuis le site vitrine : matricule + code de contrôle imprimés sur le badge."""
+    from database import ecole_id_depuis_code, get_settings
+    if _trop_de_tentatives():
+        return jsonify({'valide': False, 'motif': 'Trop de vérifications. Réessayez dans une minute.'}), 429
+    ecole_id = ecole_id_depuis_code(request.args.get('ecole'))
+    matricule = (request.args.get('matricule') or '').strip()
+    code = ''.join(c for c in (request.args.get('code') or '').lower() if c in '0123456789abcdef')
+    if not matricule or len(code) != 12:
+        return jsonify({'valide': False, 'motif': 'Saisissez le matricule et le code de contrôle imprimés sur le badge.'}), 400
+    e = db.execute("SELECT id, annee_scolaire FROM eleves WHERE ecole_id=? AND UPPER(matricule)=UPPER(?)", (ecole_id, matricule)).fetchone()
+    annee = (e['annee_scolaire'] or get_settings(ecole_id).get('annee_scolaire') or '') if e else ''
+    if not e or code != _signature_badge_eleve(ecole_id, e['id'], annee)[:12]:
+        return jsonify({'valide': False, 'motif': "Ces informations ne correspondent à aucun badge de l'établissement."})
+    return verifier_badge_api(ecole_id, e['id'], annee or '-', _signature_badge_eleve(ecole_id, e['id'], annee))
+
+
 @bp_verif.route('/verifier-badge/<int:ecole_id>/<eleve_id>/<annee>/<sig>', methods=['GET'])
 def verifier_badge_page(ecole_id, eleve_id, annee, sig):
     """Page publique ouverte quand on scanne le QR du badge avec un téléphone."""
     from html import escape
     r = verifier_badge_api(ecole_id, eleve_id, annee, sig).get_json()
+    from database import get_settings
+    st_ = get_settings(ecole_id)
+    logo = f"<img src='{escape(st_['ecole_logo'])}' alt='' style='height:70px;margin-bottom:10px'>" if st_.get('ecole_logo') else ''
     if r.get('valide'):
         corps = (f"<div class='ok'>✔ Badge authentique</div><h1>{escape(r['prenom'] or '')} {escape((r['nom'] or '').upper())}</h1>"
                  f"<p>Classe : <b>{escape(r['classe'] or '—')}</b></p><p>Matricule : <b>{escape(r['matricule'] or '—')}</b></p>"
@@ -391,7 +431,7 @@ def verifier_badge_page(ecole_id, eleve_id, annee, sig):
             "<title>Vérification du badge</title><style>body{font-family:Arial,sans-serif;background:#f3f4f6;margin:0;padding:24px;text-align:center;color:#111}"
             ".c{max-width:380px;margin:30px auto;background:#fff;border-radius:14px;padding:26px;box-shadow:0 4px 18px rgba(0,0,0,.12)}"
             ".ok{background:#16a34a;color:#fff;padding:10px;border-radius:8px;font-weight:700}.ko{background:#dc2626;color:#fff;padding:10px;border-radius:8px;font-weight:700}"
-            "h1{font-size:22px;margin:18px 0 6px}p{margin:6px 0;color:#374151}</style></head><body><div class='c'>" + corps + "</div></body></html>")
+            "h1{font-size:22px;margin:18px 0 6px}p{margin:6px 0;color:#374151}</style></head><body><div class='c'>" + logo + corps + "<p style='margin-top:18px'><a href='/vitrine' style='color:#0f7a6c'>Retour au site de l'école</a></p></div></body></html>")
     from flask import make_response
     resp = make_response(page)
     resp.headers['Cache-Control'] = 'no-store'
