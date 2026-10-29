@@ -1,25 +1,53 @@
-"""Kimi (Moonshot AI) pour l'assistante.
+"""Fournisseurs d'IA « format OpenAI » pour l'assistante : Gemini (Google, choix principal) et Kimi (Moonshot AI).
 
 L'assistante parle le format « Messages » d'Anthropic (blocs text / tool_use / tool_result). Kimi parle le format
 OpenAI. Ce module traduit dans les deux sens, pour que le reste du code (boucle d'outils, flux) ne change pas.
-Variables : KIMI_API_KEY (active Kimi), KIMI_BASE_URL (défaut https://api.moonshot.ai/v1), KIMI_MODEL (défaut kimi-k3).
+Variables : GEMINI_API_KEY (active Gemini, prioritaire ; GEMINI_MODEL optionnel), KIMI_API_KEY (active Kimi ;
+KIMI_BASE_URL défaut https://api.moonshot.ai/v1 ; KIMI_MODEL défaut kimi-k3).
 """
 import json
 import os
+import urllib.error
 import urllib.request
 
 
-def cle():
-    return os.environ.get('KIMI_API_KEY', '').strip()
+# Modèles essayés dans l'ordre : si l'un est « introuvable », on passe au suivant.
+MODELES = {
+    'gemini': ['gemini-3.8-flash', 'gemini-3-flash', 'gemini-2.5-flash', 'gemini-flash-latest'],
+    'kimi': ['kimi-k3', 'kimi-k2.6'],
+}
+_ENV = {'gemini': ('GEMINI_API_KEY', 'GEMINI_MODEL'), 'kimi': ('KIMI_API_KEY', 'KIMI_MODEL')}
 
 
-def _url():
+def actif():
+    """Fournisseur à utiliser : 'gemini' si sa clé est définie, sinon 'kimi', sinon None."""
+    for nom in ('gemini', 'kimi'):
+        if os.environ.get(_ENV[nom][0], '').strip():
+            return nom
+    return None
+
+
+def cle(nom=None):
+    nom = nom or actif()
+    return os.environ.get(_ENV[nom][0], '').strip() if nom else ''
+
+
+def _candidats(nom):
+    force = os.environ.get(_ENV[nom][1], '').strip()
+    base = MODELES[nom]
+    return ([force] + [m for m in base if m != force]) if force else list(base)
+
+
+def _url(nom):
+    if nom == 'gemini':
+        return 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
     return (os.environ.get('KIMI_BASE_URL', '').strip() or 'https://api.moonshot.ai/v1').rstrip('/') + '/chat/completions'
 
 
-def vers_openai(charge):
+def vers_openai(charge, modele=None):
     """Charge au format Anthropic -> charge au format OpenAI."""
     msgs = []
+    noms = {}   # id d'appel d'outil -> nom (Gemini veut le nom dans la réponse d'outil)
     if charge.get('system'):
         msgs.append({'role': 'system', 'content': charge['system']})
     for m in charge.get('messages', []):
@@ -28,6 +56,7 @@ def vers_openai(charge):
             msgs.append({'role': m['role'], 'content': c})
         elif m['role'] == 'assistant':
             texte = ''.join(b.get('text', '') for b in c if b.get('type') == 'text')
+            noms.update({b['id']: b['name'] for b in c if b.get('type') == 'tool_use'})
             appels = [{'id': b['id'], 'type': 'function',
                        'function': {'name': b['name'], 'arguments': json.dumps(b.get('input') or {}, ensure_ascii=False)}}
                       for b in c if b.get('type') == 'tool_use']
@@ -38,10 +67,11 @@ def vers_openai(charge):
         else:
             for b in c:
                 if b.get('type') == 'tool_result':
-                    msgs.append({'role': 'tool', 'tool_call_id': b['tool_use_id'], 'content': str(b.get('content', ''))})
+                    msgs.append({'role': 'tool', 'tool_call_id': b['tool_use_id'], 'name': noms.get(b['tool_use_id'], ''),
+                                 'content': str(b.get('content', ''))})
                 elif b.get('type') == 'text':
                     msgs.append({'role': 'user', 'content': b.get('text', '')})
-    sortie = {'model': os.environ.get('KIMI_MODEL', '').strip() or 'kimi-k3', 'messages': msgs,
+    sortie = {'model': modele or _candidats(actif() or 'kimi')[0], 'messages': msgs,
               'max_tokens': charge.get('max_tokens', 2200)}
     if charge.get('tools'):
         sortie['tools'] = [{'type': 'function', 'function': {
@@ -52,9 +82,23 @@ def vers_openai(charge):
     return sortie
 
 
-def _requete(corps):
-    return urllib.request.Request(_url(), data=json.dumps(corps).encode(), headers={
-        'content-type': 'application/json', 'authorization': 'Bearer ' + cle()})
+def _requete(corps, nom):
+    return urllib.request.Request(_url(nom), data=json.dumps(corps).encode(), headers={
+        'content-type': 'application/json', 'authorization': 'Bearer ' + cle(nom)})
+
+
+def _ouvrir(charge, nom):
+    """Ouvre la réponse en essayant les modèles candidats ; renvoie le flux HTTP ouvert."""
+    derniere = None
+    for modele in _candidats(nom):
+        try:
+            return urllib.request.urlopen(_requete(vers_openai(charge, modele), nom), timeout=90)
+        except urllib.error.HTTPError as e:
+            derniere = e
+            if e.code in (400, 404):
+                continue
+            raise
+    raise derniere
 
 
 def _json_ou_vide(texte):
@@ -66,7 +110,7 @@ def _json_ou_vide(texte):
 
 def appeler(charge):
     """Appel simple ; renvoie une réponse au format Anthropic ({'stop_reason', 'content': [...]})."""
-    with urllib.request.urlopen(_requete(vers_openai(charge)), timeout=90) as r:
+    with _ouvrir(charge, actif()) as r:
         rep = json.loads(r.read().decode())
     choix = rep['choices'][0]
     msg = choix.get('message') or {}
@@ -82,11 +126,10 @@ def appeler(charge):
 
 def flux(charge):
     """Appel en flux ; produit des évènements au format Anthropic (content_block_*, message_delta)."""
-    corps = vers_openai(dict(charge, stream=True))
     texte_ouvert = False
     outils = {}      # index -> {'id','name','args'}
     fin = None
-    with urllib.request.urlopen(_requete(corps), timeout=90) as r:
+    with _ouvrir(dict(charge, stream=True), actif()) as r:
         for ligne in r:
             ligne = ligne.decode('utf-8', 'replace').strip()
             if not ligne.startswith('data:'):
@@ -106,7 +149,10 @@ def flux(charge):
                         yield {'type': 'content_block_start', 'content_block': {'type': 'text'}}
                     yield {'type': 'content_block_delta', 'delta': {'type': 'text_delta', 'text': d['content']}}
                 for a in d.get('tool_calls') or []:
-                    o = outils.setdefault(a.get('index', 0), {'id': None, 'name': None, 'args': ''})
+                    cle_o = a.get('index')
+                    if cle_o is None:   # certains fournisseurs omettent l'index : un nouvel id = un nouvel appel
+                        cle_o = next((i for i, v in outils.items() if v['id'] == a.get('id')), len(outils)) if a.get('id') else max(outils, default=0)
+                    o = outils.setdefault(cle_o, {'id': None, 'name': None, 'args': ''})
                     o['id'] = a.get('id') or o['id']
                     f = a.get('function') or {}
                     o['name'] = f.get('name') or o['name']

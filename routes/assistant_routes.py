@@ -81,8 +81,8 @@ def _cle_api():
 
 
 def _fournisseur_disponible():
-    """Kimi si KIMI_API_KEY est définie (prioritaire), sinon Claude si ANTHROPIC_API_KEY l'est."""
-    return bool(kimi_adaptateur.cle() or _cle_api())
+    """Gemini (GEMINI_API_KEY, principal), sinon Kimi (KIMI_API_KEY), sinon Claude (ANTHROPIC_API_KEY)."""
+    return bool(kimi_adaptateur.actif() or _cle_api())
 
 
 def _assistant_actif(ecole_id):
@@ -130,8 +130,8 @@ def _compter_usage_nu(ecole_id):
 
 
 def _appeler_api(charge):
-    """Un appel au modèle (Kimi si configuré, sinon Anthropic). Isolé pour pouvoir être simulé dans les tests."""
-    if kimi_adaptateur.cle():
+    """Un appel au modèle (Gemini, sinon Kimi, sinon Anthropic). Isolé pour pouvoir être simulé dans les tests."""
+    if kimi_adaptateur.actif():
         return kimi_adaptateur.appeler(charge)
     req = urllib.request.Request(URL_API, data=json.dumps(charge).encode(), headers={
         'content-type': 'application/json', 'x-api-key': _cle_api(), 'anthropic-version': '2023-06-01'})
@@ -206,7 +206,7 @@ def _preparer(body):
         return None, (jsonify({'error': "L'assistante est désactivée par l'administration de votre établissement.",
                                'code': 'ASSISTANT_DESACTIVE'}), 403)
     if not _fournisseur_disponible():
-        return None, (jsonify({'error': "L'assistante n'est pas encore activée sur ce serveur (clé KIMI_API_KEY ou ANTHROPIC_API_KEY à renseigner par l'administrateur).",
+        return None, (jsonify({'error': "L'assistante n'est pas encore activée sur ce serveur (clé GEMINI_API_KEY, KIMI_API_KEY ou ANTHROPIC_API_KEY à renseigner par l'administrateur).",
                                'code': 'ASSISTANT_NON_CONFIGURE'}), 503)
     import securite
     attente = securite.debit_assistant(g.user['id'], PAR_MINUTE)
@@ -232,7 +232,7 @@ def _preparer(body):
 
 def _appeler_api_flux(charge):
     """Appel en flux (SSE) : produit les évènements décodés. Isolé pour les tests."""
-    if kimi_adaptateur.cle():
+    if kimi_adaptateur.actif():
         yield from kimi_adaptateur.flux(charge)
         return
     charge = dict(charge, stream=True)
