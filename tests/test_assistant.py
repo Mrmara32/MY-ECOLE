@@ -11,6 +11,7 @@ def _msg(texte):
 def test_assistante_non_configuree(client, entetes, monkeypatch):
     monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
     monkeypatch.delenv('KIMI_API_KEY', raising=False)
+    monkeypatch.delenv('GEMINI_API_KEY', raising=False)
     assert client.get('/api/assistant/statut', headers=entetes).get_json()['actif'] is False
     r = client.post('/api/assistant/discuter', json=_msg('Bonjour'), headers=entetes)
     assert r.status_code == 503 and r.get_json()['code'] == 'ASSISTANT_NON_CONFIGURE'
@@ -151,6 +152,7 @@ def test_boucle_d_outils_du_modele(client, entetes, monkeypatch):
 def test_point_de_l_assistante_sans_cle_ni_appel_externe(client, entetes, monkeypatch):
     monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
     monkeypatch.delenv('KIMI_API_KEY', raising=False)
+    monkeypatch.delenv('GEMINI_API_KEY', raising=False)
     _peupler()
     r = client.get('/api/assistant/alertes', headers=entetes)
     assert r.status_code == 200
@@ -233,7 +235,7 @@ def test_kimi_traduction_du_format():
     o = k.vers_openai(charge)
     assert o['messages'][0] == {'role': 'system', 'content': 'Sys'}
     assert o['messages'][2]['tool_calls'][0]['function']['name'] == 'paiements'
-    assert o['messages'][3] == {'role': 'tool', 'tool_call_id': 't1', 'content': '{"a_jour": 3}'}
+    assert o['messages'][3] == {'role': 'tool', 'tool_call_id': 't1', 'name': 'paiements', 'content': '{"a_jour": 3}'}
     assert o['tools'][0]['function']['name'] == 'paiements' and o['model'] == 'kimi-k3'
 
 
@@ -273,3 +275,30 @@ def test_kimi_prioritaire_et_reponse_simple(client, entetes, monkeypatch):
     monkeypatch.setattr(k.urllib.request, 'urlopen', lambda req, timeout=0: _Flux([rep]))
     r = client.post('/api/assistant/discuter', json=_msg('Bonjour'), headers=entetes)
     assert r.status_code == 200 and r.get_json()['reponse'] == 'Réponse de Kimi'
+
+
+def test_gemini_prioritaire_et_modele_suivant_si_introuvable(monkeypatch):
+    import json as j, urllib.error, kimi_adaptateur as k
+    monkeypatch.setenv('GEMINI_API_KEY', 'g')
+    monkeypatch.setenv('KIMI_API_KEY', 'k')
+    monkeypatch.delenv('GEMINI_MODEL', raising=False)
+    assert k.actif() == 'gemini'
+    vus = []
+
+    def faux(req, timeout=0):
+        vus.append((req.full_url, j.loads(req.data)['model'], req.headers['Authorization']))
+        if len(vus) == 1:
+            raise urllib.error.HTTPError(req.full_url, 404, 'introuvable', {}, None)
+        return _Flux([j.dumps({'choices': [{'message': {'content': 'Salut'}, 'finish_reason': 'stop'}]})])
+    monkeypatch.setattr(k.urllib.request, 'urlopen', faux)
+    rep = k.appeler({'messages': [{'role': 'user', 'content': 'x'}]})
+    assert rep['content'][0]['text'] == 'Salut'
+    assert 'generativelanguage.googleapis.com' in vus[0][0] and vus[0][2] == 'Bearer g'
+    assert vus[0][1] == 'gemini-3.8-flash' and vus[1][1] == 'gemini-3-flash'
+
+
+def test_sans_gemini_c_est_kimi(monkeypatch):
+    import kimi_adaptateur as k
+    monkeypatch.delenv('GEMINI_API_KEY', raising=False)
+    monkeypatch.setenv('KIMI_API_KEY', 'k')
+    assert k.actif() == 'kimi' and k.vers_openai({'messages': []})['model'] == 'kimi-k3'
