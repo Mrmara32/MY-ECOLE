@@ -10,6 +10,7 @@ def _msg(texte):
 
 def test_assistante_non_configuree(client, entetes, monkeypatch):
     monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
+    monkeypatch.delenv('KIMI_API_KEY', raising=False)
     assert client.get('/api/assistant/statut', headers=entetes).get_json()['actif'] is False
     r = client.post('/api/assistant/discuter', json=_msg('Bonjour'), headers=entetes)
     assert r.status_code == 503 and r.get_json()['code'] == 'ASSISTANT_NON_CONFIGURE'
@@ -149,6 +150,7 @@ def test_boucle_d_outils_du_modele(client, entetes, monkeypatch):
 
 def test_point_de_l_assistante_sans_cle_ni_appel_externe(client, entetes, monkeypatch):
     monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
+    monkeypatch.delenv('KIMI_API_KEY', raising=False)
     _peupler()
     r = client.get('/api/assistant/alertes', headers=entetes)
     assert r.status_code == 200
@@ -219,3 +221,55 @@ def test_flux_panne_du_fournisseur(client, entetes, monkeypatch):
     monkeypatch.setattr(ar, '_appeler_api_flux', panne)
     r = client.post('/api/assistant/discuter-flux', json=_msg('Bonjour'), headers=entetes)
     assert '"erreur"' in r.get_data(as_text=True)
+
+
+def test_kimi_traduction_du_format():
+    import kimi_adaptateur as k
+    charge = {'system': 'Sys', 'max_tokens': 100,
+              'tools': [{'name': 'paiements', 'description': 'd', 'input_schema': {'type': 'object', 'properties': {}}}],
+              'messages': [{'role': 'user', 'content': 'Salut'},
+                           {'role': 'assistant', 'content': [{'type': 'tool_use', 'id': 't1', 'name': 'paiements', 'input': {}}]},
+                           {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': 't1', 'content': '{"a_jour": 3}'}]}]}
+    o = k.vers_openai(charge)
+    assert o['messages'][0] == {'role': 'system', 'content': 'Sys'}
+    assert o['messages'][2]['tool_calls'][0]['function']['name'] == 'paiements'
+    assert o['messages'][3] == {'role': 'tool', 'tool_call_id': 't1', 'content': '{"a_jour": 3}'}
+    assert o['tools'][0]['function']['name'] == 'paiements' and o['model'] == 'kimi-k3'
+
+
+class _Flux:
+    def __init__(self, lignes): self.lignes = [l.encode() for l in lignes]
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def __iter__(self): return iter(self.lignes)
+    def read(self): return b''.join(self.lignes)
+
+
+def test_kimi_flux_texte_et_outils(monkeypatch):
+    import json as j, kimi_adaptateur as k
+    monkeypatch.setenv('KIMI_API_KEY', 'cle')
+    morceaux = [
+        {'choices': [{'delta': {'content': 'Bon'}}]},
+        {'choices': [{'delta': {'content': 'jour'}}]},
+        {'choices': [{'delta': {'tool_calls': [{'index': 0, 'id': 'c1', 'function': {'name': 'paiements', 'arguments': '{"cl'}}]}}]},
+        {'choices': [{'delta': {'tool_calls': [{'index': 0, 'function': {'arguments': 'asse":"6e"}'}}]}, 'finish_reason': 'tool_calls'}]},
+    ]
+    lignes = ['data: ' + j.dumps(m) + '\n' for m in morceaux] + ['data: [DONE]\n']
+    monkeypatch.setattr(k.urllib.request, 'urlopen', lambda req, timeout=0: _Flux(lignes))
+    evs = list(k.flux({'messages': [{'role': 'user', 'content': 'x'}]}))
+    texte = ''.join(e['delta']['text'] for e in evs if e.get('delta', {}).get('type') == 'text_delta')
+    args = ''.join(e['delta']['partial_json'] for e in evs if e.get('delta', {}).get('type') == 'input_json_delta')
+    assert texte == 'Bonjour' and j.loads(args) == {'classe': '6e'}
+    assert evs[-1] == {'type': 'message_delta', 'delta': {'stop_reason': 'tool_use'}}
+
+
+def test_kimi_prioritaire_et_reponse_simple(client, entetes, monkeypatch):
+    import json as j, kimi_adaptateur as k, securite
+    monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
+    monkeypatch.setenv('KIMI_API_KEY', 'cle')
+    monkeypatch.setenv('ASSISTANT_MAX_JOUR', '500')
+    securite._debit.clear()
+    rep = j.dumps({'choices': [{'message': {'content': 'Réponse de Kimi'}, 'finish_reason': 'stop'}]})
+    monkeypatch.setattr(k.urllib.request, 'urlopen', lambda req, timeout=0: _Flux([rep]))
+    r = client.post('/api/assistant/discuter', json=_msg('Bonjour'), headers=entetes)
+    assert r.status_code == 200 and r.get_json()['reponse'] == 'Réponse de Kimi'

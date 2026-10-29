@@ -13,6 +13,7 @@ import urllib.request
 import urllib.error
 
 import assistant_donnees
+import kimi_adaptateur
 import database
 from datetime import date
 
@@ -79,6 +80,11 @@ def _cle_api():
     return os.environ.get('ANTHROPIC_API_KEY', '').strip()
 
 
+def _fournisseur_disponible():
+    """Kimi si KIMI_API_KEY est définie (prioritaire), sinon Claude si ANTHROPIC_API_KEY l'est."""
+    return bool(kimi_adaptateur.cle() or _cle_api())
+
+
 def _assistant_actif(ecole_id):
     """L'administrateur peut désactiver l'assistante pour son établissement (paramètre assistant_actif = 0)."""
     r = db.execute("SELECT valeur FROM settings WHERE ecole_id=? AND cle='assistant_actif'", (ecole_id,)).fetchone()
@@ -124,7 +130,9 @@ def _compter_usage_nu(ecole_id):
 
 
 def _appeler_api(charge):
-    """Un appel à l'API Messages d'Anthropic. Isolé pour pouvoir être simulé dans les tests."""
+    """Un appel au modèle (Kimi si configuré, sinon Anthropic). Isolé pour pouvoir être simulé dans les tests."""
+    if kimi_adaptateur.cle():
+        return kimi_adaptateur.appeler(charge)
     req = urllib.request.Request(URL_API, data=json.dumps(charge).encode(), headers={
         'content-type': 'application/json', 'x-api-key': _cle_api(), 'anthropic-version': '2023-06-01'})
     with urllib.request.urlopen(req, timeout=90) as r:
@@ -160,7 +168,7 @@ def _appeler_modele(systeme, messages, user):
 @bp.route('/statut', methods=['GET'])
 @require_auth
 def statut():
-    return jsonify({'actif': bool(_cle_api()) and _assistant_actif(g.user['ecole_id']),
+    return jsonify({'actif': _fournisseur_disponible() and _assistant_actif(g.user['ecole_id']),
                     'desactivee_par_ecole': not _assistant_actif(g.user['ecole_id']), 'quota_jour': _quota_jour(),
                     'donnees': [o['name'] for o in assistant_donnees.outils_pour(g.user.get('role'))]})
 
@@ -197,8 +205,8 @@ def _preparer(body):
     if not _assistant_actif(g.user['ecole_id']):
         return None, (jsonify({'error': "L'assistante est désactivée par l'administration de votre établissement.",
                                'code': 'ASSISTANT_DESACTIVE'}), 403)
-    if not _cle_api():
-        return None, (jsonify({'error': "L'assistante n'est pas encore activée sur ce serveur (clé ANTHROPIC_API_KEY à renseigner par l'administrateur).",
+    if not _fournisseur_disponible():
+        return None, (jsonify({'error': "L'assistante n'est pas encore activée sur ce serveur (clé KIMI_API_KEY ou ANTHROPIC_API_KEY à renseigner par l'administrateur).",
                                'code': 'ASSISTANT_NON_CONFIGURE'}), 503)
     import securite
     attente = securite.debit_assistant(g.user['id'], PAR_MINUTE)
@@ -224,6 +232,9 @@ def _preparer(body):
 
 def _appeler_api_flux(charge):
     """Appel en flux (SSE) : produit les évènements décodés. Isolé pour les tests."""
+    if kimi_adaptateur.cle():
+        yield from kimi_adaptateur.flux(charge)
+        return
     charge = dict(charge, stream=True)
     req = urllib.request.Request(URL_API, data=json.dumps(charge).encode(), headers={
         'content-type': 'application/json', 'x-api-key': _cle_api(), 'anthropic-version': '2023-06-01'})

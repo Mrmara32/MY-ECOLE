@@ -34,7 +34,7 @@ bloc_analyse = Analysis(
         'routes.parent_routes', 'routes.ecoles_routes', 'routes.licence_routes',
         'routes.fournisseurs_routes', 'routes.logistique_routes', 'routes.permissions_routes',
         'routes.systeme_routes', 'routes.resultats_routes', 'routes.discipline_routes', 'routes.bibliotheque_routes', 'routes.examens_routes', 'routes.donnees_personnelles_routes', 'securite_http', 'retention', 'auth', 'database', 'double_authentification', 'base_sante', 'pg_compat', 'pg_migration', 'psycopg', 'bulletins', 'routes.import_eleves_routes', 'import_eleves',
-        'routes.pointage_routes', 'coffre', 'routes.assistant_routes', 'assistant_donnees', 'bilan_hebdo', 'cryptography.fernet',
+        'routes.pointage_routes', 'coffre', 'routes.assistant_routes', 'assistant_donnees', 'kimi_adaptateur', 'bilan_hebdo', 'cryptography.fernet',
         'permissions', 'offline_sync', 'licence', 'email_service', 'sauvegarde', 'sauvegarde_externe', 'whatsapp_service', 'sms_service', 'orange_money_service', 'routes.orange_money_routes', 'routes.whatsapp_routes', 'routes.sms_routes', 'routes.aide_routes', 'conditions', 'releve_bancaire', 'contact_parent',
         # Vérification des licences par clé publique (licence.py).
         'cryptography.hazmat.primitives.asymmetric.ed25519',
