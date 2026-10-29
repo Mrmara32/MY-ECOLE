@@ -124,7 +124,7 @@ def _compter_usage_nu(ecole_id):
     if ligne and ligne['nb'] >= _quota_jour():
         return False
     db.execute("INSERT INTO assistant_usage (ecole_id, jour, nb) VALUES (?,?,1) "
-               "ON CONFLICT(ecole_id, jour) DO UPDATE SET nb = nb + 1", (ecole_id, jour))
+               "ON CONFLICT(ecole_id, jour) DO UPDATE SET nb = assistant_usage.nb + 1", (ecole_id, jour))
     db.commit()
     return True
 
