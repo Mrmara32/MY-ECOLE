@@ -7,6 +7,7 @@ KIMI_BASE_URL défaut https://api.moonshot.ai/v1 ; KIMI_MODEL défaut kimi-k3).
 """
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 
@@ -87,17 +88,30 @@ def _requete(corps, nom):
         'content-type': 'application/json', 'authorization': 'Bearer ' + cle(nom)})
 
 
+def _fournisseurs(nom):
+    """Le fournisseur demandé d'abord, puis les autres dont la clé est définie (secours)."""
+    return [nom] + [n for n in ('gemini', 'kimi') if n != nom and os.environ.get(_ENV[n][0], '').strip()]
+
+
 def _ouvrir(charge, nom):
-    """Ouvre la réponse en essayant les modèles candidats ; renvoie le flux HTTP ouvert."""
+    """Ouvre la réponse en essayant les modèles candidats (puis le fournisseur de secours) ; renvoie le flux HTTP ouvert.
+    Un modèle introuvable, surchargé (429/5xx) ou qui ne répond pas dans les 40 s fait passer au suivant."""
     derniere = None
-    for modele in _candidats(nom):
-        try:
-            return urllib.request.urlopen(_requete(vers_openai(charge, modele), nom), timeout=90)
-        except urllib.error.HTTPError as e:
-            derniere = e
-            if e.code in (400, 404):
+    debut = time.monotonic()
+    for fournisseur in _fournisseurs(nom):
+        for modele in _candidats(fournisseur)[:3]:
+            if derniere is not None and time.monotonic() - debut > 85:
+                raise derniere
+            try:
+                return urllib.request.urlopen(_requete(vers_openai(charge, modele), fournisseur), timeout=40)
+            except urllib.error.HTTPError as e:
+                derniere = e
+                print(f"[assistant] {fournisseur}/{modele}: HTTP {e.code}")
                 continue
-            raise
+            except (OSError, ValueError) as e:     # délai dépassé, réseau coupé
+                derniere = e
+                print(f"[assistant] {fournisseur}/{modele}: {type(e).__name__}")
+                continue
     raise derniere
 
 
