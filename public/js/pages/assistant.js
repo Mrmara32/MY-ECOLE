@@ -50,8 +50,10 @@ function _assistantRendu() {
       <p class="as-note">Je ne consulte que des statistiques de l'école selon votre rôle, sans noms d'élèves. Ne saisissez pas de données personnelles dans vos questions. Vérifiez toujours les informations importantes.</p></div>`;
     return;
   }
-  zone.innerHTML = _assistantMessages.map(m =>
-    `<div class="as-msg as-${m.role}">${m.role === 'assistant' ? _assistantFormater(m.content) : esc(m.content).replace(/\n/g, '<br>')}</div>`).join('')
+  const dernier = _assistantMessages.length - 1;
+  zone.innerHTML = _assistantMessages.map((m, i) =>
+    `<div class="as-msg as-${m.role}">${m.role === 'assistant' ? _assistantFormater(m.content) : esc(m.content).replace(/\n/g, '<br>')}${
+      m.erreur && i === dernier && !_assistantOccupee ? '<div style="margin-top:8px"><button class="btn btn-primary btn-xs" onclick="assistantReessayer()">🔄 Réessayer</button></div>' : ''}</div>`).join('')
     + (_assistantOccupee ? '<div class="as-msg as-assistant as-attente">Je réfléchis…</div>' : '');
   zone.scrollTop = zone.scrollHeight;
 }
@@ -88,24 +90,41 @@ async function assistantEnvoyer() {
   if (!texte || _assistantOccupee) return;
   saisie.value = '';
   _assistantMessages.push({ role: 'user', content: texte });
+  await _assistantLancer();
+}
+/* Renvoie la dernière question après une erreur (bouton « Réessayer »). */
+async function assistantReessayer() {
+  if (_assistantOccupee) return;
+  while (_assistantMessages.length && _assistantMessages[_assistantMessages.length - 1].erreur) _assistantMessages.pop();
+  if (!_assistantMessages.length || _assistantMessages[_assistantMessages.length - 1].role !== 'user') return;
+  await _assistantLancer();
+}
+async function _assistantLancer() {
   _assistantOccupee = true; _assistantRendu();
   try {
     const rep = await _assistantFlux();
     _assistantMessages.push({ role: 'assistant', content: rep });
   } catch (err) {
-    _assistantMessages.push({ role: 'assistant', content: '⚠️ ' + err.message });
+    _assistantMessages.push({ role: 'assistant', content: '⚠️ ' + err.message, erreur: true });
   }
   _assistantOccupee = false; _assistantRendu();
 }
+/* Conversation envoyée au serveur : sans les messages d'erreur, et sans question restée sans réponse. */
+function _assistantHistorique() {
+  const h = _assistantMessages.filter(m => !m.erreur).map(m => ({ role: m.role, content: m.content }));
+  const sortie = [];
+  h.forEach((m, i) => { if (!(m.role === 'user' && h[i + 1] && h[i + 1].role === 'user')) sortie.push(m); });
+  return sortie;
+}
 /* Réponse écrite en direct (flux SSE). Si le flux est impossible, on retombe sur la réponse d'un bloc. */
 async function _assistantFlux() {
-  const corps = JSON.stringify({ messages: _assistantMessages, page: currentPage });
+  const corps = JSON.stringify({ messages: _assistantHistorique(), page: currentPage });
   const entetes = { 'Content-Type': 'application/json', ...(_token ? { Authorization: 'Bearer ' + _token } : {}) };
   let res;
   try { res = await fetch(API_BASE + '/assistant/discuter-flux', { method: 'POST', headers: entetes, body: corps }); }
   catch (_) { res = null; }
   if (!res || !res.body || res.status === 404 || res.status === 401) {
-    const r = await apiFetch('/assistant/discuter', { method: 'POST', body: { messages: _assistantMessages, page: currentPage } });
+    const r = await apiFetch('/assistant/discuter', { method: 'POST', body: { messages: _assistantHistorique(), page: currentPage } });
     return r.reponse;
   }
   if (!res.ok) { let m = 'Assistante indisponible'; try { m = (await res.json()).error || m; } catch (_) {} throw new Error(m); }
@@ -136,7 +155,7 @@ async function _assistantFlux() {
   return texte || "Je n'ai pas pu formuler de réponse. Pouvez-vous reformuler ?";
 }
 window.ouvrirAssistante = ouvrirAssistante; window.fermerAssistante = fermerAssistante;
-window.assistantNouvelle = assistantNouvelle; window.assistantSuggestion = assistantSuggestion;
+window.assistantNouvelle = assistantNouvelle; window.assistantReessayer = assistantReessayer; window.assistantSuggestion = assistantSuggestion;
 
 /* « Le point de l'assistante » sur le tableau de bord : alertes calculées par le serveur selon le rôle. */
 async function assistantPointAccueil() {

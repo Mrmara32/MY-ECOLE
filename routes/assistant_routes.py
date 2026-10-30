@@ -335,7 +335,7 @@ def discuter_flux():
                 pass
             yield sse({'t': 'fin'})
         except Exception as e:
-            print(f"[assistant] flux: {type(e).__name__}")
+            print(f"[assistant] flux: {type(e).__name__}: {str(e)[:160]}")
             yield sse({'t': 'erreur', 'd': "L'assistante est momentanément indisponible. Réessayez dans un instant."})
 
     reponse = Response(produire(), mimetype='text/event-stream')
@@ -357,7 +357,7 @@ def discuter():
         print(f"[assistant] erreur API {e.code}")
         return jsonify({'error': "L'assistante est momentanément indisponible. Réessayez dans un instant."}), 502
     except Exception as e:
-        print(f"[assistant] erreur: {type(e).__name__}")
+        print(f"[assistant] erreur: {type(e).__name__}: {str(e)[:160]}")
         return jsonify({'error': "L'assistante est momentanément indisponible. Réessayez dans un instant."}), 502
     _sous_verrou(lambda: log_action(g.user, 'question_assistante', 'assistant', None,
                                     {'longueur': len(messages[-1]['content']), 'donnees_consultees': sorted(set(consultes))}))

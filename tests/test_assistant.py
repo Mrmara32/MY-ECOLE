@@ -302,3 +302,21 @@ def test_sans_gemini_c_est_kimi(monkeypatch):
     monkeypatch.delenv('GEMINI_API_KEY', raising=False)
     monkeypatch.setenv('KIMI_API_KEY', 'k')
     assert k.actif() == 'kimi' and k.vers_openai({'messages': []})['model'] == 'kimi-k3'
+
+
+def test_delai_depasse_passe_au_modele_suivant_puis_au_fournisseur_de_secours(monkeypatch):
+    import json as j, kimi_adaptateur as k
+    monkeypatch.setenv('GEMINI_API_KEY', 'g')
+    monkeypatch.setenv('KIMI_API_KEY', 'k')
+    monkeypatch.delenv('GEMINI_MODEL', raising=False)
+    vus = []
+
+    def faux(req, timeout=0):
+        vus.append(req.full_url)
+        if 'generativelanguage' in req.full_url:
+            raise TimeoutError('délai dépassé')
+        return _Flux([j.dumps({'choices': [{'message': {'content': 'Secours'}, 'finish_reason': 'stop'}]})])
+    monkeypatch.setattr(k.urllib.request, 'urlopen', faux)
+    rep = k.appeler({'messages': [{'role': 'user', 'content': 'x'}]})
+    assert rep['content'][0]['text'] == 'Secours'
+    assert sum('generativelanguage' in u for u in vus) == 3 and 'moonshot' in vus[-1]
