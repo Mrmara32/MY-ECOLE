@@ -277,6 +277,13 @@ def test_kimi_prioritaire_et_reponse_simple(client, entetes, monkeypatch):
     assert r.status_code == 200 and r.get_json()['reponse'] == 'Réponse de Kimi'
 
 
+@pytest.fixture(autouse=True)
+def _etat_fournisseurs_neuf():
+    import kimi_adaptateur as k
+    k._ok.clear(); k._ko.clear(); k._decouverts.clear()
+    yield
+
+
 def test_gemini_prioritaire_et_modele_suivant_si_introuvable(monkeypatch):
     import json as j, urllib.error, kimi_adaptateur as k
     monkeypatch.setenv('GEMINI_API_KEY', 'g')
@@ -294,7 +301,7 @@ def test_gemini_prioritaire_et_modele_suivant_si_introuvable(monkeypatch):
     rep = k.appeler({'messages': [{'role': 'user', 'content': 'x'}]})
     assert rep['content'][0]['text'] == 'Salut'
     assert 'generativelanguage.googleapis.com' in vus[0][0] and vus[0][2] == 'Bearer g'
-    assert vus[0][1] == 'gemini-3.8-flash' and vus[1][1] == 'gemini-3-flash'
+    assert vus[0][1] == 'gemini-flash-latest' and vus[1][1] == 'gemini-3.8-flash'
 
 
 def test_sans_gemini_c_est_kimi(monkeypatch):
@@ -319,4 +326,27 @@ def test_delai_depasse_passe_au_modele_suivant_puis_au_fournisseur_de_secours(mo
     monkeypatch.setattr(k.urllib.request, 'urlopen', faux)
     rep = k.appeler({'messages': [{'role': 'user', 'content': 'x'}]})
     assert rep['content'][0]['text'] == 'Secours'
-    assert sum('generativelanguage' in u for u in vus) == 3 and 'moonshot' in vus[-1]
+    assert sum('generativelanguage' in u and 'chat/completions' in u for u in vus) == 3 and 'moonshot' in vus[-1]
+
+
+def test_decouverte_des_modeles_et_memoire_du_dernier_qui_repond(monkeypatch):
+    import json as j, urllib.error, kimi_adaptateur as k
+    monkeypatch.setenv('GEMINI_API_KEY', 'g')
+    monkeypatch.delenv('KIMI_API_KEY', raising=False)
+    monkeypatch.delenv('GEMINI_MODEL', raising=False)
+    liste = {'data': [{'id': 'models/gemini-4-flash'}, {'id': 'models/gemini-4-flash-image'}, {'id': 'models/gemini-3-pro'}]}
+    appels = []
+
+    def faux(req, timeout=0):
+        appels.append((req.full_url, j.loads(req.data)['model'] if req.data else None))
+        if req.full_url.endswith('/models'):
+            return _Flux([j.dumps(liste)])
+        if appels[-1][1] != 'gemini-4-flash':
+            raise urllib.error.HTTPError(req.full_url, 404, 'introuvable', {}, None)
+        return _Flux([j.dumps({'choices': [{'message': {'content': 'ok'}, 'finish_reason': 'stop'}]})])
+    monkeypatch.setattr(k.urllib.request, 'urlopen', faux)
+    assert k.appeler({'messages': [{'role': 'user', 'content': 'x'}]})['content'][0]['text'] == 'ok'
+    assert k._ok['gemini'] == 'gemini-4-flash'
+    appels.clear()
+    k.appeler({'messages': [{'role': 'user', 'content': 'x'}]})
+    assert appels[0][1] == 'gemini-4-flash' and len(appels) == 1   # le modèle qui marche est essayé en premier
