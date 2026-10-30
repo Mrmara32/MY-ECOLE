@@ -14,7 +14,7 @@ import urllib.request
 
 # Modèles essayés dans l'ordre : si l'un est « introuvable », on passe au suivant.
 MODELES = {
-    'gemini': ['gemini-3.8-flash', 'gemini-3-flash', 'gemini-2.5-flash', 'gemini-flash-latest'],
+    'gemini': ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3-flash', 'gemini-2.5-flash'],
     'kimi': ['kimi-k3', 'kimi-k2.6'],
 }
 _ENV = {'gemini': ('GEMINI_API_KEY', 'GEMINI_MODEL'), 'kimi': ('KIMI_API_KEY', 'KIMI_MODEL')}
@@ -33,10 +33,52 @@ def cle(nom=None):
     return os.environ.get(_ENV[nom][0], '').strip() if nom else ''
 
 
+_ok = {}          # fournisseur -> dernier modèle qui a répondu
+_ko = {}          # (fournisseur, modèle) -> instant du dernier échec
+_decouverts = {}  # fournisseur -> (instant, [modèles réellement disponibles pour la clé])
+
+
+def _decouvrir(nom):
+    """Liste des modèles « flash » réellement disponibles pour la clé (mise en cache 1 h). Vide si indisponible."""
+    if nom in _decouverts and time.monotonic() - _decouverts[nom][0] < 3600:
+        return _decouverts[nom][1]
+    liste = []
+    try:
+        base = _url(nom).rsplit('/chat/completions', 1)[0]
+        req = urllib.request.Request(base + '/models', headers={'authorization': 'Bearer ' + cle(nom)})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            ids = [str(m.get('id', '')).split('/')[-1] for m in json.loads(r.read().decode()).get('data', [])]
+        if nom == 'gemini':
+            import re
+            bons = [i for i in ids if re.fullmatch(r'gemini-[\d.]+-flash', i)]
+            bons.sort(key=lambda i: [int(x) for x in re.findall(r'\d+', i)], reverse=True)
+            liste = bons + [i for i in ids if i.startswith('gemini-') and 'flash' in i and i not in bons
+                            and not any(x in i for x in ('image', 'tts', 'live', 'audio', 'embed', 'lite'))]
+        else:
+            liste = ids
+    except Exception as e:
+        print(f"[assistant] liste des modèles {nom}: {type(e).__name__}")
+    _decouverts[nom] = (time.monotonic(), liste)
+    return liste
+
+
 def _candidats(nom):
+    """Ordre d'essai : modèle imposé, dernier modèle qui a répondu, puis la liste connue et les modèles découverts.
+    Un modèle en échec depuis moins de 10 min passe en dernier."""
     force = os.environ.get(_ENV[nom][1], '').strip()
-    base = MODELES[nom]
-    return ([force] + [m for m in base if m != force]) if force else list(base)
+    ordre = [force] if force else []
+    if _ok.get(nom):
+        ordre.append(_ok[nom])
+    if not _ok.get(nom) or time.monotonic() - _ko.get((nom, _ok[nom]), -1e9) < 600:
+        ordre += _decouvrir(nom)[:3]
+    ordre += MODELES[nom]
+    vus, sortie = set(), []
+    for m in ordre:
+        if m and m not in vus:
+            vus.add(m)
+            sortie.append(m)
+    recents = [m for m in sortie if time.monotonic() - _ko.get((nom, m), -1e9) < 600]
+    return [m for m in sortie if m not in recents] + recents
 
 
 def _url(nom):
@@ -103,13 +145,21 @@ def _ouvrir(charge, nom):
             if derniere is not None and time.monotonic() - debut > 85:
                 raise derniere
             try:
-                return urllib.request.urlopen(_requete(vers_openai(charge, modele), fournisseur), timeout=40)
+                rep = urllib.request.urlopen(_requete(vers_openai(charge, modele), fournisseur), timeout=40)
+                _ok[fournisseur] = modele
+                return rep
             except urllib.error.HTTPError as e:
                 derniere = e
-                print(f"[assistant] {fournisseur}/{modele}: HTTP {e.code}")
+                _ko[(fournisseur, modele)] = time.monotonic()
+                try:
+                    detail = e.read().decode('utf-8', 'replace')[:240].replace('\n', ' ')
+                except Exception:
+                    detail = ''
+                print(f"[assistant] {fournisseur}/{modele}: HTTP {e.code} {detail}")
                 continue
             except (OSError, ValueError) as e:     # délai dépassé, réseau coupé
                 derniere = e
+                _ko[(fournisseur, modele)] = time.monotonic()
                 print(f"[assistant] {fournisseur}/{modele}: {type(e).__name__}")
                 continue
     raise derniere
